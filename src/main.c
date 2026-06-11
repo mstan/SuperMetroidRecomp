@@ -654,8 +654,22 @@ int main(int argc, char** argv) {
     /* Per-game debug server port: 4377 SMW, 4378 Zelda LttP, 4379 MMX, 4380 SM.
      * Lets all three sibling games run concurrently on the same host
      * without TCP-bind collisions. */
-    if (debug_server_init(4380) == 0) {
-      fprintf(stderr, "[main] Debug server ready on port 4380\n");
+    int debug_port = 4380;
+    const char *debug_port_env = getenv("SNESRECOMP_DEBUG_PORT");
+    if (debug_port_env && debug_port_env[0]) {
+      char *end = NULL;
+      long parsed = strtol(debug_port_env, &end, 0);
+      if (end && *end == '\0' && parsed > 0 && parsed <= 65535) {
+        debug_port = (int)parsed;
+      } else {
+        fprintf(stderr, "[main] Ignoring invalid SNESRECOMP_DEBUG_PORT='%s'\n",
+                debug_port_env);
+      }
+    }
+    if (debug_server_init(debug_port) == 0) {
+      fprintf(stderr, "[main] Debug server ready on port %d\n", debug_port);
+    } else {
+      fprintf(stderr, "[main] Debug server failed to bind port %d\n", debug_port);
     }
     if (start_paused) {
       debug_server_start_paused();

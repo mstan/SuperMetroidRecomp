@@ -59,7 +59,7 @@ target_include_directories(SuperMetroidSNESRecomp PRIVATE
 target_compile_definitions(SuperMetroidSNESRecomp PRIVATE
     SMW_DISABLE_LM=1
     SYSTEM_VOLUME_MIXER_AVAILABLE=0   # Win32 WASAPI volume control excluded
-    SNESRECOMP_TRACE=0                # no TCP debug server (debug_server.c excluded)
+    SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
     SNESRECOMP_REVERSE_DEBUG=0        # raw WRAM stores; matches non-debug generated C
 )
 
@@ -71,6 +71,7 @@ if(NOT MSVC)
 endif()
 
 target_link_libraries(SuperMetroidSNESRecomp PRIVATE
+    ${SNESRECOMP_RUNNER_LIBRARIES}
     SDL2::SDL2          # SDL2 only (no SDL2main); main.c defines SDL_MAIN_HANDLED
     OpenGL::GL
 )

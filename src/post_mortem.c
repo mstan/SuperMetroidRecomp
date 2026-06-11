@@ -48,6 +48,8 @@
 #include "post_mortem.h"
 #include "cpu_state.h"
 #include "cpu_trace.h"
+#include "ppu_dma_trace.h"
+#include "common_cpu_infra.h"
 
 /* ── External hooks into existing rings ──────────────────────────────── */
 
@@ -360,6 +362,88 @@ static void dump_tripwires_json(FILE *f) {
     }
     fprintf(f, "  },\n");
 
+    /* DB tripwire */
+    fprintf(f,
+        "  \"db_tripwire\": {\n"
+        "    \"armed\": %u, \"triggered\": %u, \"target_db\": %u",
+        (unsigned)g_db_tripwire.armed,
+        (unsigned)g_db_tripwire.triggered,
+        (unsigned)g_db_tripwire.target_db);
+    if (g_db_tripwire.triggered) {
+        char esc[128];
+        fprintf(f,
+            ",\n    \"frame\": %d, \"trip_pc24\": %u,\n"
+            "    \"old_db\": %u, \"new_db\": %u, \"trip_event_type\": %u,\n"
+            "    \"trip_boundary_seq\": %llu, \"trip_trace_idx\": %llu,\n"
+            "    \"cpu\": {\"A\":%u,\"X\":%u,\"Y\":%u,\"S\":%u,\"D\":%u,"
+            "\"DB\":%u,\"PB\":%u,\"P\":%u,"
+            "\"m_flag\":%u,\"x_flag\":%u,\"e_flag\":%u},\n",
+            g_db_tripwire.frame,
+            (unsigned)g_db_tripwire.trip_pc24,
+            (unsigned)g_db_tripwire.old_db,
+            (unsigned)g_db_tripwire.new_db,
+            (unsigned)g_db_tripwire.trip_event_type,
+            (unsigned long long)g_db_tripwire.trip_boundary_seq,
+            (unsigned long long)g_db_tripwire.trip_trace_idx,
+            (unsigned)g_db_tripwire.A, (unsigned)g_db_tripwire.X,
+            (unsigned)g_db_tripwire.Y, (unsigned)g_db_tripwire.S,
+            (unsigned)g_db_tripwire.D,
+            (unsigned)g_db_tripwire.DB, (unsigned)g_db_tripwire.PB,
+            (unsigned)g_db_tripwire.P,
+            (unsigned)g_db_tripwire.m_flag,
+            (unsigned)g_db_tripwire.x_flag,
+            (unsigned)g_db_tripwire.e_flag);
+        json_escape(g_db_tripwire.last_func, esc, sizeof(esc));
+        fprintf(f, "    \"last_func\": \"%s\",\n", esc);
+        fprintf(f, "    \"stack\": [");
+        for (int i = 0; i < g_db_tripwire.stack_depth; i++) {
+            json_escape(g_db_tripwire.stack[i], esc, sizeof(esc));
+            fprintf(f, "%s\"%s\"", (i ? "," : ""), esc);
+        }
+        fprintf(f, "],\n    \"dbpb_history\": [");
+        for (int i = 0; i < g_db_tripwire.dbpb_count; i++) {
+            const CpuDbpbEvent *d = &g_db_tripwire.dbpb_history[i];
+            fprintf(f,
+                "%s{\"pc24\":%u,\"type\":\"%s\",\"reg\":\"%s\","
+                "\"old\":%u,\"new\":%u,\"S\":%u}",
+                (i ? "," : ""),
+                (unsigned)d->pc24,
+                trace_event_name(d->event_type),
+                d->reg_id == 0 ? "DB" : "PB",
+                (unsigned)d->old_val,
+                (unsigned)d->new_val,
+                (unsigned)d->S);
+        }
+        fprintf(f, "],\n    \"boundary_history\": [");
+        {
+            int bd_count = g_db_tripwire.bd_count;
+            if (bd_count > 128) bd_count = 128;
+            for (int i = 0; i < bd_count; i++) {
+                const BoundaryEvent *e = &g_db_tripwire.bd_history[i];
+                json_escape(e->name, esc, sizeof(esc));
+                fprintf(f,
+                    "%s{\"seq\":%llu,\"entry_seq\":%llu,\"frame\":%d,"
+                    "\"kind\":%u,\"name\":\"%s\","
+                    "\"S\":%u,\"D\":%u,\"DB\":%u,\"PB\":%u,\"depth\":%u}",
+                    (i ? "," : ""),
+                    (unsigned long long)e->seq,
+                    (unsigned long long)e->entry_seq,
+                    e->frame,
+                    (unsigned)e->kind,
+                    esc,
+                    (unsigned)e->S,
+                    (unsigned)e->D,
+                    (unsigned)e->DB,
+                    (unsigned)e->PB,
+                    (unsigned)e->stack_depth);
+            }
+        }
+        fprintf(f, "]\n");
+    } else {
+        fprintf(f, "\n");
+    }
+    fprintf(f, "  },\n");
+
     /* PX tripwire */
     fprintf(f,
         "  \"px_tripwire\": {\n"
@@ -630,6 +714,9 @@ void recomp_post_mortem_dump(const char *reason, void *fault_info) {
     dump_status_json(f);
     dump_hardware_state_json(f);
     dump_recomp_stack_json(f);
+    RecompStackBalDumpJson(f);
+    CpuUnresolvedAbandonDumpJson(f);
+    ppudma_dump_json(f);
     dump_trace_recent_json(f, 256);
     dump_dbpb_recent_json(f);
     dump_tripwires_json(f);

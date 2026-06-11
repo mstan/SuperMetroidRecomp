@@ -35,23 +35,29 @@
 typedef struct SmCpuSave {
   uint16_t A, X, Y, S, D;
   uint8_t  DB, PB, P;
+  uint8_t  host_return_valid;
   uint8_t  m_flag, x_flag, emulation;
   uint8_t  _flag_N, _flag_V, _flag_Z, _flag_C, _flag_I, _flag_D;
+  CpuTailcallContextSave tailcall_context;
 } SmCpuSave;
 
 static void sm_save_cpu(SmCpuSave *s, const CpuState *c) {
   s->A = c->A; s->X = c->X; s->Y = c->Y; s->S = c->S; s->D = c->D;
   s->DB = c->DB; s->PB = c->PB; s->P = c->P;
+  s->host_return_valid = c->host_return_valid;
   s->m_flag = c->m_flag; s->x_flag = c->x_flag; s->emulation = c->emulation;
   s->_flag_N = c->_flag_N; s->_flag_V = c->_flag_V; s->_flag_Z = c->_flag_Z;
   s->_flag_C = c->_flag_C; s->_flag_I = c->_flag_I; s->_flag_D = c->_flag_D;
+  cpu_tailcall_context_save(&s->tailcall_context);
 }
 static void sm_restore_cpu(CpuState *c, const SmCpuSave *s) {
   c->A = s->A; c->X = s->X; c->Y = s->Y; c->S = s->S; c->D = s->D;
   c->DB = s->DB; c->PB = s->PB; c->P = s->P;
+  c->host_return_valid = s->host_return_valid;
   c->m_flag = s->m_flag; c->x_flag = s->x_flag; c->emulation = s->emulation;
   c->_flag_N = s->_flag_N; c->_flag_V = s->_flag_V; c->_flag_Z = s->_flag_Z;
   c->_flag_C = s->_flag_C; c->_flag_I = s->_flag_I; c->_flag_D = s->_flag_D;
+  cpu_tailcall_context_restore(&s->tailcall_context);
 }
 
 uint16 counter_global_frames;

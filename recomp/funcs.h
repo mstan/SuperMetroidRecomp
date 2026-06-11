@@ -15,7 +15,7 @@
 
 #include "cpu_state.h"
 
-/* 5633 functions across all banks (5 decls each). */
+/* 5663 functions across all banks (5 decls each). */
 
 void APU_UploadBank(CpuState *cpu);  /* $00:8028 alias */
 RecompReturn APU_UploadBank_M0X0(CpuState *cpu);
@@ -912,6 +912,11 @@ RecompReturn GameOverMenu_1_Init_M0X0(CpuState *cpu);
 RecompReturn GameOverMenu_1_Init_M0X1(CpuState *cpu);
 RecompReturn GameOverMenu_1_Init_M1X0(CpuState *cpu);
 RecompReturn GameOverMenu_1_Init_M1X1(CpuState *cpu);
+void nullsub_56(CpuState *cpu);  /* $01:92DB alias */
+RecompReturn nullsub_56_M0X0(CpuState *cpu);
+RecompReturn nullsub_56_M0X1(CpuState *cpu);
+RecompReturn nullsub_56_M1X0(CpuState *cpu);
+RecompReturn nullsub_56_M1X1(CpuState *cpu);
 void GameOverMenu_2_PlayMusic(CpuState *cpu);  /* $01:93E8 alias */
 RecompReturn GameOverMenu_2_PlayMusic_M0X0(CpuState *cpu);
 RecompReturn GameOverMenu_2_PlayMusic_M0X1(CpuState *cpu);
@@ -6802,6 +6807,11 @@ RecompReturn SpawnHdmaObjectInner_M0X0(CpuState *cpu);
 RecompReturn SpawnHdmaObjectInner_M0X1(CpuState *cpu);
 RecompReturn SpawnHdmaObjectInner_M1X0(CpuState *cpu);
 RecompReturn SpawnHdmaObjectInner_M1X1(CpuState *cpu);
+void nullsub_293(CpuState *cpu);  /* $08:84B8 alias */
+RecompReturn nullsub_293_M0X0(CpuState *cpu);
+RecompReturn nullsub_293_M0X1(CpuState *cpu);
+RecompReturn nullsub_293_M1X0(CpuState *cpu);
+RecompReturn nullsub_293_M1X1(CpuState *cpu);
 void HdmaObjectHandler(CpuState *cpu);  /* $08:84B9 alias */
 RecompReturn HdmaObjectHandler_M0X0(CpuState *cpu);
 RecompReturn HdmaObjectHandler_M0X1(CpuState *cpu);
@@ -6892,6 +6902,11 @@ RecompReturn RaiseOrLowerFx_M0X0(CpuState *cpu);
 RecompReturn RaiseOrLowerFx_M0X1(CpuState *cpu);
 RecompReturn RaiseOrLowerFx_M1X0(CpuState *cpu);
 RecompReturn RaiseOrLowerFx_M1X1(CpuState *cpu);
+void HdmaobjPreInstr_Xray(CpuState *cpu);  /* $08:86EF alias */
+RecompReturn HdmaobjPreInstr_Xray_M0X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_Xray_M0X1(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_Xray_M1X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_Xray_M1X1(CpuState *cpu);
 void HdmaobjPreInstr_XrayFunc0_NoBeam(CpuState *cpu);  /* $08:8732 alias */
 RecompReturn HdmaobjPreInstr_XrayFunc0_NoBeam_M0X0(CpuState *cpu);
 RecompReturn HdmaobjPreInstr_XrayFunc0_NoBeam_M0X1(CpuState *cpu);
@@ -7112,6 +7127,11 @@ RecompReturn HdmaobjInstr_SetFlagB_M0X0(CpuState *cpu);
 RecompReturn HdmaobjInstr_SetFlagB_M0X1(CpuState *cpu);
 RecompReturn HdmaobjInstr_SetFlagB_M1X0(CpuState *cpu);
 RecompReturn HdmaobjInstr_SetFlagB_M1X1(CpuState *cpu);
+void HdmaobjPreInstr_BG3Xscroll(CpuState *cpu);  /* $08:A673 alias */
+RecompReturn HdmaobjPreInstr_BG3Xscroll_M0X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_BG3Xscroll_M0X1(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_BG3Xscroll_M1X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_BG3Xscroll_M1X1(CpuState *cpu);
 void HdmaFunc_A786(CpuState *cpu);  /* $08:A786 alias */
 RecompReturn HdmaFunc_A786_M0X0(CpuState *cpu);
 RecompReturn HdmaFunc_A786_M0X1(CpuState *cpu);
@@ -7357,6 +7377,11 @@ RecompReturn FxTypeFunc_C_M0X0(CpuState *cpu);
 RecompReturn FxTypeFunc_C_M0X1(CpuState *cpu);
 RecompReturn FxTypeFunc_C_M1X0(CpuState *cpu);
 RecompReturn FxTypeFunc_C_M1X1(CpuState *cpu);
+void nullsub_112(CpuState *cpu);  /* $08:DB2E alias */
+RecompReturn nullsub_112_M0X0(CpuState *cpu);
+RecompReturn nullsub_112_M0X1(CpuState *cpu);
+RecompReturn nullsub_112_M1X0(CpuState *cpu);
+RecompReturn nullsub_112_M1X1(CpuState *cpu);
 void HdmaobjPreInstr_FogBG3Scroll(CpuState *cpu);  /* $08:DB36 alias */
 RecompReturn HdmaobjPreInstr_FogBG3Scroll_M0X0(CpuState *cpu);
 RecompReturn HdmaobjPreInstr_FogBG3Scroll_M0X1(CpuState *cpu);
@@ -7457,11 +7482,31 @@ RecompReturn sub_88DF46_M0X0(CpuState *cpu);
 RecompReturn sub_88DF46_M0X1(CpuState *cpu);
 RecompReturn sub_88DF46_M1X0(CpuState *cpu);
 RecompReturn sub_88DF46_M1X1(CpuState *cpu);
+void nullsub_113(CpuState *cpu);  /* $08:DF91 alias */
+RecompReturn nullsub_113_M0X0(CpuState *cpu);
+RecompReturn nullsub_113_M0X1(CpuState *cpu);
+RecompReturn nullsub_113_M1X0(CpuState *cpu);
+RecompReturn nullsub_113_M1X1(CpuState *cpu);
+void nullsub_114(CpuState *cpu);  /* $08:DF92 alias */
+RecompReturn nullsub_114_M0X0(CpuState *cpu);
+RecompReturn nullsub_114_M0X1(CpuState *cpu);
+RecompReturn nullsub_114_M1X0(CpuState *cpu);
+RecompReturn nullsub_114_M1X1(CpuState *cpu);
 void HdmaobjPreInstr_DF94(CpuState *cpu);  /* $08:DF94 alias */
 RecompReturn HdmaobjPreInstr_DF94_M0X0(CpuState *cpu);
 RecompReturn HdmaobjPreInstr_DF94_M0X1(CpuState *cpu);
 RecompReturn HdmaobjPreInstr_DF94_M1X0(CpuState *cpu);
 RecompReturn HdmaobjPreInstr_DF94_M1X1(CpuState *cpu);
+void HdmaobjPreInstr_VariaSuitPickup(CpuState *cpu);  /* $08:E026 alias */
+RecompReturn HdmaobjPreInstr_VariaSuitPickup_M0X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_VariaSuitPickup_M0X1(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_VariaSuitPickup_M1X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_VariaSuitPickup_M1X1(CpuState *cpu);
+void HdmaobjPreInstr_GravitySuitPickup(CpuState *cpu);  /* $08:E05C alias */
+RecompReturn HdmaobjPreInstr_GravitySuitPickup_M0X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_GravitySuitPickup_M0X1(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_GravitySuitPickup_M1X0(CpuState *cpu);
+RecompReturn HdmaobjPreInstr_GravitySuitPickup_M1X1(CpuState *cpu);
 void VariaSuitPickup_0_LightBeamAppears(CpuState *cpu);  /* $08:E092 alias */
 RecompReturn VariaSuitPickup_0_LightBeamAppears_M0X0(CpuState *cpu);
 RecompReturn VariaSuitPickup_0_LightBeamAppears_M0X1(CpuState *cpu);
@@ -7547,6 +7592,11 @@ RecompReturn MotherBrainRisingHdmaObject_M0X0(CpuState *cpu);
 RecompReturn MotherBrainRisingHdmaObject_M0X1(CpuState *cpu);
 RecompReturn MotherBrainRisingHdmaObject_M1X0(CpuState *cpu);
 RecompReturn MotherBrainRisingHdmaObject_M1X1(CpuState *cpu);
+void nullsub_357(CpuState *cpu);  /* $08:E726 alias */
+RecompReturn nullsub_357_M0X0(CpuState *cpu);
+RecompReturn nullsub_357_M0X1(CpuState *cpu);
+RecompReturn nullsub_357_M1X0(CpuState *cpu);
+RecompReturn nullsub_357_M1X1(CpuState *cpu);
 void SpawnMotherBrainRainbowBeamHdma(CpuState *cpu);  /* $08:E748 alias */
 RecompReturn SpawnMotherBrainRainbowBeamHdma_M0X0(CpuState *cpu);
 RecompReturn SpawnMotherBrainRainbowBeamHdma_M0X1(CpuState *cpu);
@@ -7887,6 +7937,11 @@ RecompReturn SpawnCimenaticSpriteObjectInner_M0X0(CpuState *cpu);
 RecompReturn SpawnCimenaticSpriteObjectInner_M0X1(CpuState *cpu);
 RecompReturn SpawnCimenaticSpriteObjectInner_M1X0(CpuState *cpu);
 RecompReturn SpawnCimenaticSpriteObjectInner_M1X1(CpuState *cpu);
+void CinematicFunction_nullsub_116(CpuState *cpu);  /* $0B:93D9 alias */
+RecompReturn CinematicFunction_nullsub_116_M0X0(CpuState *cpu);
+RecompReturn CinematicFunction_nullsub_116_M0X1(CpuState *cpu);
+RecompReturn CinematicFunction_nullsub_116_M1X0(CpuState *cpu);
+RecompReturn CinematicFunction_nullsub_116_M1X1(CpuState *cpu);
 void ClearCinematicSprites(CpuState *cpu);  /* $0B:93DA alias */
 RecompReturn ClearCinematicSprites_M0X0(CpuState *cpu);
 RecompReturn ClearCinematicSprites_M0X1(CpuState *cpu);
@@ -7922,6 +7977,11 @@ RecompReturn CinematicSprInstr_ClearPreInstr_M0X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_ClearPreInstr_M0X1(CpuState *cpu);
 RecompReturn CinematicSprInstr_ClearPreInstr_M1X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_ClearPreInstr_M1X1(CpuState *cpu);
+void CinematicFunction_nullsub_298(CpuState *cpu);  /* $0B:945F alias */
+RecompReturn CinematicFunction_nullsub_298_M0X0(CpuState *cpu);
+RecompReturn CinematicFunction_nullsub_298_M0X1(CpuState *cpu);
+RecompReturn CinematicFunction_nullsub_298_M1X0(CpuState *cpu);
+RecompReturn CinematicFunction_nullsub_298_M1X1(CpuState *cpu);
 void CinematicSprInstr_GotoRel(CpuState *cpu);  /* $0B:94A2 alias */
 RecompReturn CinematicSprInstr_GotoRel_M0X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_GotoRel_M0X1(CpuState *cpu);
@@ -8277,6 +8337,11 @@ RecompReturn CinematicSprInstr_9F19_M0X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_9F19_M0X1(CpuState *cpu);
 RecompReturn CinematicSprInstr_9F19_M1X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_9F19_M1X1(CpuState *cpu);
+void nullsub_117(CpuState *cpu);  /* $0B:9F28 alias */
+RecompReturn nullsub_117_M0X0(CpuState *cpu);
+RecompReturn nullsub_117_M0X1(CpuState *cpu);
+RecompReturn nullsub_117_M1X0(CpuState *cpu);
+RecompReturn nullsub_117_M1X1(CpuState *cpu);
 void CinematicFunc_Func1(CpuState *cpu);  /* $0B:9F29 alias */
 RecompReturn CinematicFunc_Func1_M0X0(CpuState *cpu);
 RecompReturn CinematicFunc_Func1_M0X1(CpuState *cpu);
@@ -8337,6 +8402,16 @@ RecompReturn GameState_37_CeresGoesBoomWithSamus__M0X0(CpuState *cpu);
 RecompReturn GameState_37_CeresGoesBoomWithSamus__M0X1(CpuState *cpu);
 RecompReturn GameState_37_CeresGoesBoomWithSamus__M1X0(CpuState *cpu);
 RecompReturn GameState_37_CeresGoesBoomWithSamus__M1X1(CpuState *cpu);
+void nullsub_120(CpuState *cpu);  /* $0B:A38F alias */
+RecompReturn nullsub_120_M0X0(CpuState *cpu);
+RecompReturn nullsub_120_M0X1(CpuState *cpu);
+RecompReturn nullsub_120_M1X0(CpuState *cpu);
+RecompReturn nullsub_120_M1X1(CpuState *cpu);
+void nullsub_121(CpuState *cpu);  /* $0B:A390 alias */
+RecompReturn nullsub_121_M0X0(CpuState *cpu);
+RecompReturn nullsub_121_M0X1(CpuState *cpu);
+RecompReturn nullsub_121_M1X0(CpuState *cpu);
+RecompReturn nullsub_121_M1X1(CpuState *cpu);
 void CinematicFunc_Nothing(CpuState *cpu);  /* $0B:A391 alias */
 RecompReturn CinematicFunc_Nothing_M0X0(CpuState *cpu);
 RecompReturn CinematicFunc_Nothing_M0X1(CpuState *cpu);
@@ -8412,6 +8487,11 @@ RecompReturn SetSomeStuffForSpriteObject_2_M0X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_2_M0X1(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_2_M1X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_2_M1X1(CpuState *cpu);
+void nullsub_122(CpuState *cpu);  /* $0B:A8D4 alias */
+RecompReturn nullsub_122_M0X0(CpuState *cpu);
+RecompReturn nullsub_122_M0X1(CpuState *cpu);
+RecompReturn nullsub_122_M1X0(CpuState *cpu);
+RecompReturn nullsub_122_M1X1(CpuState *cpu);
 void SetSomeStuffForSpriteObject_3(CpuState *cpu);  /* $0B:A8D5 alias */
 RecompReturn SetSomeStuffForSpriteObject_3_M0X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_3_M0X1(CpuState *cpu);
@@ -8437,11 +8517,21 @@ RecompReturn SetSomeStuffForSpriteObject_6_M0X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_6_M0X1(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_6_M1X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_6_M1X1(CpuState *cpu);
+void SetSomeStuffForSpriteObject_7(CpuState *cpu);  /* $0B:A994 alias */
+RecompReturn SetSomeStuffForSpriteObject_7_M0X0(CpuState *cpu);
+RecompReturn SetSomeStuffForSpriteObject_7_M0X1(CpuState *cpu);
+RecompReturn SetSomeStuffForSpriteObject_7_M1X0(CpuState *cpu);
+RecompReturn SetSomeStuffForSpriteObject_7_M1X1(CpuState *cpu);
 void SetSomeStuffForSpriteObject_8(CpuState *cpu);  /* $0B:AA9A alias */
 RecompReturn SetSomeStuffForSpriteObject_8_M0X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_8_M0X1(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_8_M1X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_8_M1X1(CpuState *cpu);
+void SetSomeStuffForSpriteObject_9(CpuState *cpu);  /* $0B:AAB3 alias */
+RecompReturn SetSomeStuffForSpriteObject_9_M0X0(CpuState *cpu);
+RecompReturn SetSomeStuffForSpriteObject_9_M0X1(CpuState *cpu);
+RecompReturn SetSomeStuffForSpriteObject_9_M1X0(CpuState *cpu);
+RecompReturn SetSomeStuffForSpriteObject_9_M1X1(CpuState *cpu);
 void SetSomeStuffForSpriteObject_10(CpuState *cpu);  /* $0B:AD55 alias */
 RecompReturn SetSomeStuffForSpriteObject_10_M0X0(CpuState *cpu);
 RecompReturn SetSomeStuffForSpriteObject_10_M0X1(CpuState *cpu);
@@ -8937,6 +9027,11 @@ RecompReturn CinematicFunction_Intro_Func66_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func66_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func66_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func66_M1X1(CpuState *cpu);
+void CinematicSprPreInstr_nullsub_300(CpuState *cpu);  /* $0B:BFD9 alias */
+RecompReturn CinematicSprPreInstr_nullsub_300_M0X0(CpuState *cpu);
+RecompReturn CinematicSprPreInstr_nullsub_300_M0X1(CpuState *cpu);
+RecompReturn CinematicSprPreInstr_nullsub_300_M1X0(CpuState *cpu);
+RecompReturn CinematicSprPreInstr_nullsub_300_M1X1(CpuState *cpu);
 void CinematicFunction_Intro_Func67(CpuState *cpu);  /* $0B:BFDA alias */
 RecompReturn CinematicFunction_Intro_Func67_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func67_M0X1(CpuState *cpu);
@@ -9007,6 +9102,11 @@ RecompReturn CinematicSprPreInstr_C489_M0X0(CpuState *cpu);
 RecompReturn CinematicSprPreInstr_C489_M0X1(CpuState *cpu);
 RecompReturn CinematicSprPreInstr_C489_M1X0(CpuState *cpu);
 RecompReturn CinematicSprPreInstr_C489_M1X1(CpuState *cpu);
+void CinematicFunction_Intro_Func80(CpuState *cpu);  /* $0B:C4B9 alias */
+RecompReturn CinematicFunction_Intro_Func80_M0X0(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func80_M0X1(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func80_M1X0(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func80_M1X1(CpuState *cpu);
 void CinematicSprInstr_SpawnCeresExplosions3(CpuState *cpu);  /* $0B:C50C alias */
 RecompReturn CinematicSprInstr_SpawnCeresExplosions3_M0X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_SpawnCeresExplosions3_M0X1(CpuState *cpu);
@@ -9167,6 +9267,11 @@ RecompReturn CinematicFunction_Intro_Func108_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func108_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func108_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func108_M1X1(CpuState *cpu);
+void nullsub_124(CpuState *cpu);  /* $0B:CADE alias */
+RecompReturn nullsub_124_M0X0(CpuState *cpu);
+RecompReturn nullsub_124_M0X1(CpuState *cpu);
+RecompReturn nullsub_124_M1X0(CpuState *cpu);
+RecompReturn nullsub_124_M1X1(CpuState *cpu);
 void CinematicFunction_Intro_Func95(CpuState *cpu);  /* $0B:CADF alias */
 RecompReturn CinematicFunction_Intro_Func95_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func95_M0X1(CpuState *cpu);
@@ -9232,6 +9337,16 @@ RecompReturn CinematicFunction_Intro_Func117_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func117_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func117_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func117_M1X1(CpuState *cpu);
+void CinematicFunction_Intro_Func118(CpuState *cpu);  /* $0B:DAD3 alias */
+RecompReturn CinematicFunction_Intro_Func118_M0X0(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func118_M0X1(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func118_M1X0(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func118_M1X1(CpuState *cpu);
+void nullsub_125(CpuState *cpu);  /* $0B:DB9D alias */
+RecompReturn nullsub_125_M0X0(CpuState *cpu);
+RecompReturn nullsub_125_M0X1(CpuState *cpu);
+RecompReturn nullsub_125_M1X0(CpuState *cpu);
+RecompReturn nullsub_125_M1X1(CpuState *cpu);
 void CinematicFunction_Intro_Func119(CpuState *cpu);  /* $0B:DB9E alias */
 RecompReturn CinematicFunction_Intro_Func119_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func119_M0X1(CpuState *cpu);
@@ -9247,6 +9362,11 @@ RecompReturn CinematicFunction_Intro_Func122_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func122_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func122_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func122_M1X1(CpuState *cpu);
+void CinematicFunction_Intro_Func121(CpuState *cpu);  /* $0B:DCA5 alias */
+RecompReturn CinematicFunction_Intro_Func121_M0X0(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func121_M0X1(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func121_M1X0(CpuState *cpu);
+RecompReturn CinematicFunction_Intro_Func121_M1X1(CpuState *cpu);
 void CinematicFunction_Intro_Func123(CpuState *cpu);  /* $0B:DD42 alias */
 RecompReturn CinematicFunction_Intro_Func123_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func123_M0X1(CpuState *cpu);
@@ -9257,6 +9377,11 @@ RecompReturn CinematicFunction_Intro_Func124_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func124_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func124_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func124_M1X1(CpuState *cpu);
+void nullsub_126(CpuState *cpu);  /* $0B:DE63 alias */
+RecompReturn nullsub_126_M0X0(CpuState *cpu);
+RecompReturn nullsub_126_M0X1(CpuState *cpu);
+RecompReturn nullsub_126_M1X0(CpuState *cpu);
+RecompReturn nullsub_126_M1X1(CpuState *cpu);
 void CinematicFunction_Intro_Func125(CpuState *cpu);  /* $0B:DE64 alias */
 RecompReturn CinematicFunction_Intro_Func125_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func125_M0X1(CpuState *cpu);
@@ -9367,6 +9492,11 @@ RecompReturn CinematicFunction_Intro_Func148_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func148_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func148_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func148_M1X1(CpuState *cpu);
+void nullsub_127(CpuState *cpu);  /* $0B:E7BA alias */
+RecompReturn nullsub_127_M0X0(CpuState *cpu);
+RecompReturn nullsub_127_M0X1(CpuState *cpu);
+RecompReturn nullsub_127_M1X0(CpuState *cpu);
+RecompReturn nullsub_127_M1X1(CpuState *cpu);
 void CinematicFunction_Intro_Func127(CpuState *cpu);  /* $0B:E7BB alias */
 RecompReturn CinematicFunction_Intro_Func127_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func127_M0X1(CpuState *cpu);
@@ -9677,6 +9807,11 @@ RecompReturn CinematicFunction_Intro_Func207_M0X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func207_M0X1(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func207_M1X0(CpuState *cpu);
 RecompReturn CinematicFunction_Intro_Func207_M1X1(CpuState *cpu);
+void nullsub_128(CpuState *cpu);  /* $0B:F51C alias */
+RecompReturn nullsub_128_M0X0(CpuState *cpu);
+RecompReturn nullsub_128_M0X1(CpuState *cpu);
+RecompReturn nullsub_128_M1X0(CpuState *cpu);
+RecompReturn nullsub_128_M1X1(CpuState *cpu);
 void CinematicSprInstr_Func208(CpuState *cpu);  /* $0B:F51D alias */
 RecompReturn CinematicSprInstr_Func208_M0X0(CpuState *cpu);
 RecompReturn CinematicSprInstr_Func208_M0X1(CpuState *cpu);
@@ -9862,6 +9997,11 @@ RecompReturn PalInstr_QueueSfx3_M0X0(CpuState *cpu);
 RecompReturn PalInstr_QueueSfx3_M0X1(CpuState *cpu);
 RecompReturn PalInstr_QueueSfx3_M1X0(CpuState *cpu);
 RecompReturn PalInstr_QueueSfx3_M1X1(CpuState *cpu);
+void nullsub_131(CpuState *cpu);  /* $0D:C685 alias */
+RecompReturn nullsub_131_M0X0(CpuState *cpu);
+RecompReturn nullsub_131_M0X1(CpuState *cpu);
+RecompReturn nullsub_131_M1X0(CpuState *cpu);
+RecompReturn nullsub_131_M1X1(CpuState *cpu);
 void PalInit_E1BC(CpuState *cpu);  /* $0D:E204 alias */
 RecompReturn PalInit_E1BC_M0X0(CpuState *cpu);
 RecompReturn PalInit_E1BC_M0X1(CpuState *cpu);
@@ -10522,6 +10662,11 @@ RecompReturn RoomDefStateSelect_Finish_M0X0(CpuState *cpu);
 RecompReturn RoomDefStateSelect_Finish_M0X1(CpuState *cpu);
 RecompReturn RoomDefStateSelect_Finish_M1X0(CpuState *cpu);
 RecompReturn RoomDefStateSelect_Finish_M1X1(CpuState *cpu);
+void RoomDefStateSelect_Door(CpuState *cpu);  /* $0F:E5EB alias */
+RecompReturn RoomDefStateSelect_Door_M0X0(CpuState *cpu);
+RecompReturn RoomDefStateSelect_Door_M0X1(CpuState *cpu);
+RecompReturn RoomDefStateSelect_Door_M1X0(CpuState *cpu);
+RecompReturn RoomDefStateSelect_Door_M1X1(CpuState *cpu);
 void RoomDefStateSelect_TourianBoss01(CpuState *cpu);  /* $0F:E5FF alias */
 RecompReturn RoomDefStateSelect_TourianBoss01_M0X0(CpuState *cpu);
 RecompReturn RoomDefStateSelect_TourianBoss01_M0X1(CpuState *cpu);
@@ -18707,6 +18852,11 @@ RecompReturn Crocomire_Func_59_M0X0(CpuState *cpu);
 RecompReturn Crocomire_Func_59_M0X1(CpuState *cpu);
 RecompReturn Crocomire_Func_59_M1X0(CpuState *cpu);
 RecompReturn Crocomire_Func_59_M1X1(CpuState *cpu);
+void nullsub_309(CpuState *cpu);  /* $24:943C alias */
+RecompReturn nullsub_309_M0X0(CpuState *cpu);
+RecompReturn nullsub_309_M0X1(CpuState *cpu);
+RecompReturn nullsub_309_M1X0(CpuState *cpu);
+RecompReturn nullsub_309_M1X1(CpuState *cpu);
 void Crocomire_Func_60(CpuState *cpu);  /* $24:943D alias */
 RecompReturn Crocomire_Func_60_M0X0(CpuState *cpu);
 RecompReturn Crocomire_Func_60_M0X1(CpuState *cpu);
