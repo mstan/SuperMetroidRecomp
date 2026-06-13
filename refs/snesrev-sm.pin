@@ -1,0 +1,6 @@
+snesrev/sm decomp pin (symbol-ingest source)
+repo:   https://github.com/snesrev/sm
+commit: 578f90b3cc49557bb70060ad033bb90b8cf8ac50
+date:   2023-04-17
+clone:  refs/snesrev-sm/ (depth 1)
+tool:   snesrecomp/tools/ingest_sm_decomp.py

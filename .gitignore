@@ -34,6 +34,11 @@ boot_trace*.txt
 # External repos accessed via junction/symlink (tracked in their own repos)
 snesrecomp/
 
+# snesrev/sm decomp — local oracle reference (clone per BUILDING.md; the
+# commit is pinned in refs/snesrev-sm.pin, which IS tracked). The clone
+# itself is a full nested git repo, so it is not committed here.
+/refs/snesrev-sm/
+
 # Claude auto-memory + per-project session/goal state (per-developer)
 memory/
 .claude/

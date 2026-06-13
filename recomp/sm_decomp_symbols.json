@@ -1,0 +1,991 @@
+{
+  "_comment": "Named ROM tables harvested from the snesrev/sm decomp by ingest_sm_decomp.py. kind=func_ptr entries are indirect_dispatch targets (table addr + element count + name); kind=data are data-table labels. Addresses are normalised to $00-$7F physical banks (addr24 keeps the original $80+ mirror form).",
+  "func_ptr_tables": [
+    {
+      "addr24": 8427626,
+      "bank": 0,
+      "addr16": 39018,
+      "name": "kIrqHandlers",
+      "kind": "func_ptr",
+      "count": 14
+    },
+    {
+      "addr24": 8429031,
+      "bank": 0,
+      "addr16": 40423,
+      "name": "kTimerProcessFuncs",
+      "kind": "func_ptr",
+      "count": 7
+    },
+    {
+      "addr24": 8432944,
+      "bank": 0,
+      "addr16": 44336,
+      "name": "kDoorTransitionSetupFuncs",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 8491182,
+      "bank": 1,
+      "addr16": 37038,
+      "name": "kGameOverMenuFuncs",
+      "kind": "func_ptr",
+      "count": 8
+    },
+    {
+      "addr24": 8492027,
+      "bank": 1,
+      "addr16": 37883,
+      "name": "kFileSelectMenuFuncs",
+      "kind": "func_ptr",
+      "count": 34
+    },
+    {
+      "addr24": 8494654,
+      "bank": 1,
+      "addr16": 40510,
+      "name": "kFileSelectMapFuncs",
+      "kind": "func_ptr",
+      "count": 23
+    },
+    {
+      "addr24": 8554991,
+      "bank": 2,
+      "addr16": 35311,
+      "name": "kSfxHandlers",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 8556799,
+      "bank": 2,
+      "addr16": 37119,
+      "name": "kPauseMenuFuncs",
+      "kind": "func_ptr",
+      "count": 8
+    },
+    {
+      "addr24": 8557149,
+      "bank": 2,
+      "addr16": 37469,
+      "name": "kMapScrollingFuncs",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 8562197,
+      "bank": 2,
+      "addr16": 42517,
+      "name": "kSetPauseScreenButtonLabelPalettes_Funcs",
+      "kind": "func_ptr",
+      "count": 3
+    },
+    {
+      "addr24": 8563791,
+      "bank": 2,
+      "addr16": 44111,
+      "name": "kEquipmentScreenCategories",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 8563824,
+      "bank": 2,
+      "addr16": 44144,
+      "name": "kEquipmentScreenCategory_TanksFuncs",
+      "kind": "func_ptr",
+      "count": 2
+    },
+    {
+      "addr24": 8563978,
+      "bank": 2,
+      "addr16": 44298,
+      "name": "kEquipmentScreenGlowingArrowFuncs",
+      "kind": "func_ptr",
+      "count": 2
+    },
+    {
+      "addr24": 8579452,
+      "bank": 2,
+      "addr16": 59772,
+      "name": "kLoadLibraryBackgroundFuncs",
+      "kind": "func_ptr",
+      "count": 8
+    },
+    {
+      "addr24": 8579999,
+      "bank": 2,
+      "addr16": 60319,
+      "name": "kGameOptionsMenuFuncs",
+      "kind": "func_ptr",
+      "count": 13
+    },
+    {
+      "addr24": 8580418,
+      "bank": 2,
+      "addr16": 60738,
+      "name": "kGameOptionsMenuItemFuncs",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 8581156,
+      "bank": 2,
+      "addr16": 61476,
+      "name": "kGameOptionsMenuSpecialSettings",
+      "kind": "func_ptr",
+      "count": 3
+    },
+    {
+      "addr24": 8696840,
+      "bank": 4,
+      "addr16": 46088,
+      "name": "kPlmSetup_QuicksandSurface",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 8816774,
+      "bank": 6,
+      "addr16": 34950,
+      "name": "kEprojBlockCollisition_FuncA",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 8837595,
+      "bank": 6,
+      "addr16": 55771,
+      "name": "kEprojPreInstr_SpikeShootingPlantSpikes",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 8843232,
+      "bank": 6,
+      "addr16": 61408,
+      "name": "off_86F0AD",
+      "kind": "func_ptr",
+      "count": 7
+    },
+    {
+      "addr24": 8946174,
+      "bank": 8,
+      "addr16": 33278,
+      "name": "kLayerBlendPowerBombFuncs",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 8947439,
+      "bank": 8,
+      "addr16": 34543,
+      "name": "kHdmaobjPreInstr_XrayFuncs",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 8970278,
+      "bank": 8,
+      "addr16": 57382,
+      "name": "off_88E04E",
+      "kind": "func_ptr",
+      "count": 7
+    },
+    {
+      "addr24": 8970332,
+      "bank": 8,
+      "addr16": 57436,
+      "name": "off_88E084",
+      "kind": "func_ptr",
+      "count": 7
+    },
+    {
+      "addr24": 9022338,
+      "bank": 9,
+      "addr16": 43906,
+      "name": "kFxTypeFuncPtrs",
+      "kind": "func_ptr",
+      "count": 23
+    },
+    {
+      "addr24": 9149036,
+      "bank": 11,
+      "addr16": 39532,
+      "name": "off_8B9A7B",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 9470684,
+      "bank": 16,
+      "addr16": 33500,
+      "name": "kAnimDelayFuncs",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 9471458,
+      "bank": 16,
+      "addr16": 34274,
+      "name": "kSamusIsBottomDrawnFuncs",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9473055,
+      "bank": 16,
+      "addr16": 35871,
+      "name": "kSamus_CalcSpritemapPos",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9481734,
+      "bank": 16,
+      "addr16": 44550,
+      "name": "kKillProjectileFuncs",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9481971,
+      "bank": 16,
+      "addr16": 44787,
+      "name": "kProjPreInstr_Beam_Funcs",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9482088,
+      "bank": 16,
+      "addr16": 44904,
+      "name": "kProjPreInstr_Missile_Funcs",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9482213,
+      "bank": 16,
+      "addr16": 45029,
+      "name": "kProjPreInstr_SuperMissile_Funcs",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9482499,
+      "bank": 16,
+      "addr16": 45315,
+      "name": "kProjPreInstr_WavePlasmaEtcFuncs",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9485668,
+      "bank": 16,
+      "addr16": 48484,
+      "name": "kCheckBeamCollByDir",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9485746,
+      "bank": 16,
+      "addr16": 48562,
+      "name": "kWaveBeam_CheckColl_Funcs",
+      "kind": "func_ptr",
+      "count": 10
+    },
+    {
+      "addr24": 9487541,
+      "bank": 16,
+      "addr16": 50357,
+      "name": "kRunSwitchedToHudHandler",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 9491270,
+      "bank": 16,
+      "addr16": 54086,
+      "name": "kSamus_MoveHandler_ShinesparkCrash",
+      "kind": "func_ptr",
+      "count": 3
+    },
+    {
+      "addr24": 9492174,
+      "bank": 16,
+      "addr16": 54990,
+      "name": "kSamusMoveHandler_CrystalFlashMainFuncs",
+      "kind": "func_ptr",
+      "count": 3
+    },
+    {
+      "addr24": 9493254,
+      "bank": 16,
+      "addr16": 56070,
+      "name": "kProjPreInstr_SpazerSba_FuncsB",
+      "kind": "func_ptr",
+      "count": 3
+    },
+    {
+      "addr24": 9493993,
+      "bank": 16,
+      "addr16": 56809,
+      "name": "kSamusHitInterrupts",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9494328,
+      "bank": 16,
+      "addr16": 57144,
+      "name": "kSamus_MoveHandler_Knockback",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 9494425,
+      "bank": 16,
+      "addr16": 57241,
+      "name": "kSetupBombJump",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9494578,
+      "bank": 16,
+      "addr16": 57394,
+      "name": "kSamus_MoveHandler_BombJumpMain",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 9497992,
+      "bank": 16,
+      "addr16": 60808,
+      "name": "kSamus_FootstepGraphics",
+      "kind": "func_ptr",
+      "count": 8
+    },
+    {
+      "addr24": 9498756,
+      "bank": 16,
+      "addr16": 61572,
+      "name": "kSamusCodeHandlers",
+      "kind": "func_ptr",
+      "count": 32
+    },
+    {
+      "addr24": 9537424,
+      "bank": 17,
+      "addr16": 34704,
+      "name": "kDemoSetFuncPtrs_0",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 9557751,
+      "bank": 17,
+      "addr16": 55031,
+      "name": "off_91D72D",
+      "kind": "func_ptr",
+      "count": 11
+    },
+    {
+      "addr24": 9561261,
+      "bank": 17,
+      "addr16": 58541,
+      "name": "kSomeMotherBrainScripts",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 9561651,
+      "bank": 17,
+      "addr16": 58931,
+      "name": "off_91E6E1",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9562294,
+      "bank": 17,
+      "addr16": 59574,
+      "name": "kSamus_HandleTransFromBlockColl",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 9562354,
+      "bank": 17,
+      "addr16": 59634,
+      "name": "off_91E951",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 9563016,
+      "bank": 17,
+      "addr16": 60296,
+      "name": "kSamus_HandleTransitionsA",
+      "kind": "func_ptr",
+      "count": 9
+    },
+    {
+      "addr24": 9563470,
+      "bank": 17,
+      "addr16": 60750,
+      "name": "kSamus_HandleTransitionsB_1",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9564100,
+      "bank": 17,
+      "addr16": 61380,
+      "name": "kSamus_HandleTransitionsA_5",
+      "kind": "func_ptr",
+      "count": 7
+    },
+    {
+      "addr24": 9564176,
+      "bank": 17,
+      "addr16": 61456,
+      "name": "kSamus_HandleTransitionsA_5_1",
+      "kind": "func_ptr",
+      "count": 6
+    },
+    {
+      "addr24": 9564325,
+      "bank": 17,
+      "addr16": 61605,
+      "name": "off_91F0AE",
+      "kind": "func_ptr",
+      "count": 8
+    },
+    {
+      "addr24": 9565288,
+      "bank": 17,
+      "addr16": 62568,
+      "name": "off_91F4A2",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9566040,
+      "bank": 17,
+      "addr16": 63320,
+      "name": "off_91F790",
+      "kind": "func_ptr",
+      "count": 12
+    },
+    {
+      "addr24": 9567163,
+      "bank": 17,
+      "addr16": 64443,
+      "name": "kHandleJumpTrans",
+      "kind": "func_ptr",
+      "count": 28
+    },
+    {
+      "addr24": 9567662,
+      "bank": 17,
+      "addr16": 64942,
+      "name": "off_91FE8A",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 9732897,
+      "bank": 20,
+      "addr16": 33569,
+      "name": "kPostGrappleColl_Horiz",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 9736267,
+      "bank": 20,
+      "addr16": 36939,
+      "name": "kBlockColl_SpikeBlock",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 9737493,
+      "bank": 20,
+      "addr16": 38165,
+      "name": "kBlockColl_Horiz_CheckColl",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 9738444,
+      "bank": 20,
+      "addr16": 39116,
+      "name": "kBlockInsideReact_SpikeAir",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 9740370,
+      "bank": 20,
+      "addr16": 41042,
+      "name": "kBlockBombedReact",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 9743280,
+      "bank": 20,
+      "addr16": 43952,
+      "name": "kBlockReactLut_AB90",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 10537029,
+      "bank": 32,
+      "addr16": 51269,
+      "name": "off_A0C859",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 10537081,
+      "bank": 32,
+      "addr16": 51321,
+      "name": "off_A0C88D",
+      "kind": "func_ptr",
+      "count": 16
+    },
+    {
+      "addr24": 10658809,
+      "bank": 34,
+      "addr16": 41977,
+      "name": "off_A2A3D3",
+      "kind": "func_ptr",
+      "count": 7
+    },
+    {
+      "addr24": 10677267,
+      "bank": 34,
+      "addr16": 60435,
+      "name": "off_A2EC3A",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 10678025,
+      "bank": 34,
+      "addr16": 61193,
+      "name": "off_A2EDFB",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 10678820,
+      "bank": 34,
+      "addr16": 61988,
+      "name": "off_A2F107",
+      "kind": "func_ptr",
+      "count": 5
+    },
+    {
+      "addr24": 10783748,
+      "bank": 36,
+      "addr16": 35844,
+      "name": "off_A48C14",
+      "kind": "func_ptr",
+      "count": 45
+    },
+    {
+      "addr24": 11122813,
+      "bank": 41,
+      "addr16": 47229,
+      "name": "off_A9B887",
+      "kind": "func_ptr",
+      "count": 4
+    },
+    {
+      "addr24": 11394926,
+      "bank": 45,
+      "addr16": 57198,
+      "name": "off_ADE024",
+      "kind": "func_ptr",
+      "count": 4
+    }
+  ],
+  "data_tables": [
+    {
+      "addr24": 8427983,
+      "bank": 0,
+      "addr16": 39375,
+      "name": "kHudTilemaps",
+      "kind": "data",
+      "count": 32
+    },
+    {
+      "addr24": 8492318,
+      "bank": 1,
+      "addr16": 38174,
+      "name": "kMenuSelectionMissileXY",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 8492738,
+      "bank": 1,
+      "addr16": 38594,
+      "name": "kBitShl",
+      "kind": "data",
+      "count": 3
+    },
+    {
+      "addr24": 8496083,
+      "bank": 1,
+      "addr16": 41939,
+      "name": "kInactiveAreaMapForegroundColors",
+      "kind": "data",
+      "count": 6
+    },
+    {
+      "addr24": 8497534,
+      "bank": 1,
+      "addr16": 43390,
+      "name": "kAreaSelectMapLabelPositions",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 8557198,
+      "bank": 2,
+      "addr16": 37518,
+      "name": "kMapScrollingSpeedTable",
+      "kind": "data",
+      "count": 32
+    },
+    {
+      "addr24": 8564363,
+      "bank": 2,
+      "addr16": 44683,
+      "name": "kEquipmentScreenTilemap_VARIASUIT",
+      "kind": "data",
+      "count": 9
+    },
+    {
+      "addr24": 8565418,
+      "bank": 2,
+      "addr16": 45738,
+      "name": "kEquipmentScreenReserveTank_X",
+      "kind": "data",
+      "count": 6
+    },
+    {
+      "addr24": 8581305,
+      "bank": 2,
+      "addr16": 61625,
+      "name": "g_word_82F149",
+      "kind": "data",
+      "count": 4
+    },
+    {
+      "addr24": 8581465,
+      "bank": 2,
+      "addr16": 61785,
+      "name": "word_82F204",
+      "kind": "data",
+      "count": 16
+    },
+    {
+      "addr24": 8582488,
+      "bank": 2,
+      "addr16": 62808,
+      "name": "word_82F575",
+      "kind": "data",
+      "count": 9
+    },
+    {
+      "addr24": 8582535,
+      "bank": 2,
+      "addr16": 62855,
+      "name": "g_word_82F6AD",
+      "kind": "data",
+      "count": 6
+    },
+    {
+      "addr24": 8749658,
+      "bank": 5,
+      "addr16": 33370,
+      "name": "kLargeMsgBoxTopBottomBorderTilemap",
+      "kind": "data",
+      "count": 32
+    },
+    {
+      "addr24": 8750033,
+      "bank": 5,
+      "addr16": 33745,
+      "name": "kMsgBoxSpecialButtonTilemapOffs",
+      "kind": "data",
+      "count": 27
+    },
+    {
+      "addr24": 8750343,
+      "bank": 5,
+      "addr16": 34055,
+      "name": "kSaveConfirmationSelectionTilemap",
+      "kind": "data",
+      "count": 96
+    },
+    {
+      "addr24": 8816066,
+      "bank": 6,
+      "addr16": 34242,
+      "name": "unk_868729",
+      "kind": "data",
+      "count": 20
+    },
+    {
+      "addr24": 8818965,
+      "bank": 6,
+      "addr16": 37141,
+      "name": "CrocomireSpikeWallPieces_Tab2",
+      "kind": "data",
+      "count": 18
+    },
+    {
+      "addr24": 8828461,
+      "bank": 6,
+      "addr16": 46637,
+      "name": "word_86B65B",
+      "kind": "data",
+      "count": 20
+    },
+    {
+      "addr24": 8955507,
+      "bank": 8,
+      "addr16": 42611,
+      "name": "g_word_88C46E",
+      "kind": "data",
+      "count": 16
+    },
+    {
+      "addr24": 9152916,
+      "bank": 11,
+      "addr16": 43412,
+      "name": "kSetSomeStuffForSpriteObject_7_Tab1",
+      "kind": "data",
+      "count": 82
+    },
+    {
+      "addr24": 9153203,
+      "bank": 11,
+      "addr16": 43699,
+      "name": "kSetSomeStuffForSpriteObject_9_Tab2",
+      "kind": "data",
+      "count": 124
+    },
+    {
+      "addr24": 9159865,
+      "bank": 11,
+      "addr16": 50361,
+      "name": "g_word_8BC4EB",
+      "kind": "data",
+      "count": 16
+    },
+    {
+      "addr24": 9165523,
+      "bank": 11,
+      "addr16": 56019,
+      "name": "kCinematicFunction_Intro_Func118_Tab0",
+      "kind": "data",
+      "count": 16
+    },
+    {
+      "addr24": 9165989,
+      "bank": 11,
+      "addr16": 56485,
+      "name": "kCinematicFunction_Intro_Func121_Tab0",
+      "kind": "data",
+      "count": 32
+    },
+    {
+      "addr24": 9430309,
+      "bank": 15,
+      "addr16": 58661,
+      "name": "kRoomCode_SpawnCeresFallingDebris_Tab",
+      "kind": "data",
+      "count": 16
+    },
+    {
+      "addr24": 9472588,
+      "bank": 16,
+      "addr16": 35404,
+      "name": "kAtmosphericTypeFuncs",
+      "kind": "data",
+      "count": 8
+    },
+    {
+      "addr24": 9478967,
+      "bank": 16,
+      "addr16": 41783,
+      "name": "kSamusMovementHandlers",
+      "kind": "data",
+      "count": 28
+    },
+    {
+      "addr24": 9479708,
+      "bank": 16,
+      "addr16": 42524,
+      "name": "kSamusCrouchingEtcFuncs",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 9482647,
+      "bank": 16,
+      "addr16": 45463,
+      "name": "kInitializeProjectileSpeed_XY_Diag",
+      "kind": "data",
+      "count": 24
+    },
+    {
+      "addr24": 9484423,
+      "bank": 16,
+      "addr16": 47239,
+      "name": "kProjectileBombPreInstr",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 9484678,
+      "bank": 16,
+      "addr16": 47494,
+      "name": "kFireChargedBeam_Funcs",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 9489600,
+      "bank": 16,
+      "addr16": 52416,
+      "name": "kCostOfSbaInPowerBombs",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 9496091,
+      "bank": 16,
+      "addr16": 58907,
+      "name": "kSamus_MoveDown_SetPoseCalcInput_Tab0",
+      "kind": "data",
+      "count": 28
+    },
+    {
+      "addr24": 9497894,
+      "bank": 16,
+      "addr16": 60710,
+      "name": "byte_90ED50",
+      "kind": "data",
+      "count": 28
+    },
+    {
+      "addr24": 9498017,
+      "bank": 16,
+      "addr16": 60833,
+      "name": "byte_90EDC9",
+      "kind": "data",
+      "count": 16
+    },
+    {
+      "addr24": 9536260,
+      "bank": 17,
+      "addr16": 33540,
+      "name": "kSamus_Pose_Func2_Tab",
+      "kind": "data",
+      "count": 28
+    },
+    {
+      "addr24": 9551377,
+      "bank": 17,
+      "addr16": 48657,
+      "name": "kXrayHdmaFuncs",
+      "kind": "data",
+      "count": 5
+    },
+    {
+      "addr24": 9563354,
+      "bank": 17,
+      "addr16": 60634,
+      "name": "word_91ED36",
+      "kind": "data",
+      "count": 12
+    },
+    {
+      "addr24": 9564357,
+      "bank": 17,
+      "addr16": 61637,
+      "name": "g_byte_91F0F3",
+      "kind": "data",
+      "count": 17
+    },
+    {
+      "addr24": 9566922,
+      "bank": 17,
+      "addr16": 64202,
+      "name": "kSamusFunc_F468_Shinespark",
+      "kind": "data",
+      "count": 6
+    },
+    {
+      "addr24": 9739030,
+      "bank": 20,
+      "addr16": 39702,
+      "name": "g_off_949B06",
+      "kind": "data",
+      "count": 8
+    },
+    {
+      "addr24": 9739379,
+      "bank": 20,
+      "addr16": 40051,
+      "name": "kBlockFunc_9C73_Tab0",
+      "kind": "data",
+      "count": 36
+    },
+    {
+      "addr24": 9742679,
+      "bank": 20,
+      "addr16": 43351,
+      "name": "kSinCosTable8bit_Sext",
+      "kind": "data",
+      "count": 320
+    },
+    {
+      "addr24": 10520199,
+      "bank": 32,
+      "addr16": 34439,
+      "name": "kRoomShakes",
+      "kind": "data",
+      "count": 144
+    },
+    {
+      "addr24": 10535726,
+      "bank": 32,
+      "addr16": 49966,
+      "name": "byte_A0C435",
+      "kind": "data",
+      "count": 20
+    },
+    {
+      "addr24": 10782374,
+      "bank": 36,
+      "addr16": 34470,
+      "name": "off_A486B3",
+      "kind": "data",
+      "count": 21
+    }
+  ]
+}

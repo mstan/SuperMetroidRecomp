@@ -52,8 +52,10 @@ ROM at the repo root, SDL2 + OpenGL, and the mingw64 toolchain (cmake,
 gcc, ninja) on `PATH`.
 
 ```sh
-# 1. (once) ingest symbols from the snesrev/sm decomp into recomp/*.cfg
-python snesrecomp/tools/ingest_sm_decomp.py
+# 1. (once) clone the snesrev/sm decomp as the symbol/oracle reference
+#    (commit pinned in refs/snesrev-sm.pin), then ingest its symbols:
+git clone --depth 1 https://github.com/snesrev/sm.git refs/snesrev-sm
+python tools/ingest_sm_decomp.py   # funcs -> recomp/*.cfg; tables -> recomp/sm_decomp_symbols.json
 
 # 2. regenerate the C (emits src/gen/*.c; ~93 MB; EXIT 1 on the stub-lint
 #    is expected — unresolved indirect-dispatch sites are a known worklist)
