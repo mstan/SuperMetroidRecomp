@@ -319,6 +319,89 @@ def emit_tables_json(tables, output_dir: Path, dry_run: bool) -> None:
         print(f"wrote {out}: {n_fp} func-ptr tables, {n_dt} data tables")
 
 
+_HAND_HEADER = (
+    "# === Hand-maintained directives & stub func decls (relocated OUT of the\n"
+    "# === AUTO-INGESTED block by `ingest_sm_decomp.py --migrate` so the func\n"
+    "# === list below can be regenerated without clobbering this work. Keep\n"
+    "# === indirect_dispatch / hle_func / non-decomp `func` stubs up here.) ===")
+_AUTO_HEADER_RE = re.compile(
+    r'^#\s*(Source:\s*snesrev|Regenerate via:|\d+\s+entries\b)')
+
+
+def migrate(funcs, output_dir: Path, dry_run: bool = False) -> None:
+    """Relocate hand-authored lines OUT of each bank's AUTO-INGESTED block.
+
+    The SM cfgs (Codex bring-up) interleaved indirect_dispatch directives and
+    non-decomp `func` stub decls inside the markers, which blocks a safe
+    regen (the safety guard in emit_per_bank refuses to overwrite them). This
+    mode rewrites such a bank so the marker block holds ONLY auto func lines
+    (preserved verbatim) and the hand content moves above the markers. Pure
+    reorganisation — no func is renamed, dropped, or re-bounded.
+    """
+    by_bank: Dict[int, set] = defaultdict(set)
+    for bank, addr, _ in funcs:
+        by_bank[bank].add(addr)
+
+    auto_func_re = re.compile(
+        r'^func\s+\S+\s+[0-9a-fA-F]{1,4}\s+end:[0-9a-fA-F]{1,5}\s*$')
+
+    for bank in sorted(by_bank):
+        harvest_pcs = by_bank[bank]
+        cfg_path = output_dir / f"bank{bank:02x}.cfg"
+        if not cfg_path.exists():
+            continue
+        existing = cfg_path.read_text(encoding="utf-8")
+        if INGEST_BEGIN not in existing or INGEST_END not in existing:
+            continue
+        head = existing[:existing.index(INGEST_BEGIN)]
+        inner = existing[existing.index(INGEST_BEGIN) + len(INGEST_BEGIN):
+                         existing.index(INGEST_END)]
+        tail = existing[existing.index(INGEST_END) + len(INGEST_END):]
+
+        auto_keep, hand_keep = [], []
+        for ln in inner.splitlines():
+            s = ln.strip()
+            if not s:
+                continue
+            if _AUTO_HEADER_RE.match(s):
+                continue  # regenerated below
+            if auto_func_re.match(s):
+                pc = int(s.split()[2], 16) & 0xFFFF
+                (auto_keep if pc in harvest_pcs else hand_keep).append(ln)
+            else:
+                hand_keep.append(ln)
+
+        # Only migrate banks with real regen-blockers (directives or non-decomp
+        # `func` stubs). A block containing only stray comments is not a
+        # blocker (the guard skips comments) — leave it untouched.
+        n_dir = sum(1 for h in hand_keep if not h.strip().startswith("#")
+                    and not auto_func_re.match(h.strip()))
+        n_stub = sum(1 for h in hand_keep if auto_func_re.match(h.strip()))
+        if n_dir == 0 and n_stub == 0:
+            continue
+
+        section = [INGEST_BEGIN,
+                   "# Source: snesrev/sm decomp PC comments.",
+                   "# Regenerate via: python tools/ingest_sm_decomp.py",
+                   f"# {len(auto_keep)} entries "
+                   f"({sum(1 for h in hand_keep if auto_func_re.match(h.strip()))} "
+                   f"relocated to hand block above)."]
+        section += auto_keep
+        section.append(INGEST_END)
+        new_content = (head.rstrip() + "\n\n" + _HAND_HEADER + "\n"
+                       + "\n".join(hand_keep) + "\n\n"
+                       + "\n".join(section) + "\n"
+                       + (tail if tail.strip() else tail.rstrip() + "\n"))
+
+        if dry_run:
+            print(f"[dry-run] migrate {cfg_path}: relocate {n_dir} directive(s)"
+                  f" + {n_stub} stub func(s); {len(auto_keep)} auto funcs kept")
+        else:
+            cfg_path.write_text(new_content, encoding="utf-8")
+            print(f"migrated {cfg_path}: relocated {n_dir} directive(s) + "
+                  f"{n_stub} stub func(s); {len(auto_keep)} auto funcs kept")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--decomp", default="refs/snesrev-sm",
@@ -326,6 +409,10 @@ def main() -> int:
     ap.add_argument("--output", default="recomp",
                     help="path to recomp/ dir containing bank cfg files")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--migrate", action="store_true",
+                    help="relocate hand-authored lines out of AUTO-INGESTED "
+                         "blocks (one-time cleanup so regen is safe); does "
+                         "NOT touch the func list otherwise")
     args = ap.parse_args()
 
     decomp_root = Path(args.decomp)
@@ -348,6 +435,10 @@ def main() -> int:
         by_bank[bank] += 1
     bank_hist = ", ".join(f"${b:02X}:{n}" for b, n in sorted(by_bank.items()))
     print(f"per-bank funcs: {bank_hist}", file=sys.stderr)
+
+    if args.migrate:
+        migrate(funcs, output_dir, dry_run=args.dry_run)
+        return 0
 
     emit_per_bank(funcs, output_dir, dry_run=args.dry_run)
     emit_tables_json(tables, output_dir, dry_run=args.dry_run)
