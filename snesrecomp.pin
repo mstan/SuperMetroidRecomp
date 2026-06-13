@@ -3,17 +3,20 @@
 # repo evolving on its own cadence). Update via:
 #   git -C ./snesrecomp rev-parse dev/super-metroid > /tmp/sha && \
 #     sed -i "s|^sha = .*|sha = $(cat /tmp/sha)|" snesrecomp.pin
-sha = d8566c42cbcbce032076b770d5bac2b44448f6c3
+sha = 19cb7cb0c06cd89f1e37f3482d4580f6cb009121
 # Branch: dev/super-metroid (Super Metroid bring-up is still on its own
 # snesrecomp branch, not yet merged to main).
 #
-# d8566c4 (2026-06-08): SM bring-up — four game-agnostic generator/runtime
-# changes that take this port from non-linking to executing the game loop:
-#   1. variant-prune protected-set: never prune a variant directly
-#      referenced by a canonical body (fixed sub_82BB7F/sub_82BBDD LNK2019).
-#   2. $4212 synthetic vblank counter so the boot vblank-wait loop (polled
-#      before the first NMI) terminates.
-#   3. inline-argument decoder feature: auto-detect JSR/JSL routines that
-#      consume inline bytes after the call (e.g. APU_UploadBankIP) and skip
-#      them at every call site (no cfg hint / HLE / stub).
-#   4. boot-spin watchdog: sample the recomp call stack during frame-0 boot.
+# 19cb7cb (2026-06-11): dev/super-metroid tip — the framework the current
+# recomp/*.cfg actually require. The prior pin (d8566c4, 2026-06-08) was
+# STALE: the cfgs use the `indirect_dispatch ... ptrcall` directive form
+# (the 2026-06-09 cinematic-dispatch work), which d8566c4's cfg_loader does
+# NOT understand — v2_sync_funcs_h.py fails there with "indirect_dispatch
+# unknown option 'ptrcall'", and a regen at d8566c4 silently leaves those
+# dispatches unresolved. Verified 2026-06-12: regen + funcs.h sync + build
+# all succeed against 19cb7cb (the matched pair to this repo's Codex
+# checkpoint c231950).
+#
+# d8566c4 (2026-06-08) had: variant-prune protected-set, $4212 synthetic
+# vblank counter, inline-argument decoder, boot-spin watchdog. 19cb7cb adds
+# the ptrcall dispatch form + the rest of the ~15h bring-up session.
