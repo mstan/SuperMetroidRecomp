@@ -49,13 +49,39 @@ survive the crash —
 
 ## Next step (the fix)
 
-Pin where the recomp's DB first diverges from real hardware via a **DB-differential
-vs the snesref oracle** (DB is one register → far less timing-confounded than the
-whole-WRAM diff that failed). Then fix the GENERATOR (recompiler/v2/* or runtime),
-never `src/gen`. Candidate mechanisms to check: an IRQ handler (HUD draw IRQs are
-active at scene ≥1, absent at the title) whose DB save/restore (PHB/PLB) is
-mis-recompiled; a game-state-dispatch `PHK:PLB` that's dropped; or coroutine/fiber
-resume not preserving DB.
+### Update (deeper trace, same session)
+
+- **The DB instrumentation is partly blind.** `cpu_trace_db_change` / the dbpb
+  ring only catch ~10 periodic NMI/vblank DB writes per frame; the main-thread
+  PLBs that set `$84`/`$00` are emitted INLINE and bypass it. So the DB-tripwire
+  tooling can't see this corruption. A **block-boundary DB shadow** (compare
+  `cpu->DB` at each block to the previous) catches every change — added to
+  `cpu_trace_block` (`SNESRECOMP_DBTRACE` window, `[dbs]` lines).
+- **`DB→$00` is normal and constant** during gameplay (`$00` is the bank for
+  hardware/low-RAM access). There is NO single "wrong write" — the demo-load
+  just *runs at a `$00` moment*. So the fix is NOT "stop a bad write"; it's
+  "ensure `DB=$82` is (re)established for the demo-load," which the recomp does
+  for scene 0 (inherited from the title) but not scene ≥1.
+- **Dispatch structure:** `RunOneFrameOfGameInner` (`sm_82.c:657`, a *manual
+  coroutine*) calls `kGameStateFuncs[game_state]()`; index 40
+  (`kGameState_40_TransitionToDemo`) = `InitAndLoadGameData_Async`. The whole
+  handler chain inherits the dispatcher's DB. Dispatcher DB = `$82` at scene 0,
+  `$00` at scene 1.
+
+### Prime suspect + next step
+
+The dispatcher is a coroutine that yields (`WaitForNMI`) and resumes across
+frames. Leading hypothesis: **the coroutine/fiber resume (or the game-state
+dispatch) does not re-establish `DB=$82`** the way real hardware does — the
+project's known fiber-serialization weak spot ([[super-metroid-port-bringup]]:
+"fibers not serialized"). Next, oracle-free:
+1. Read the recompiled `RunOneFrameOfGameInner` + the `kGameStateFuncs[]`
+   indirect-dispatch emission and the ASM around it for a `PHK:PLB` (set
+   `DB=PB=$82`) that the recomp drops or mis-orders across the coroutine yield.
+2. If needed, get real-hardware DB at `$82:8679` by extracting the DBR byte from
+   a snes9x libretro save-state blob (find its offset once) — the only way to
+   turn `snesref` into a DB oracle, since libretro doesn't expose CPU registers.
+Then fix the GENERATOR (recompiler/v2/* or runtime), never `src/gen`.
 
 ## Investigation artifacts (scratch, this branch)
 
