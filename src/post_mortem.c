@@ -50,6 +50,7 @@
 #include "cpu_trace.h"
 #include "ppu_dma_trace.h"
 #include "common_cpu_infra.h"
+#include "snes/interp_bridge.h"
 
 /* ── External hooks into existing rings ──────────────────────────────── */
 
@@ -716,6 +717,7 @@ void recomp_post_mortem_dump(const char *reason, void *fault_info) {
     dump_recomp_stack_json(f);
     RecompStackBalDumpJson(f);
     CpuUnresolvedAbandonDumpJson(f);
+    Tier2CoverageDumpJson(f);
     ppudma_dump_json(f);
     dump_trace_recent_json(f, 256);
     dump_dbpb_recent_json(f);
@@ -724,6 +726,14 @@ void recomp_post_mortem_dump(const char *reason, void *fault_info) {
 
     fprintf(f, "}\n");
     fclose(f);
+
+    /* Phase-2 gap manifest: the slim, schema-versioned standalone file the
+     * offline ingest tool (tools/tier2_ingest.py) reads. Written next to the
+     * post-mortem report, last-write-wins like it. Always-on (Production too);
+     * empty discoveries on a fully-covered run is the expected dormant case. */
+    Tier2CoverageWriteManifest(
+        "build/tier2_coverage.json",
+        g_rtl_game_info ? g_rtl_game_info->title : "unknown");
 
     dump_unlock();
 }
