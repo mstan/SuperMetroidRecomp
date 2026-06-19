@@ -65,6 +65,9 @@ Thumbs.db
 # at the repo root is treated as scratch and not committed).
 _*
 
+# WRAM / oracle trace dumps (multi-MB scratch from differential diffing)
+*.jsonl
+
 # Release artifacts (built locally, uploaded via gh release upload)
 SuperMetroidSNESRecomp-windows-*.zip
 release-stage/

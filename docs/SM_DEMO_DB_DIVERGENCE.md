@@ -1,7 +1,46 @@
-# SM attract-demo crash — root cause: data-bank (DB) divergence
+# SM attract-demo crash
 
 Branch: `investigate/sm-0012-blocker` (engine `integ/sm-interp`-based + this repo).
 Surfaced by the interpreter-tier gap manifest (`$0FE8B7` → `$0012=$FFFF`).
+
+## ⚠️ CORRECTED ROOT CAUSE (2026-06-18) — suppressed indirect CALL, NOT a DB bug
+
+The "data-bank divergence" below was a **downstream symptom**, not the root.
+Proven via a recomp-vs-snes9x **game_state timeline diff** (`_gsdiff.py`):
+
+- **Oracle (real HW):** game_state `0→1→40`(157f)`→41→42` — the demo plays.
+- **Recomp:** game_state is **stuck at 40** from f≈2619 to the crash; it never
+  reaches 41/42. `InitAndLoadGameData` re-runs every ~68 frames (demo_scene
+  marches 0→1→2→3→4→5, re-reading room data) and the garbage door_def_ptr at
+  scene≥1 (the "DB=00" reads) is the consequence of those unwanted re-runs.
+
+Root: the recompiler **suppressed** the indirect call `JSR ($0012,X)` at
+`$82:817B` (= `CallDemoRoomDataFunc(demo_code_ptr)`, decomp `sm_82.c:63`)
+because no `indirect_call_table`/`indirect_dispatch` authorised it
+(cfg-required-dispatch-or-kill). The suppressed-call codegen emitted a bare
+`return RECOMP_RETURN_NORMAL`, which **dropped the very next instruction
+`INC $0998` (++game_state, `$82:817E`)** plus the rest of the function. So
+game_state never advanced and the demo state machine spun forever.
+
+**FIX (generator):** authorise the dispatch in `recomp/bank02.cfg`:
+```
+indirect_dispatch 817b 5 ptrcall targets:891A,8924,8925,892B,8932
+```
+Targets = the distinct `demo_code_ptr` set across real demo_sets 0–3 (from the
+`$82:876C` kDemoRoomData table) == the decomp `CallDemoRoomDataFunc` switch
+cases. The authorised dispatch emits a value-switch (default = recorded
+`dispatch_oob` no-op that unpops the call frame) that **falls through** to
+`++game_state` — so the state machine advances even if a target is unmatched.
+
+Broader class: 115 other `Call indirect SUPPRESSED: JSR (ptr,X)` sites remain
+across banks (mostly `JSR ($0FAx,X)` enemy/PLM instruction-list dispatchers);
+each silently `return`s on hit. They are future work, surfaced as gameplay
+progresses (the gap manifest / abandon table is the worklist).
+
+---
+_Original (symptom-level) DB writeup retained below for reference._
+
+# (symptom) data-bank (DB) divergence
 
 ## Proven cascade (symptom → root)
 
