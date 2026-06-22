@@ -200,6 +200,47 @@ static void dump_hardware_state_json(FILE *f) {
     fprintf(f, "    \"player_state_1925\": ");      dump_ram_bytes_json(f, 0x1925, 32);  fprintf(f, ",\n");
     fprintf(f, "    \"init_sig_7F8000\": ");        dump_ram_bytes_json(f, 0x18000, 4);  fprintf(f, "\n");
     fprintf(f, "  },\n");
+
+    /* SM enemy / demo-state observability (2026-06-21, WriteEnemyOams f2689
+     * crash). Always-on read of g_ram — no pause/step. The crashing enemy is
+     * gEnemyData(cur_enemy_index) = g_ram + 0xF78 + cur_enemy_index; its
+     * spritemap loop reads `n = *RomPtr(bank, spritemap_pointer)`, so a garbage
+     * bank(+0x2E)/spritemap_pointer(+0x16)/extra_properties(+0x10) is the loop
+     * runaway. enemy_ptr(+0)==0 means the slot is EMPTY (drawn dead slot). */
+    {
+        unsigned cur = (unsigned)(g_ram[0x0E54] | (g_ram[0x0E55] << 8));
+        fprintf(f, "  \"sm\": {\n");
+        fprintf(f, "    \"game_state_0998\": %u,\n",
+                (unsigned)(g_ram[0x0998] | (g_ram[0x0999] << 8)));
+        fprintf(f, "    \"cur_enemy_index_0E54\": %u,\n", cur);
+        unsigned slot_off = 0x0F78u + (cur & 0xFFFFu);
+        if (slot_off + 64u <= 0x20000u) {
+            fprintf(f, "    \"crash_enemy_slot\": ");
+            dump_ram_bytes_json(f, slot_off, 64);
+            fprintf(f, ",\n");
+        } else {
+            fprintf(f, "    \"crash_enemy_slot\": null,\n");
+        }
+        /* Per-slot {enemy_ptr, extra_properties(+0x10), spritemap_ptr(+0x16),
+         * bank(+0x2E)} for the first 8 slots — WriteEnemyOams takes the
+         * extended-spritemap loop iff extra_properties&4; the loop reads the
+         * count from bank:spritemap_ptr. Which slot has &4 set + its bank vs
+         * the live DB pins the runaway. */
+        fprintf(f, "    \"slots\": [");
+        for (int i = 0; i < 8; i++) {
+            unsigned off = 0x0F78u + (unsigned)i * 0x40u;
+            fprintf(f, "%s{\"i\":%d,\"enemy_ptr\":%u,\"extra_prop\":%u,"
+                    "\"spritemap_ptr\":%u,\"bank\":%u}",
+                    (i ? "," : ""), i,
+                    (unsigned)(g_ram[off] | (g_ram[off + 1] << 8)),
+                    (unsigned)(g_ram[off + 0x10] | (g_ram[off + 0x11] << 8)),
+                    (unsigned)(g_ram[off + 0x16] | (g_ram[off + 0x17] << 8)),
+                    (unsigned)g_ram[off + 0x2E]);
+        }
+        fprintf(f, "],\n");
+        fprintf(f, "    \"live_DB\": %u, \"live_X\": %u, \"live_Y\": %u\n  },\n",
+                (unsigned)g_cpu.DB, (unsigned)g_cpu.X, (unsigned)g_cpu.Y);
+    }
 }
 
 static void dump_recomp_stack_json(FILE *f) {
@@ -717,6 +758,7 @@ void recomp_post_mortem_dump(const char *reason, void *fault_info) {
     dump_recomp_stack_json(f);
     RecompStackBalDumpJson(f);
     CpuUnresolvedAbandonDumpJson(f);
+    CpuDispatchLogDumpJson(f);
     Tier2CoverageDumpJson(f);
     ppudma_dump_json(f);
     dump_trace_recent_json(f, 256);

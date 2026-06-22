@@ -228,12 +228,118 @@ post-fix), `_oracle_demo.jsonl` (oracle, 3100 frames).
 
 ---
 
+## Milestone (2026-06-21): runtime-indirect-dispatch fix SHIPPED + enemy init fixed; crash advanced to a DB-divergence
+
+### What was built (generator + runtime, NOT src/gen)
+Implemented the general runtime-pointer `JSR (abs,X)` dispatch (the
+suppressed-dispatch class fix). A reachable `JSR (abs,X)` whose pointer-table
+base is in WRAM (`< $2000`) is now recovered as a true runtime dispatch instead
+of being suppressed:
+- **`recompiler/v2/decoder.py`** — UNAUTHORISED `JSR (abs,X)` with operand
+  `< $2000` → marked `dispatch_runtime`, fall-through PRESERVED (vs severed).
+  ROM-operand phantoms (`>= $2000`, e.g. `$EA1D`) stay suppressed; the
+  `test_decoder_smc_phantom_suppression` boundary is intact.
+- **`recompiler/v2/codegen.py`** `_emit_runtime_dispatch` + **`emit_function.py`**
+  routing — reads the live WRAM pointer + calls `cpu_dispatch_call_pc`.
+- **`runner/src/cpu_state.c`** `cpu_dispatch_call_pc` — pushes the 2-byte JSR
+  frame, dispatches the live `(m,x)` AOT body (paired host-call), else falls to
+  the interpreter tier (`interp_tier_run_call` in `interp_bridge.c`). Always
+  balanced; logged in `g_dispatch_log`.
+- **`snes65816.py`** — `dispatch_runtime` slot. New test
+  `tests/v2/test_decoder_runtime_dispatch.py`.
+- **Observability:** engine `CpuDispatchLogDumpJson` (dispatch ring) + SM
+  `post_mortem.c` `sm{}` section (game_state, cur_enemy_index, per-slot enemy
+  data, live DB/X/Y) → `build/last_run_report.json`.
+
+Regen result: **`Call indirect SUPPRESSED` 111 → 9** (the 9 survivors are
+ROM-operand boss/specific-enemy dispatches off the demo path — e.g.
+`$24:89E8` is inside `Crocomire_Func_25`). 105 runtime-dispatch sites emitted,
+incl. the SM enemy/PLM/eproj `JSR ($0FA8/$0FAE/$0FB0/$0FB2,X)`. Build clean
+(0 undefined refs). **UNCOMMITTED** as of this writeup.
+
+### Effect (measured, free-run → post-mortem report; no pause/step)
+The demo now reaches **`game_state` 42 (PlayingDemo) → MainGameplay →
+DrawSamusEnemiesAndProjectiles**; enemy/PLM dispatches fire (71 AOT hits + 97
+interp-tier). Enemy slots now hold **VALID** data (was garbage `bank=$CC`
+before; now `bank=$A2`, valid `spritemap_pointer`, 3 populated slots). **Enemy
+initialization is fixed.**
+
+### Remaining crash (NEW root cause — a DB-divergence, NOT garbage data)
+Still STATUS_BAD_STACK in `WriteEnemyOams_M0X0` at f2689, but the cause changed.
+WriteEnemyOams reads ALL enemy fields **DB-relative** (`cur_enemy_index` via
+`cpu_read16(cpu, cpu->DB, 0x0E54)`; `extra_properties` from `DB:$0F88+X`; the
+extended-spritemap count from `DB:spritemap_ptr`). At the crash **`DB=$CC`** (a
+ROM bank that does NOT map WRAM) → every enemy read returns ROM garbage →
+`extra_properties & 4` spuriously set → wrong (extended) branch → garbage loop
+count → infinite loop → watchdog.
+
+DB/PB ring (`dbpb_recent`) shows the mechanism precisely: WriteEnemyOams sets DB
+via `LDA enemy_bank,X (DB-relative); PHA; PLB; PLB` at `$2094 52/53`. For the 3
+real enemies (`X=0/0x40/0x80`) this yields `DB=$00` (WRAM) → else-branch
+`DrawSpritemapWithBaseTile` → fine. A **4th** call (`X=0xC0`, no real enemy)
+reads `$CC8A` → `DB=$CC` → loop. DB is already wrong (`$74`, ROM) *entering*
+the draw path, so the bank field itself is read from ROM. Stack pointer is
+balanced across all four ($1FF0/$1FF1) — it's the stack/DB *values* (and/or a
+draw loop iterating one enemy too many) that are wrong.
+
+Pre-existing (the handoff listed "WriteEnemyOams loop" as the next bug *before*
+this dispatch work); the dispatch fix corrected enemy DATA but the enemy
+draw-path **DB-divergence** remains. Lead: find why `DrawSamusEnemiesAndProjectiles`
+→ `WriteEnemyOams` runs with `DB=$74/$CC` instead of a WRAM-mapping bank, and/or
+why a 4th enemy is drawn. Repro: free-run, read `sm{}` + `dbpb_recent` +
+`dispatch_log` in `build/last_run_report.json` (scratch parsers `_rpt*.py`).
+
+## Milestone (2026-06-22): WriteEnemyOams f2689 freeze FIXED (interp-tier AOT-bounce paired-ABI)
+
+### Root cause (measured, not inferred)
+The `DB=$CC` in WriteEnemyOams was downstream of a **+2 `cpu->S` over-pop** that
+leaked `DB=$74` into the enemy-queue draw phase. Chain:
+`DrawSamusEnemiesAndProjectiles ($A0:884D)` sets `DB=$A0`, then at phase 3 calls
+`DrawSamusAndProjectiles ($90:EB35)`. Inside it, `SamusDrawSprites ($90:EB4B)`
+tail-dispatches the Samus draw handler via `JMP (samus_draw_handler)` at
+`$90:EB4E` — an **unresolved IndirectGoto → interpreter tier**
+(`interp_tier_dispatch_balanced` → `interp_bridge_run_ex`). The bridge
+**AOT-bounced** the handler's sub-calls via `cpu_dispatch_pc` (**dispatch ABI,
+hrv=0**), whose callee RTS **re-dispatches on the popped return address**. The
+first such address — `$90:EB55`, immediately after `HandleChargingBeamGfxAudio`'s
+JSR — is ALSO a registered function entry (`sub_90EB55`), so the dispatch HIT it
+and ran the next routine as part of the callee's "return", over-popping `cpu->S`
+by 2 (bridge probe: `sp_pre=$1FEB → sp_post=$1FEF`, should be `$1FED`). Every op
+after ran 2-low; `$90:EB48 PLB` then read the JSL return-low byte `$74` instead
+of the PHB'd `$A0`. (The stack-balance auditor mis-pointed at `Samus_ShootCheck`
+because it counts the return-frame pop; the always-on S-boundary probe settled it.)
+
+### Fix (general, runtime-only, NO regen)
+- **`runner/src/cpu_state.c`** — new `cpu_dispatch_pc_paired(cpu, pc24, frame_size)`:
+  the interp already pushed the return frame, so run the target with
+  `host_return_valid = frame_size` and let its RTS/RTL **host-return to the
+  bridge** (frame popped, S restored) instead of re-dispatching on the popped
+  return address. Logged in `g_dispatch_log`.
+- **`runner/src/snes/interp_bridge.c`** — the `interp_bridge_run_ex` AOT-bounce
+  now calls `cpu_dispatch_pc_paired` (frame = JSL?3:2) instead of
+  `cpu_dispatch_pc`. A non-NORMAL return (NLR that unwound past the call) stops
+  the bridge instead of force-resuming at `ret`. Fixes the over-pop for ALL
+  interp-tier AOT-bounces, not just this site.
+- **Env-gated probes added (reusable, default off):** `SNESRECOMP_SBOUND=lo-hi`
+  (logs `cpu->S`+DB at every block in a pc24 range — cpu_trace.c);
+  `SNESRECOMP_IBRWATCH=lo-hi` (per-step interp-bridge trace incl. AOT-bounce
+  sp/return — interp_bridge.c).
+
+### Verified
+Demo runs **f2689 → 4086+ with no crash** (was a hard freeze at f2689). Stack
+balanced: `$90:EB3E` S=`$1FEF` (was `$1FF1`); `DB` stays `$A0` through the draw
+loop. Samus drawn every frame (6195 probe samples), process healthy. **UNCOMMITTED.**
+Caveat: `stack_balance` in `last_run_report.json` counts the frame pop (balanced
+JSR=+2, JSL=+3) — not a true-leak signal; use the S-boundary probe.
+
 ## Open items
 
-1. **`WriteEnemyOams` loop** — implement the runtime-indirect-dispatch fix
-   above, full-regen, build, verify the demo plays past f2689. (task #1)
-2. **Suppressed-dispatch sweep** — the same fix generalizes to all 111 sites;
-   the gap manifest / abandon table is the worklist. (task #2)
+1. **Next attract blocker** — the f2689 freeze is fixed and the demo now plays
+   well past it; free-run further to find the next blocker (if any) deeper into
+   attract / save-menu / new-game. (was task #1 — WriteEnemyOams — DONE)
+2. **Suppressed-dispatch sweep** — DONE for the WRAM class (111→9). The 9
+   ROM-operand survivors are off the demo path; revisit if a later room hits
+   one. Dispatch ring + tier-2 manifest are the worklists. (task #2)
 3. **Two divergent multi-tier base branches** (engine
    `feat/multi-tier-interp-fallback` vs `integ/sm-interp`) — reconciliation
    open, owner-gated.
