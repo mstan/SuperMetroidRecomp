@@ -56,6 +56,18 @@ target_include_directories(SuperMetroidSNESRecomp PRIVATE
     ${SDL2_INCLUDE_DIRS}
 )
 
+# Release version stamp: configure with -DSNESRECOMP_BUILD_VERSION=<ver>
+# (the CMake equivalent of the MSVC games' /p:SnesRecompBuildVersion); it
+# lands in the post-mortem report's "build" section via the
+# SNESRECOMP_BUILD_VERSION define. Unset (local builds) the define is
+# omitted and main.c defaults to "dev".
+set(SNESRECOMP_BUILD_VERSION "" CACHE STRING
+    "Release version stamp baked into crash reports (empty = dev)")
+if(SNESRECOMP_BUILD_VERSION)
+    target_compile_definitions(SuperMetroidSNESRecomp PRIVATE
+        SNESRECOMP_BUILD_VERSION="${SNESRECOMP_BUILD_VERSION}")
+endif()
+
 target_compile_definitions(SuperMetroidSNESRecomp PRIVATE
     SMW_DISABLE_LM=1
     SYSTEM_VOLUME_MIXER_AVAILABLE=0   # Win32 WASAPI volume control excluded
