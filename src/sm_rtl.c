@@ -210,7 +210,7 @@ void RunOneFrameOfGame(void) {
 }
 
 void SmDrawPpuFrame(void) {
-  SimpleHdma hdma_chans[3];
+  SimpleHdma hdma_chans[8];
   Dma *dma = g_dma;
 
   /* Reinitialize HDMA from the last $420C (HDMAEN) value written during
@@ -219,26 +219,33 @@ void SmDrawPpuFrame(void) {
    * write in g_snesrecomp_last_hdmaen. */
   dma_startDma(dma, g_snesrecomp_last_hdmaen, true);
 
-  SimpleHdma_Init(&hdma_chans[0], &dma->channel[5]);
-  SimpleHdma_Init(&hdma_chans[1], &dma->channel[6]);
-  SimpleHdma_Init(&hdma_chans[2], &dma->channel[7]);
+  /* HDMA objects are not confined to channels 5-7. In particular, the
+   * Ceres elevator uses channel 3 to switch BGMODE from the mode-1 HUD to
+   * the mode-7 shaft below it, and channel 2 for its color-math effect.
+   * Process every enabled hardware channel in priority order. */
+  for (int ch = 0; ch < 8; ch++)
+    SimpleHdma_Init(&hdma_chans[ch], &dma->channel[ch]);
 
   /* Super Metroid programs the H/V IRQ for the HUD/minimap raster split
    * (Vector_IRQ at $80:986A dispatches IrqHandler_*_BeginHud/EndHud).
    * Latch the timer-IRQ at the programmed scanline so I_IRQ runs the
    * split mid-frame, matching MMX/SMW's draw path. */
-  int trigger = g_snes->vIrqEnabled ? g_snes->vTimer + 1 : -1;
+  int trigger = g_snes->vIrqEnabled ? g_snes->vTimer : -1;
 
   for (int i = 0; i <= 224; i++) {
-    ppu_runLine(g_ppu, i);
-    SimpleHdma_DoLine(&hdma_chans[0]);
-    SimpleHdma_DoLine(&hdma_chans[1]);
-    SimpleHdma_DoLine(&hdma_chans[2]);
+    /* HDMA runs during the H-blank preceding each visible scanline. The
+     * raster IRQ then selects the register set used for that line (the
+     * vTimer=0 IRQ establishes the HUD before line 0 is drawn). Rendering
+     * first leaves one scanline in the previous frame's state, which is
+     * visible as a strip of the cleared mode-1 tilemap above the Ceres HUD. */
+    for (int ch = 0; ch < 8; ch++)
+      SimpleHdma_DoLine(&hdma_chans[ch]);
     if (i == trigger) {
       g_snes->inIrq = true;
       cpu_push_interrupt_frame(&g_cpu);
       I_IRQ(&g_cpu);
-      trigger = g_snes->vIrqEnabled ? g_snes->vTimer + 1 : -1;
+      trigger = g_snes->vIrqEnabled ? g_snes->vTimer : -1;
     }
+    ppu_runLine(g_ppu, i);
   }
 }
