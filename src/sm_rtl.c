@@ -3,7 +3,9 @@
 #include "common_cpu_infra.h"
 #include "snes/snes.h"
 #include "cpu_state.h"
+#include "execution_mode.h"
 #include "funcs.h"
+#include "snes/interp_bridge.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,6 +69,13 @@ static void *g_game_fiber = NULL;   /* the game's fiber (entry = I_RESET)*/
 static SmCpuSave g_game_saved;      /* game CPU state at its last yield  */
 static bool g_game_started = false;
 static bool g_game_done = false;
+static uint32_t g_lle_resume_pc = 0x808343u;
+
+static SnesrecompExecutionMode sm_execution_mode(void) {
+  /* LLE is the correctness floor; HLE remains an explicit optimization mode
+   * selected through the shared runtime option. */
+  return snesrecomp_execution_mode(SNESRECOMP_EXECUTION_MODE_LLE);
+}
 
 static int sm_rtl_diag_enabled(void) {
   static int s_init = 0, s_enabled = 0;
@@ -103,6 +112,58 @@ void sm_host_yield(void) {
 }
 
 void RunOneFrameOfGame(void) {
+  if (sm_execution_mode() == SNESRECOMP_EXECUTION_MODE_LLE) {
+    /* The real $80:8338 WaitForNMI asserts $05B4, then spins at $80:8343
+     * until NMI clears it.  Run reset only on the first host frame; every
+     * later frame injects NMI and resumes at that exact guest PC.  The guest
+     * stack retains arbitrary-depth coroutine continuations, while compiled
+     * bodies bounce through the paired ABI without a host fiber. */
+    uint32_t entry_pc = g_lle_resume_pc;
+    if (!g_game_started) {
+      cpu_state_init(&g_cpu, g_ram);
+      g_game_started = true;
+      entry_pc = 0x80841Cu;
+    } else {
+      SmCpuSave interrupted;
+      sm_save_cpu(&interrupted, &g_cpu);
+      g_snes->inNmi = true;
+      cpu_push_interrupt_frame(&g_cpu);
+      I_NMI(&g_cpu);
+      /* The host-injected NMI communicates through SNES memory and hardware
+       * state.  Restore the interrupted main-line register file exactly as
+       * the HLE fiber path does; the generated RTI has no live guest PC to
+       * return to and therefore cannot by itself preserve this continuation. */
+      sm_restore_cpu(&g_cpu, &interrupted);
+
+      /* The synthetic continuation is $80:8343, immediately after
+       * WaitForNMI's `SEP #$30`.  CpuState has no guest PC field, so the NMI
+       * save/restore alone cannot reconstruct this PC-derived width contract
+       * if a compiled coroutine returned with M0/X0 just before yielding.
+       * Enforce the state hardware necessarily has at this exact resume PC;
+       * otherwise LDA $05B4 becomes a 16-bit read, observes adjacent $05B5,
+       * and spins to the interpreter step cap during door transitions. */
+      if ((entry_pc & 0xFFFFu) == 0x8343u) {
+        g_cpu.P |= 0x30u;
+        cpu_p_to_mirrors(&g_cpu);
+        g_cpu.X &= 0x00FFu;
+        g_cpu.Y &= 0x00FFu;
+        g_cpu.DB = (uint8_t)(entry_pc >> 16);
+      }
+    }
+
+    if (!interp_bridge_run_loop(&g_cpu, entry_pc, 0x808343u, 0x05B4u, 1)) {
+      fprintf(stderr, "[sm_rtl] LLE loop bailed at entry $%06X\n",
+              (unsigned)entry_pc);
+      g_game_done = true;
+    } else {
+      uint32_t next_pc = interp_bridge_lle_resume_pc();
+      if (next_pc)
+        g_lle_resume_pc = next_pc;
+    }
+    ++counter_global_frames;
+    return;
+  }
+
   if (g_host_fiber == NULL) {
     g_host_fiber = ConvertThreadToFiber(NULL);
     if (g_host_fiber == NULL) {
