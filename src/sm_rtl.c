@@ -125,6 +125,7 @@ void RunOneFrameOfGame(void) {
       0x82DFD1u,  /* LoadEnemyGfxToVram */
       0x82E039u,  /* inline-parameter VRAM transfer */
       0x82E4A9u,  /* DoorTransitionFunction_LoadMoreThings_Async */
+      0x82E5D9u,  /* door-dependent background transfer dispatcher */
       0x82E5EBu,  /* UpdateBackgroundCommand_2_TransferToVram */
     };
     interp_bridge_set_lle_bounce_exclusions(
