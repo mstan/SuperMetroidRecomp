@@ -113,6 +113,25 @@ void sm_host_yield(void) {
 
 void RunOneFrameOfGame(void) {
   if (sm_execution_mode() == SNESRECOMP_EXECUTION_MODE_LLE) {
+    /* These door-loader routines wait for NMI from inside their bodies.
+     * Execute their authoritative ROM bytes under the LLE scheduler instead
+     * of bouncing into an atomic compiled body that cannot be interrupted. */
+    static const uint32_t k_lle_door_loader_targets[] = {
+      0x828948u,  /* Game_RunOneFrameOfGame: LLE-authoritative gameplay */
+      0x828B44u,  /* GameState_8_MainGameplay */
+      0x82E169u,  /* GameState_9_HitDoorBlock */
+      0x82E1B7u,  /* GameState_10_LoadingNextRoom_Async */
+      0x82E288u,  /* GameState_11_LoadingNextRoom_Async */
+      0x82DFD1u,  /* LoadEnemyGfxToVram */
+      0x82E039u,  /* inline-parameter VRAM transfer */
+      0x82E4A9u,  /* DoorTransitionFunction_LoadMoreThings_Async */
+      0x82E5EBu,  /* UpdateBackgroundCommand_2_TransferToVram */
+    };
+    interp_bridge_set_lle_bounce_exclusions(
+        k_lle_door_loader_targets,
+        sizeof(k_lle_door_loader_targets) /
+            sizeof(k_lle_door_loader_targets[0]));
+
     /* The real $80:8338 WaitForNMI asserts $05B4, then spins at $80:8343
      * until NMI clears it.  Run reset only on the first host frame; every
      * later frame injects NMI and resumes at that exact guest PC.  The guest
