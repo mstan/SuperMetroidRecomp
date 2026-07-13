@@ -1030,6 +1030,9 @@ error_reading:;
       int ls = debug_server_consume_loadstate();
       if (ls >= 0)
         RtlSaveLoad(kSaveLoad_Load, ls);
+      int ss = debug_server_consume_savestate();
+      if (ss >= 0)
+        RtlSaveLoad(kSaveLoad_Save, ss);
     }
     debug_server_wait_if_paused();
 
