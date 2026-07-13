@@ -3,9 +3,14 @@
 # repo evolving on its own cadence). Update via:
 #   git -C ./snesrecomp rev-parse dev/super-metroid > /tmp/sha && \
 #     sed -i "s|^sha = .*|sha = $(cat /tmp/sha)|" snesrecomp.pin
-sha = 19cb7cb0c06cd89f1e37f3482d4580f6cb009121
-# Branch: dev/super-metroid (Super Metroid bring-up is still on its own
-# snesrecomp branch, not yet merged to main).
+sha = aeab6c029113989d904c2fa6bd5c786ca05550a2
+# 2026-07-13 fold checkpoint (19cb7cb -> aeab6c0): records the engine used by
+# the validated LLE gameplay build: interruptible ROM waits, mixed-tier return
+# continuations, stack/return-PC guards, immediate hardware-visible APU ports,
+# and link-safe partial regeneration. The old pin described the initial
+# bring-up generator but no longer matched the live engine junction used by
+# the committed Ceres, door, pause, and ship-save fixes.
+# Branch: main. Super Metroid bring-up is folding onto the shared engine main.
 #
 # 19cb7cb (2026-06-11): dev/super-metroid tip — the framework the current
 # recomp/*.cfg actually require. The prior pin (d8566c4, 2026-06-08) was
