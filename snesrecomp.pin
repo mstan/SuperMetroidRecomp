@@ -3,7 +3,9 @@
 # repo evolving on its own cadence). Update via:
 #   git -C ./snesrecomp rev-parse dev/super-metroid > /tmp/sha && \
 #     sed -i "s|^sha = .*|sha = $(cat /tmp/sha)|" snesrecomp.pin
-sha = 88c41ad77c5f4c99198d778f6318995d3d9d2c03
+sha = f6e300193e9d68950b4982753f4169165e138e14
+# 2026-07-14 interpreter non-local return checkpoint: direct AOT bounces
+# preserve guest returns that unwind through an interpreted caller.
 # 2026-07-13 HLE/LLE boundary checkpoint (e0520dd -> 88c41ad): HLE
 # overlays cover every exact runtime M/X mode and consume inherited tail-call
 # metadata, while architectural LLE remains the fallback for non-overlaid code.
