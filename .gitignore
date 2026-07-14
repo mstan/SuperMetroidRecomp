@@ -1,6 +1,7 @@
 # Build artifacts
 build/
 build-mac/
+build-*/
 # macOS/Linux runtime ROM-path cache + sibling-repo symlink
 rom.cfg
 /snesrecomp

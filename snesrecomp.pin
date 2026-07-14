@@ -3,7 +3,10 @@
 # repo evolving on its own cadence). Update via:
 #   git -C ./snesrecomp rev-parse dev/super-metroid > /tmp/sha && \
 #     sed -i "s|^sha = .*|sha = $(cat /tmp/sha)|" snesrecomp.pin
-sha = aeab6c029113989d904c2fa6bd5c786ca05550a2
+sha = e0520dd304c9ce64734d6c3ff88369ad402f2a1e
+# 2026-07-13 LLE-first redesign checkpoint: deterministic whole-program
+# analysis, atomic cached emission, RTI-aware mixed AOT/LLE interrupt tails,
+# and profile promotion restricted to proven function boundaries.
 # 2026-07-13 fold checkpoint (19cb7cb -> aeab6c0): records the engine used by
 # the validated LLE gameplay build: interruptible ROM waits, mixed-tier return
 # continuations, stack/return-PC guards, immediate hardware-visible APU ports,

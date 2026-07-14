@@ -15,7 +15,7 @@
 
 #include "cpu_state.h"
 
-/* 5663 functions across all banks (5 decls each). */
+/* 5668 functions across all banks (5 decls each). */
 
 void APU_UploadBank(CpuState *cpu);  /* $00:8028 alias */
 RecompReturn APU_UploadBank_M0X0(CpuState *cpu);
@@ -687,6 +687,11 @@ RecompReturn FixDoorsMovingUp_M0X0(CpuState *cpu);
 RecompReturn FixDoorsMovingUp_M0X1(CpuState *cpu);
 RecompReturn FixDoorsMovingUp_M1X0(CpuState *cpu);
 RecompReturn FixDoorsMovingUp_M1X1(CpuState *cpu);
+void bank_00_AD30(CpuState *cpu);  /* $00:AD30 alias */
+RecompReturn bank_00_AD30_M0X0(CpuState *cpu);
+RecompReturn bank_00_AD30_M0X1(CpuState *cpu);
+RecompReturn bank_00_AD30_M1X0(CpuState *cpu);
+RecompReturn bank_00_AD30_M1X1(CpuState *cpu);
 void DoorTransitionScrollingSetup_Right(CpuState *cpu);  /* $00:AD4A alias */
 RecompReturn DoorTransitionScrollingSetup_Right_M0X0(CpuState *cpu);
 RecompReturn DoorTransitionScrollingSetup_Right_M0X1(CpuState *cpu);
@@ -1477,6 +1482,11 @@ RecompReturn DemoRoom_SetBrinstarBossBits_M0X0(CpuState *cpu);
 RecompReturn DemoRoom_SetBrinstarBossBits_M0X1(CpuState *cpu);
 RecompReturn DemoRoom_SetBrinstarBossBits_M1X0(CpuState *cpu);
 RecompReturn DemoRoom_SetBrinstarBossBits_M1X1(CpuState *cpu);
+void bank_02_893D(CpuState *cpu);  /* $02:893D alias */
+RecompReturn bank_02_893D_M0X0(CpuState *cpu);
+RecompReturn bank_02_893D_M0X1(CpuState *cpu);
+RecompReturn bank_02_893D_M1X0(CpuState *cpu);
+RecompReturn bank_02_893D_M1X1(CpuState *cpu);
 void Game_RunOneFrameOfGame(CpuState *cpu);  /* $02:8948 alias */
 RecompReturn Game_RunOneFrameOfGame_M0X0(CpuState *cpu);
 RecompReturn Game_RunOneFrameOfGame_M0X1(CpuState *cpu);
@@ -2422,6 +2432,11 @@ RecompReturn LoadEnemyGfxToVram_M0X0(CpuState *cpu);
 RecompReturn LoadEnemyGfxToVram_M0X1(CpuState *cpu);
 RecompReturn LoadEnemyGfxToVram_M1X0(CpuState *cpu);
 RecompReturn LoadEnemyGfxToVram_M1X1(CpuState *cpu);
+void CopyToVramAtNextInterrupt(CpuState *cpu);  /* $02:E039 alias */
+RecompReturn CopyToVramAtNextInterrupt_M0X0(CpuState *cpu);
+RecompReturn CopyToVramAtNextInterrupt_M0X1(CpuState *cpu);
+RecompReturn CopyToVramAtNextInterrupt_M1X0(CpuState *cpu);
+RecompReturn CopyToVramAtNextInterrupt_M1X1(CpuState *cpu);
 void LoadRoomMusic(CpuState *cpu);  /* $02:E071 alias */
 RecompReturn LoadRoomMusic_M0X0(CpuState *cpu);
 RecompReturn LoadRoomMusic_M0X1(CpuState *cpu);
@@ -2517,6 +2532,11 @@ RecompReturn DoorTransitionFunction_PlaceSamusLoadTiles_M0X0(CpuState *cpu);
 RecompReturn DoorTransitionFunction_PlaceSamusLoadTiles_M0X1(CpuState *cpu);
 RecompReturn DoorTransitionFunction_PlaceSamusLoadTiles_M1X0(CpuState *cpu);
 RecompReturn DoorTransitionFunction_PlaceSamusLoadTiles_M1X1(CpuState *cpu);
+void DoorTransitionFunction_LoadMoreThings_Async(CpuState *cpu);  /* $02:E4A9 alias */
+RecompReturn DoorTransitionFunction_LoadMoreThings_Async_M0X0(CpuState *cpu);
+RecompReturn DoorTransitionFunction_LoadMoreThings_Async_M0X1(CpuState *cpu);
+RecompReturn DoorTransitionFunction_LoadMoreThings_Async_M1X0(CpuState *cpu);
+RecompReturn DoorTransitionFunction_LoadMoreThings_Async_M1X1(CpuState *cpu);
 void ClearFxTilemap(CpuState *cpu);  /* $02:E566 alias */
 RecompReturn ClearFxTilemap_M0X0(CpuState *cpu);
 RecompReturn ClearFxTilemap_M0X1(CpuState *cpu);
@@ -14992,6 +15012,11 @@ RecompReturn DeleteEnemyAndConnectedEnemies_M0X0(CpuState *cpu);
 RecompReturn DeleteEnemyAndConnectedEnemies_M0X1(CpuState *cpu);
 RecompReturn DeleteEnemyAndConnectedEnemies_M1X0(CpuState *cpu);
 RecompReturn DeleteEnemyAndConnectedEnemies_M1X1(CpuState *cpu);
+void bank_20_924B(CpuState *cpu);  /* $20:924B alias */
+RecompReturn bank_20_924B_M0X0(CpuState *cpu);
+RecompReturn bank_20_924B_M0X1(CpuState *cpu);
+RecompReturn bank_20_924B_M1X0(CpuState *cpu);
+RecompReturn bank_20_924B_M1X1(CpuState *cpu);
 void SpawnEnemy(CpuState *cpu);  /* $20:9275 alias */
 RecompReturn SpawnEnemy_M0X0(CpuState *cpu);
 RecompReturn SpawnEnemy_M0X1(CpuState *cpu);

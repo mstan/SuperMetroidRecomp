@@ -7,9 +7,7 @@ project(SuperMetroidSNESRecomp C)
 # plus the Super Metroid-specific runtime in src/. Prerequisites:
 #   - a snesrecomp checkout at ./snesrecomp (junction/symlink to the sibling repo)
 #   - generated C in src/gen/ and recomp/funcs.h:
-#       python snesrecomp/tools/v2_regen.py --rom "Super Metroid (Japan, USA) (En,Ja).sfc" \
-#              --cfg-dir recomp --out-dir src/gen
-#       python snesrecomp/tools/v2_sync_funcs_h.py --cfg-dir recomp --out recomp/funcs.h
+#       ./tools/regen.sh --strict-idempotent
 #   - SDL2 + OpenGL
 
 set(CMAKE_C_STANDARD 11)
@@ -20,7 +18,7 @@ include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 
-# Generated recompiler output (produced by v2_regen.py; not committed).
+# Generated recompiler output (produced by tools/regen.sh; not committed).
 file(GLOB SM_GEN_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/gen/*.c)
 if(NOT SM_GEN_SOURCES)
     message(FATAL_ERROR

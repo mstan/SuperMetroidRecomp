@@ -1,9 +1,9 @@
 # SuperMetroidSNESRecomp
 
-Static recompilation of *Super Metroid* (SNES) into native C, using the
+LLE-first recompilation of *Super Metroid* (SNES) into native C, using the
 [snesrecomp](https://github.com/mstan/snesrecomp) framework. This repo
 is the per-game side: the single-fiber runtime, the per-game `.cfg`, the
-build glue, and the hand-written HLE shims. The recompiled C output
+build glue, and optional HLE optimizations. The recompiled C output
 (`src/gen/`, ~93 MB) is generated locally and is **not** committed.
 
 This is game **#4** on snesrecomp, after Mega Man X, Super Mario World,
@@ -11,38 +11,27 @@ and The Legend of Zelda: A Link to the Past.
 
 ## What "static recompilation" means here
 
-The 65816 CPU code from the ROM is statically translated to C — every
-function the game runs on the SNES's main CPU is a real generated C
-function in `src/gen/`. **The rest of the SNES is not recompiled** —
+The ROM and interpreter are the architectural ground truth. Proven hot 65816
+functions may be statically translated to C, while every absent or rejected
+exact M/X variant executes the original ROM through LLE. HLE is an optional
+optimization over that model. **The rest of the SNES is not recompiled** —
 it's hardware: PPU rendering, the APU/SPC700 audio coprocessor, DMA and
 HDMA channels, hardware register I/O, and bank-mapping all run through
 the embedded SNES emulation in `snesrecomp/runner/src/snes/`. Recompile
 the CPU, emulate the silicon.
 
-`WaitForNMI` ($80:8338) is HLE-replaced (`hle_func` in `recomp/bank00.cfg`
-→ `HleSmWaitForNmi` in `src/gen_stubs.c`): the whole game runs on one
-host fiber, and `WaitForNMI` yields it back to the host driver
-(`src/sm_rtl.c`), which runs the recompiled NMI handler + emulates the
-frame, then resumes the fiber exactly where it yielded.
+The default LLE scheduler executes the real `WaitForNMI` loop and resumes at
+its architectural continuation. Optional HLE mode replaces that wait with a
+host-fiber yield for performance.
 
 The ROM is **never** redistributed — you supply your own legally-dumped
 copy.
 
-## Current status: bring-up (work in progress — NOT playable)
+## Current status
 
-The port boots and executes the game logic, but does not render yet.
-
-- ✅ Links and boots; `I_RESET` runs to completion and enters the main
-  loop, yielding via `WaitForNMI` each frame.
-- ✅ `game_state` ($7E:0998) advances through the opening-cinematic state.
-- ❌ **No rendering** — per-frame graphics DMA isn't populating VRAM, so
-  the screen stays black (a recurring `Warning! DMA from addr 0x880000`
-  points at the malfunctioning transfer).
-- ❌ Crashes at ~frame 1096 (~18 s) in `HdmaObjectHandler` — a runaway
-  loop / stack overflow.
-
-Next milestones: get graphics on screen → title screen → attract demo →
-save menu → new game.
+The default LLE-first build boots, renders, plays audio, completes the attract
+demo, starts a new game, traverses doors, pauses, and saves at Samus's ship.
+It remains a work in progress and needs broader end-to-end regression testing.
 
 ## Build
 
@@ -57,12 +46,9 @@ gcc, ninja) on `PATH`.
 git clone --depth 1 https://github.com/snesrev/sm.git refs/snesrev-sm
 python tools/ingest_sm_decomp.py   # funcs -> recomp/*.cfg; tables -> recomp/sm_decomp_symbols.json
 
-# 2. regenerate the C (emits src/gen/*.c; ~93 MB; EXIT 1 on the stub-lint
-#    is expected — unresolved indirect-dispatch sites are a known worklist)
-python snesrecomp/tools/v2_regen.py \
-    --rom "Super Metroid (Japan, USA) (En,Ja).sfc" \
-    --cfg-dir recomp --out-dir src/gen
-python snesrecomp/tools/v2_sync_funcs_h.py --cfg-dir recomp --out recomp/funcs.h
+# 2. deterministic profile-guided regeneration. Strict mode independently
+#    regenerates and requires byte-identical output.
+./tools/regen.sh --strict-idempotent
 
 # 3. configure + build
 cmake -G Ninja -B build -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc
