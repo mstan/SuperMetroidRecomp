@@ -3,7 +3,10 @@
 # repo evolving on its own cadence). Update via:
 #   git -C ./snesrecomp rev-parse dev/super-metroid > /tmp/sha && \
 #     sed -i "s|^sha = .*|sha = $(cat /tmp/sha)|" snesrecomp.pin
-sha = e0520dd304c9ce64734d6c3ff88369ad402f2a1e
+sha = 88c41ad77c5f4c99198d778f6318995d3d9d2c03
+# 2026-07-13 HLE/LLE boundary checkpoint (e0520dd -> 88c41ad): HLE
+# overlays cover every exact runtime M/X mode and consume inherited tail-call
+# metadata, while architectural LLE remains the fallback for non-overlaid code.
 # 2026-07-13 LLE-first redesign checkpoint: deterministic whole-program
 # analysis, atomic cached emission, RTI-aware mixed AOT/LLE interrupt tails,
 # and profile promotion restricted to proven function boundaries.
