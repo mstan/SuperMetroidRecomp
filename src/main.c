@@ -20,6 +20,7 @@
 #endif
 
 #include "snes/ppu.h"
+#include "snes/ws_shadow.h"
 
 #include "types.h"
 #include "sm_rtl.h"
@@ -37,6 +38,13 @@
 #include "launcher.h"
 #include "keybinds.h"
 #include "host_report.h"
+#include "widescreen.h"
+
+void SmWidescreenPrefillRoomMargins(int camera_x, int camera_y,
+                                    int layer2_x, int layer2_y,
+                                    int left_pixels, int right_pixels);
+void SmWidescreenGetSideSpace(int camera_x, int camera_y, int max_extra,
+                              int *left_pixels, int *right_pixels);
 
 typedef struct GamepadInfo {
   uint32 modifiers;
@@ -64,9 +72,20 @@ void OpenGLRenderer_Create(struct RendererFuncs *funcs);
 
 bool g_new_ppu = true;
 
+// Shared widescreen contract. Super Metroid opts in at runtime; the default
+// remains the authentic 256-wide simulation and presentation.
+bool g_ws_active = false;
+int g_ws_extra = 0;
+
 struct SpcPlayer *g_spc_player;
 
-static uint8_t g_my_pixels[256 * 4 * 240];
+// Keep enough row capacity for the runner's maximum side-space budget. The
+// active pitch is still exactly 256 * 4 while widescreen is disabled.
+static uint8_t g_my_pixels[kPpuBufWidth * 4 * 240];
+
+extern uint8_t g_ram[0x20000];
+
+enum { kSmWidescreenExtra = 71 };  // 256 + 2*71 = 398; 398/224 ~= 16:9
 
 
 enum {
@@ -315,9 +334,73 @@ static SDL_HitTestResult HitTestCallback(SDL_Window *win, const SDL_Point *pt, v
 }
 
 void RtlDrawPpuFrame(uint8 *pixel_buffer, size_t pitch, uint32 render_flags) {
+  if (g_ws_active) {
+    /* The PPU only overwrites the side columns enabled for the current room.
+     * Clear the full 16:9 surface first so room-edge padding, reset frames,
+     * and transitions can never expose pixels retained from an older frame. */
+    memset(g_my_pixels, 0,
+           (size_t)g_snes_width * 4 * (size_t)g_snes_height);
+
+    uint16_t state = (uint16_t)(g_ram[0x0998] | (g_ram[0x0999] << 8));
+    bool room_view =
+        (state >= 7 && state <= 13) ||   // gameplay + door/loading path
+        (state >= 16 && state <= 25) ||  // unpause + death sequence
+        state == 27 ||                   // reserve-tank auto refill
+        (state >= 32 && state <= 38) ||  // Ceres/Zebes gameplay sequences
+        state == 42;                     // attract-mode gameplay
+
+    /* Set the fixed centering budget first, then expose only columns that
+     * physically exist inside the current room. This prevents tilemap wrap or
+     * stale VRAM at the left/right boundary of one-screen rooms. */
+    PpuSetExtraSpaceCentered(g_ppu, (uint8_t)g_ws_extra);
+    if (room_view) {
+      int camera_x = g_ram[0x0911] | (g_ram[0x0912] << 8);
+      int camera_y = g_ram[0x0915] | (g_ram[0x0916] << 8);
+      int layer2_x = g_ram[0x0917] | (g_ram[0x0918] << 8);
+      int layer2_y = g_ram[0x0919] | (g_ram[0x091A] << 8);
+      int left, right;
+      SmWidescreenGetSideSpace(camera_x, camera_y, g_ws_extra,
+                               &left, &right);
+      PpuSetExtraSideSpace(g_ppu, left, right, 0);
+
+      /* BG1 is streamed only for the native viewport. Register its world
+       * origin, capture the authentic center, then prefill the new columns
+       * from the decompressed room blockmap. Unknown tiles are transparent,
+       * never stale VRAM. Rain is rendered on BG3 below the 32-line HUD, so
+       * widen that part of BG3 directly. Do not repeat BG2: the landing-site
+       * ship lives there and cyclic repetition makes it wrap to the opposite
+       * side of the viewport. */
+      WsShadowSetWorld(0, (uint32_t)camera_x, (uint32_t)camera_y);
+      WsShadowSetBlankTile(0, 0);
+      bool landing_site =
+          (g_ram[0x079B] | (g_ram[0x079C] << 8)) == 0x91F8;
+      if (landing_site) {
+        WsShadowSetWorld(1, (uint32_t)layer2_x, (uint32_t)layer2_y);
+        WsShadowSetBlankTile(1, 0x0338);
+      }
+      WsShadowFrame(g_ppu);
+      SmWidescreenPrefillRoomMargins(camera_x, camera_y, layer2_x, layer2_y,
+                                     left, right);
+      /* BG3 is a room-specific effect layer, not a general world layer.
+       * Landing Site uses it for rain, but other rooms leave unrelated or
+       * deliberately windowed data in its 32x32 tilemap. Widening BG3 in
+       * every room exposed that data as attract-demo garble and FX seams. */
+      PpuSetWidescreenBg3Widen(g_ppu, landing_site ? 32 : 0);
+
+      /* HUD columns: 0..9 energy/reserve, 10..25 weapon selector, 26..31
+       * minimap. Anchor the outer groups to their respective 16:9 edges and
+       * retain the weapon selector at the original screen center. */
+      PpuSetWidescreenHudSplit(
+          g_ppu, g_config.widescreen_hud ? 32 : 0, 80, 208);
+    } else {
+      WsShadowFrame(g_ppu);
+      PpuSetWidescreenBg3Widen(g_ppu, 0);
+      PpuSetWidescreenHudSplit(g_ppu, 0, 80, 208);
+    }
+  }
   g_rtl_game_info->draw_ppu_frame();
-  for (size_t y = 0, y_end = g_snes_height; y < y_end; y++)
-    memcpy((uint8 *)pixel_buffer + y * pitch, g_my_pixels + y * 256 * 4, 256 * 4);
+  RtlWidescreenPresent(pixel_buffer, pitch, g_my_pixels,
+                       g_snes_width, g_snes_height);
 }
 
 #ifdef ENABLE_ORACLE_BACKEND
@@ -497,7 +580,6 @@ void MkDir(const char *s) {
 #include "cpu_state.h"
 #include "cpu_trace.h"
 #include "post_mortem.h"
-extern uint8_t g_ram[0x20000];
 static void dump_sprite_state(void) {
   // Dump SMW sprite-state arrays so dispatch-OOB crashes name the offending slot.
   fprintf(stderr, "Sprite state at crash:\n");
@@ -718,11 +800,25 @@ int main(int argc, char** argv) {
   }
 
   g_gamepad[0].joystick_id = g_gamepad[1].joystick_id = -1;
-  g_snes_width = 256;
+  /* Match SMW's explicit opt-in contract: config defaults off, with an env
+   * override for automated A/B runs. Super Metroid exposes exactly 16:9
+   * rather than following arbitrary window aspect ratios. */
+  {
+    const char *ws_env = getenv("SNESRECOMP_WIDESCREEN");
+    if (ws_env && *ws_env)
+      g_config.widescreen = atoi(ws_env) != 0;
+  }
+  g_ws_active = g_config.widescreen;
+  g_ws_extra = g_ws_active ? kSmWidescreenExtra : 0;
+  g_snes_width = 256 + 2 * g_ws_extra;
   g_snes_height = 224;// (g_config.extend_y ? 240 : 224);
   g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer |
     g_config.extend_y * kPpuRenderFlags_Height240 |
-    g_config.no_sprite_limits * kPpuRenderFlags_NoSpriteLimits;
+    (g_config.no_sprite_limits || g_ws_active) *
+      kPpuRenderFlags_NoSpriteLimits;
+  host_report_breadcrumb("widescreen: %s extra=%d hud=%d",
+                         g_ws_active ? "on" : "off", g_ws_extra,
+                         g_config.widescreen_hud);
 
   if (g_config.fullscreen == 1)
     g_win_flags ^= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -909,7 +1005,7 @@ error_reading:;
     host_report_breadcrumb("audio disabled in config");
   }
 
-  PpuBeginDrawing(g_ppu, g_my_pixels, 256 * 4, 0);
+  PpuBeginDrawing(g_ppu, g_my_pixels, g_snes_width * 4, 0);
 
   MkDir("saves");
     
@@ -1467,6 +1563,8 @@ static const char kDefaultSmwIniContent[] =
   "\n"
   "# Remove the sprite limits per scan line\n"
   "NoSpriteLimits = 1\n"
+  "Widescreen = 0\n"
+  "WidescreenHud = 1\n"
   "\n"
   "[Sound]\n"
   "EnableAudio = 1\n"

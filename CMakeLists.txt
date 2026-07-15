@@ -17,6 +17,7 @@ include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # Generated recompiler output (produced by tools/regen.sh; not committed).
 file(GLOB SM_GEN_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/gen/*.c)
@@ -25,6 +26,18 @@ if(NOT SM_GEN_SOURCES)
         "src/gen/ is empty — run the regen (see header) with a verified "
         "Super Metroid ROM at the repo root before building.")
 endif()
+
+# Generated sources are regenerated from the ROM and remain untracked. Apply
+# the opt-in, runtime-gated enemy range branches before any bank is compiled so
+# regen cannot silently discard widescreen spawning/culling support.
+add_custom_target(sm_widescreen_overrides ALL
+    COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_SOURCE_DIR}/tools/apply_widescreen_overrides.py
+            --check --gen-dir ${CMAKE_SOURCE_DIR}/src/gen
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Applying Super Metroid widescreen enemy range overrides"
+    VERBATIM
+)
 
 add_executable(SuperMetroidSNESRecomp
     ${SNESRECOMP_RUNNER_SOURCES}
@@ -38,6 +51,7 @@ add_executable(SuperMetroidSNESRecomp
     src/sm_cpu_infra.c
     src/sm_rtl.c
     src/sm_spc_player.c
+    src/sm_widescreen.c
     src/fiber_compat.c    # Win32 Fiber API shim (ucontext) for non-Windows
 
     # OpenGL function loader
@@ -45,6 +59,8 @@ add_executable(SuperMetroidSNESRecomp
     # recompiled banks (generated)
     ${SM_GEN_SOURCES}
 )
+
+add_dependencies(SuperMetroidSNESRecomp sm_widescreen_overrides)
 
 target_include_directories(SuperMetroidSNESRecomp PRIVATE
     ${CMAKE_SOURCE_DIR}

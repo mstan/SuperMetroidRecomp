@@ -50,6 +50,11 @@ typedef struct Config {
   bool autosave;
   bool extend_y;
   bool no_sprite_limits;
+  // Opt-in 16:9 presentation. Off preserves the authentic 256-wide view.
+  bool widescreen;
+  // Anchor energy/reserve to the left edge and the minimap to the right edge
+  // while keeping the weapon selector centered. Inert unless widescreen is on.
+  bool widescreen_hud;
   bool display_perf_title;
   bool disable_frame_delay;
 

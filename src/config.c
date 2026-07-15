@@ -349,6 +349,10 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
       return ParseBool(value, &g_config.linear_filtering);
     } else if (StringEqualsNoCase(key, "NoSpriteLimits")) {
       return ParseBool(value, &g_config.no_sprite_limits);
+    } else if (StringEqualsNoCase(key, "Widescreen")) {
+      return ParseBool(value, &g_config.widescreen);
+    } else if (StringEqualsNoCase(key, "WidescreenHud")) {
+      return ParseBool(value, &g_config.widescreen_hud);
     } else if (StringEqualsNoCase(key, "Shader")) {
       g_config.shader = *value ? value : NULL;
       return true;
@@ -435,6 +439,9 @@ void ParseConfigFile(const char *filename) {
   g_config.enable_gamepad[0] = true;
   g_config.enable_gamepad[1] = true;
   g_config.gamepad_deadzone = 10000;
+  /* Edge-anchored HUD is the widescreen default, but the master widescreen
+   * switch remains off unless config.ini explicitly opts in. */
+  g_config.widescreen_hud = true;
   /* Default ON to preserve current behaviour across other ports that
    * share this framework code; per-game .ini sets it false where the
    * oracle is incompatible with the repro workflow. See config.h doc. */
