@@ -3,7 +3,10 @@
 # repo evolving on its own cadence). Update via:
 #   git -C ./snesrecomp rev-parse dev/super-metroid > /tmp/sha && \
 #     sed -i "s|^sha = .*|sha = $(cat /tmp/sha)|" snesrecomp.pin
-sha = f6e300193e9d68950b4982753f4169165e138e14
+sha = 279d7877a0e9d23b9df2fbf7c3e9b04a4842a161
+# 2026-07-14 DerrickGold candidate integration validated in Super Metroid at
+# authentic 4:3: SimpleHDMA bounds, bank sharding, opt-in widescreen policies,
+# no-sprite-limits support, and the filtered interpreter policy hook.
 # 2026-07-14 interpreter non-local return checkpoint: direct AOT bounces
 # preserve guest returns that unwind through an interpreted caller.
 # 2026-07-13 HLE/LLE boundary checkpoint (e0520dd -> 88c41ad): HLE
