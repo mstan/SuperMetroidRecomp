@@ -36,6 +36,7 @@
 #endif
 
 #include "launcher.h"
+#include "launcher_capi.h"   /* Dear ImGui pre-boot launcher (snes_launcher_run_window) */
 #include "keybinds.h"
 #include "host_report.h"
 #include "widescreen.h"
@@ -749,6 +750,130 @@ int main(int argc, char** argv) {
       0xe1,0xd8,0x4c,0x70,0xc3,0xd2,0x9e,0x6e,
       0xaf,0x92,0xe6,0x79,0x8c,0xc2,0xca,0x72,
     };
+    int rom_resolved_by_launcher = 0;
+
+#if defined(SNES_LAUNCHER)
+    /* GUI launcher: pick/verify ROM + tune settings before boot. Super
+     * Metroid HAS widescreen (panel shown) and HAS battery SRAM (SAVES panel
+     * shown), but no MSU-1. Skipped for headless paths / positional ROM / env.
+     * SM has no --launcher flag / force_launcher variable, so SkipLauncher
+     * alone gates the cached-ROM fast path (unlike MMX's force_launcher). */
+    {
+      int headless = start_paused || (script_file != NULL) || (framedump_dir != NULL);
+      int have_positional = (argc >= 1 && argv[0] && argv[0][0] != '-' && argv[0][0] != '\0');
+      const char *no_launcher = getenv("SNESRECOMP_NO_LAUNCHER");
+      int want_launcher = !headless && !have_positional && !(no_launcher && *no_launcher);
+
+      /* SkipLauncher: boot straight from the cached ROM. A missing/unreadable
+       * cache falls through to the launcher. */
+      if (want_launcher && g_config.skip_launcher) {
+        char cached[512]; cached[0] = '\0';
+        FILE *rc = fopen("rom.cfg", "r");
+        if (rc) {
+          if (fgets(cached, sizeof(cached), rc)) {
+            size_t l = strlen(cached);
+            while (l && (cached[l-1] == '\n' || cached[l-1] == '\r')) cached[--l] = '\0';
+          }
+          fclose(rc);
+        }
+        if (cached[0]) {
+          FILE *probe = fopen(cached, "rb");
+          if (probe) {
+            fclose(probe);
+            snprintf(rom_path_buf, sizeof(rom_path_buf), "%s", cached);
+            rom_resolved_by_launcher = 1;
+            want_launcher = 0;
+            host_report_breadcrumb("launcher skipped (SkipLauncher=1, cached rom)");
+          }
+        }
+      }
+
+      if (want_launcher) {
+        host_report_breadcrumb("launcher: opening GUI");
+        SnesLauncherCSettings ls;
+        memset(&ls, 0, sizeof(ls));
+        ls.output_method = g_config.output_method;
+        ls.window_scale  = g_config.window_scale ? g_config.window_scale : 2;
+        ls.fullscreen    = g_config.fullscreen;
+        ls.ignore_aspect = g_config.ignore_aspect_ratio;
+        ls.linear_filter = g_config.linear_filtering;
+        ls.widescreen    = (g_config.widescreen != 0);
+        ls.widescreen_hud= (g_config.widescreen_hud != 0);
+        ls.enable_audio  = g_config.enable_audio;
+        ls.audio_freq    = g_config.audio_freq;
+        ls.volume        = 100;
+        ls.player_src[0] = g_config.enable_gamepad[0] ? 2 : 1;
+        ls.player_src[1] = g_config.enable_gamepad[1] ? 2 : 0;
+        /* SM stores deadzone as a raw stick radius; the launcher edits a 0-100%.
+         * Convert in both directions. */
+        ls.deadzone[0] = ls.deadzone[1] = g_config.gamepad_deadzone * 100 / 32767;
+        ls.skip_launcher = g_config.skip_launcher;
+        ls.msu1_enabled  = 0;   /* SM: no MSU-1 (panel hidden) */
+
+        char init_rom[512]; init_rom[0] = '\0';
+        {
+          FILE *rc = fopen("rom.cfg", "r");
+          if (rc) {
+            if (fgets(init_rom, sizeof(init_rom), rc)) {
+              size_t l = strlen(init_rom);
+              while (l && (init_rom[l-1] == '\n' || init_rom[l-1] == '\r')) init_rom[--l] = '\0';
+            }
+            fclose(rc);
+          }
+        }
+
+        SnesLauncherCGameInfo gi;
+        memset(&gi, 0, sizeof(gi));
+        gi.name = "Super Metroid";
+        gi.region = "(USA)";
+        gi.sram_path = "saves/save.srm";  /* SM has battery SRAM — show SAVES panel */
+        gi.num_players = 1;
+        gi.expected_crc = 0xD63ED5F8u;
+        gi.has_expected_crc = 1;
+        gi.known_sha256 = &kSuperMetroidSha256;   /* single accepted digest */
+        gi.num_known_sha256 = 1;
+        gi.widescreen_supported = 1;   /* SM has widescreen — show the panel */
+        gi.msu1_supported = 0;         /* hide MSU-1 panel */
+        gi.config_path = config_file;  /* hotkey editor targets the live config */
+
+        int act = snes_launcher_run_window(
+            "Super Metroid \xE2\x80\x94 Launcher",
+            &ls, &gi, "launcher", init_rom, rom_path_buf, sizeof(rom_path_buf));
+        host_report_breadcrumb("launcher: action=%d rom=%s", act,
+                               rom_path_buf[0] ? rom_path_buf : "(none)");
+        if (act == 1) return 0;   /* user closed the launcher */
+        if (act == 0) {
+          g_config.output_method       = (uint8)ls.output_method;
+          g_config.window_scale        = (uint8)ls.window_scale;
+          g_config.fullscreen          = (uint8)ls.fullscreen;
+          g_config.ignore_aspect_ratio = ls.ignore_aspect != 0;
+          g_config.linear_filtering    = ls.linear_filter != 0;
+          g_config.widescreen          = ls.widescreen != 0;
+          g_config.widescreen_hud      = ls.widescreen_hud != 0;
+          g_config.enable_audio        = true;   /* always on */
+          g_config.audio_freq          = (uint16)ls.audio_freq;
+          g_config.enable_gamepad[0]   = ls.player_src[0] == 2;
+          g_config.enable_gamepad[1]   = ls.player_src[1] == 2;
+          g_config.gamepad_deadzone    = ls.deadzone[0] * 32767 / 100;
+          g_config.skip_launcher       = ls.skip_launcher != 0;
+          WriteConfigFile(config_file);
+          /* The launcher's Hotkeys editor writes [KeyMap] straight into the
+           * config file, which was parsed before the launcher ran — re-apply
+           * so rebinds work on THIS boot, not the next one. (WriteConfigFile
+           * above preserves [KeyMap] lines, so order is safe.) */
+          ConfigReloadKeyMap(config_file);
+          if (rom_path_buf[0]) {
+            FILE *rc = fopen("rom.cfg", "w");
+            if (rc) { fprintf(rc, "%s\n", rom_path_buf); fclose(rc); }
+            rom_resolved_by_launcher = 1;
+          }
+        }
+        /* act == 2 (unavailable) -> console resolver below */
+      }
+    }
+#endif
+
+    if (!rom_resolved_by_launcher) {
     char *la_argv[2] = {
       (char *)"sm",
       (char *)((argc >= 1 && argv[0]) ? argv[0] : "")
@@ -760,6 +885,7 @@ int main(int argc, char** argv) {
                                                 sizeof(rom_path_buf), kSuperMetroidSha256)) {
       /* User cancelled the picker or repeatedly chose a non-matching ROM. */
       return 1;
+    }
     }
   }
   static char *resolved_argv[2];

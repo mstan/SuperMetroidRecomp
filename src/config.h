@@ -58,6 +58,11 @@ typedef struct Config {
   bool display_perf_title;
   bool disable_frame_delay;
 
+  // Boot straight to the game, skipping the GUI launcher, on subsequent runs.
+  // Set from the launcher's dashboard checkbox. Force the launcher back with
+  // SkipLauncher = 0 in config.ini.
+  bool skip_launcher;
+
   /* Oracle-build only. When false, main.c skips snes_oracle_init_default
    * and calls snes_oracle_set_disabled_by_game so the dispatcher refuses
    * every emu_* command with a structured warning naming the reason. For
@@ -102,5 +107,13 @@ enum {
 extern Config g_config;
 
 void ParseConfigFile(const char *filename);
+// Re-apply only the [KeyMap] section (launcher hotkey editor wrote it after
+// the initial parse). Keyboard command map is rebuilt; gamepad map and all
+// scalar settings are left alone.
+void ConfigReloadKeyMap(const char *filename);
+// Persist the launcher-editable settings back into `filename` (or config.ini)
+// with a surgical, comment-preserving in-place update. Called after the GUI
+// launcher returns PLAY.
+void WriteConfigFile(const char *filename);
 int FindCmdForSdlKey(SDL_Keycode code, SDL_Keymod mod);
 int FindCmdForGamepadButton(int button, uint32 modifiers);

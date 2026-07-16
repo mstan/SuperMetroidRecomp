@@ -14,6 +14,7 @@ set(CMAKE_C_STANDARD 11)
 
 set(SNESRECOMP_ROOT ${CMAKE_SOURCE_DIR}/snesrecomp)
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
+include(${SNESRECOMP_ROOT}/runner/src/launcher_ng/launcher_ng.cmake)
 
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -108,3 +109,8 @@ target_link_libraries(SuperMetroidSNESRecomp PRIVATE
 if(WIN32)
     target_link_libraries(SuperMetroidSNESRecomp PRIVATE dbghelp)
 endif()
+
+# Dear ImGui pre-boot launcher (GUI). One call wires sources/includes/
+# SNES_LAUNCHER/CXX/asset-staging; see launcher_ng/launcher_ng.cmake. Super
+# Metroid has no boxart.tga, so BOXART is omitted (optional arg).
+snesrecomp_target_launcher_ng(SuperMetroidSNESRecomp)

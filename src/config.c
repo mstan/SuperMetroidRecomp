@@ -380,6 +380,8 @@ static bool HandleIniConfig(int section, const char *key, char *value) {
       return ParseBool(value, &g_config.disable_frame_delay);
     } else if (StringEqualsNoCase(key, "EnableSnes9xOracle")) {
       return ParseBool(value, &g_config.enable_snes9x_oracle);
+    } else if (StringEqualsNoCase(key, "SkipLauncher")) {
+      return ParseBool(value, &g_config.skip_launcher);
     }
   } else if (section == 4) {
   }
@@ -439,6 +441,7 @@ void ParseConfigFile(const char *filename) {
   g_config.enable_gamepad[0] = true;
   g_config.enable_gamepad[1] = true;
   g_config.gamepad_deadzone = 10000;
+  g_config.skip_launcher = false;
   /* Edge-anchored HUD is the widescreen default, but the master widescreen
    * switch remains off unless config.ini explicitly opts in. */
   g_config.widescreen_hud = true;
@@ -454,4 +457,215 @@ void ParseConfigFile(const char *filename) {
       fprintf(stderr, "Warning: Unable to read config file %s\n", filename);
   }
   RegisterDefaultKeys();
+}
+
+/* Re-apply the [KeyMap] section from `filename` after the launcher's hotkey
+ * editor rewrote it. Resets ONLY the keyboard command map — the gamepad map
+ * and every scalar setting keep their live, launcher-edited values (a full
+ * ParseConfigFile here would clobber non-persisted fields like output_method
+ * back to the file's stale values). Keyboard defaults are then re-registered
+ * for entries the file doesn't mention, matching ParseConfigFile's order. */
+void ConfigReloadKeyMap(const char *filename) {
+  memset(keymap_hash_first, 0, sizeof(keymap_hash_first));
+  free(keymap_hash);
+  keymap_hash = NULL;
+  keymap_hash_size = 0;
+  memset(has_keynameid, 0, sizeof(has_keynameid));
+  g_config.has_keyboard_controls = 0;
+
+  if (filename == NULL)
+    filename = "config.ini";
+  char *filedata = (char *)ReadWholeFile(filename, NULL);
+  if (filedata) {
+    char *iter = filedata, *p;
+    int in_keymap = 0;
+    while ((p = NextLineStripComments(&iter)) != NULL) {
+      if (*p == 0)
+        continue;
+      if (*p == '[') {
+        in_keymap = StringEqualsNoCase(p, "[KeyMap]");
+        continue;
+      }
+      if (!in_keymap)
+        continue;
+      char *v = SplitKeyValue(p);
+      if (v)
+        HandleIniConfig(0, p, v);
+    }
+    /* Nothing from [KeyMap] outlives parsing (keys resolve to codes
+     * immediately), so the buffer can be freed — unlike ParseConfigFile's
+     * memory_buffer, which strings like `shader` point into. */
+    free(filedata);
+  }
+
+  /* Keyboard defaults for anything [KeyMap] didn't mention (the keyboard
+   * half of RegisterDefaultKeys; the joypad half is deliberately not
+   * re-run — the gamepad map was untouched above). */
+  for (int i = 1; i < countof(kKeyNameId); i++) {
+    if (!has_keynameid[i]) {
+      int size = kKeyNameId[i].size, k = kKeyNameId[i].id;
+      for (int j = 0; j < size; j++, k++)
+        KeyMapHash_Add(kDefaultKbdControls[k], k);
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * WriteConfigFile — persist the launcher-editable settings (surgical in-place
+ * update preserving comments + [KeyMap]/[GamepadMap]). Super Metroid has
+ * widescreen but no MSU-1, so only the Widescreen key is added beyond MMX's
+ * base set.
+ * ------------------------------------------------------------------------- */
+
+typedef struct CfgKV {
+  const char *section, *key;
+  char        val[600];
+  int         done;
+} CfgKV;
+
+typedef struct CfgBuf { char *p; size_t len, cap; } CfgBuf;
+
+static void CfgBuf_AddN(CfgBuf *b, const char *s, size_t n) {
+  if (b->len + n + 1 > b->cap) {
+    b->cap = (b->len + n + 1) * 2;
+    b->p = (char *)realloc(b->p, b->cap);
+    if (!b->p) Die("realloc failure");
+  }
+  memcpy(b->p + b->len, s, n);
+  b->len += n;
+  b->p[b->len] = 0;
+}
+static void CfgBuf_Str(CfgBuf *b, const char *s) { CfgBuf_AddN(b, s, strlen(s)); }
+
+static void CfgBuf_EmitKV(CfgBuf *b, const CfgKV *kv) {
+  CfgBuf_Str(b, kv->key);
+  CfgBuf_Str(b, " = ");
+  CfgBuf_Str(b, kv->val);
+  CfgBuf_Str(b, "\n");
+}
+
+static void CfgFlushSection(CfgBuf *out, CfgKV *kvs, int n, const char *sec) {
+  if (!sec || !*sec)
+    return;
+  for (int i = 0; i < n; i++)
+    if (!kvs[i].done && StringEqualsNoCase(sec, kvs[i].section)) {
+      CfgBuf_EmitKV(out, &kvs[i]);
+      kvs[i].done = 1;
+    }
+}
+
+static int CfgLineIsKey(const char *line, const char *key) {
+  const char *p = line;
+  while (*p == ' ' || *p == '\t') p++;
+  if (*p == '#') { p++; while (*p == ' ' || *p == '\t') p++; }
+  const char *r = StringStartsWithNoCase(p, key);
+  if (!r)
+    return 0;
+  while (*r == ' ' || *r == '\t') r++;
+  return *r == '=';
+}
+
+void WriteConfigFile(const char *filename) {
+  if (filename == NULL)
+    filename = "config.ini";
+
+  CfgKV kvs[] = {
+    { "Graphics", "WindowScale" },
+    { "Graphics", "Widescreen" },
+    { "Graphics", "LinearFiltering" },
+    { "Sound",    "EnableAudio" },
+    { "Sound",    "AudioFreq" },
+    { "GamepadMap", "EnableGamepad1" },
+    { "GamepadMap", "EnableGamepad2" },
+    { "General",    "SkipLauncher" },
+    { "GamepadMap", "GamepadDeadzone" },
+  };
+  const int N = (int)countof(kvs);
+  snprintf(kvs[0].val, sizeof(kvs[0].val), "%d", g_config.window_scale ? g_config.window_scale : 3);
+  snprintf(kvs[1].val, sizeof(kvs[1].val), "%d", g_config.widescreen ? 1 : 0);
+  snprintf(kvs[2].val, sizeof(kvs[2].val), "%d", g_config.linear_filtering ? 1 : 0);
+  snprintf(kvs[3].val, sizeof(kvs[3].val), "%d", g_config.enable_audio ? 1 : 0);
+  snprintf(kvs[4].val, sizeof(kvs[4].val), "%d", g_config.audio_freq);
+  snprintf(kvs[5].val, sizeof(kvs[5].val), "%s", g_config.enable_gamepad[0] ? "true" : "false");
+  snprintf(kvs[6].val, sizeof(kvs[6].val), "%s", g_config.enable_gamepad[1] ? "true" : "false");
+  snprintf(kvs[7].val, sizeof(kvs[7].val), "%d", g_config.skip_launcher ? 1 : 0);
+  snprintf(kvs[8].val, sizeof(kvs[8].val), "%d", g_config.gamepad_deadzone);
+
+  char *data = NULL;
+  long sz = 0;
+  FILE *f = fopen(filename, "rb");
+  if (f) {
+    fseek(f, 0, SEEK_END);
+    sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    data = (char *)malloc((size_t)(sz > 0 ? sz : 0) + 1);
+    if (data && sz > 0 && fread(data, 1, (size_t)sz, f) != (size_t)sz) { data[0] = 0; sz = 0; }
+    if (data) data[sz] = 0;
+    fclose(f);
+  }
+
+  CfgBuf out = { 0 };
+  char cur[64] = "";
+  for (char *s = data; s && *s; ) {
+    char *eol = strchr(s, '\n');
+    size_t llen = eol ? (size_t)(eol - s) : strlen(s);
+    char line[2048];
+    size_t cpy = llen < sizeof(line) - 1 ? llen : sizeof(line) - 1;
+    memcpy(line, s, cpy);
+    line[cpy] = 0;
+    if (cpy && line[cpy - 1] == '\r') line[cpy - 1] = 0;
+    s = eol ? eol + 1 : s + llen;
+
+    const char *t = line;
+    while (*t == ' ' || *t == '\t') t++;
+    if (*t == '[') {
+      CfgFlushSection(&out, kvs, N, cur);
+      const char *nm = t + 1;
+      int k = 0;
+      while (nm[k] && nm[k] != ']' && k < (int)sizeof(cur) - 1) { cur[k] = nm[k]; k++; }
+      cur[k] = 0;
+      CfgBuf_Str(&out, line);
+      CfgBuf_Str(&out, "\n");
+      continue;
+    }
+
+    int matched = 0;
+    if (*cur) {
+      for (int i = 0; i < N; i++)
+        if (!kvs[i].done && StringEqualsNoCase(cur, kvs[i].section) && CfgLineIsKey(line, kvs[i].key)) {
+          CfgBuf_EmitKV(&out, &kvs[i]);
+          kvs[i].done = 1;
+          matched = 1;
+          break;
+        }
+    }
+    if (!matched) {
+      CfgBuf_Str(&out, line);
+      CfgBuf_Str(&out, "\n");
+    }
+  }
+
+  CfgFlushSection(&out, kvs, N, cur);
+  for (int i = 0; i < N; i++) {
+    if (kvs[i].done)
+      continue;
+    CfgBuf_Str(&out, "\n[");
+    CfgBuf_Str(&out, kvs[i].section);
+    CfgBuf_Str(&out, "]\n");
+    for (int j = i; j < N; j++)
+      if (!kvs[j].done && StringEqualsNoCase(kvs[j].section, kvs[i].section)) {
+        CfgBuf_EmitKV(&out, &kvs[j]);
+        kvs[j].done = 1;
+      }
+  }
+
+  FILE *o = fopen(filename, "wb");
+  if (o) {
+    if (out.p) fwrite(out.p, 1, out.len, o);
+    fclose(o);
+  } else {
+    fprintf(stderr, "Warning: unable to write config file %s\n", filename);
+  }
+  free(out.p);
+  free(data);
 }
