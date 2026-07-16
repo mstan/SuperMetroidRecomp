@@ -113,4 +113,5 @@ endif()
 # Dear ImGui pre-boot launcher (GUI). One call wires sources/includes/
 # SNES_LAUNCHER/CXX/asset-staging; see launcher_ng/launcher_ng.cmake. Super
 # Metroid has no boxart.tga, so BOXART is omitted (optional arg).
-snesrecomp_target_launcher_ng(SuperMetroidSNESRecomp)
+snesrecomp_target_launcher_ng(SuperMetroidSNESRecomp
+    BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
