@@ -4,7 +4,6 @@ build-mac/
 build-*/
 # macOS/Linux runtime ROM-path cache + sibling-repo symlink
 rom.cfg
-/snesrecomp
 *.obj
 *.pdb
 *.ilk
@@ -33,7 +32,6 @@ boot_trace*.txt
 *.vcxproj.user
 
 # External repos accessed via junction/symlink (tracked in their own repos)
-snesrecomp/
 
 # snesrev/sm decomp — local oracle reference (clone per BUILDING.md; the
 # commit is pinned in refs/snesrev-sm.pin, which IS tracked). The clone

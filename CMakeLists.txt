@@ -14,7 +14,12 @@ set(CMAKE_C_STANDARD 11)
 
 set(SNESRECOMP_ROOT ${CMAKE_SOURCE_DIR}/snesrecomp)
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
-include(${SNESRECOMP_ROOT}/runner/src/launcher_ng/launcher_ng.cmake)
+
+# Launcher UI backend: the SHARED recomp-ui launcher (F:\Projects\recomp-ui,
+# consumed as the ./recomp-ui junction/submodule) so every recomp game drives
+# ONE launcher repo. The former in-tree launcher_ng has been retired from the
+# engine in favour of this shared, console-agnostic launcher.
+include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -110,8 +115,8 @@ if(WIN32)
     target_link_libraries(SuperMetroidSNESRecomp PRIVATE dbghelp)
 endif()
 
-# Dear ImGui pre-boot launcher (GUI). One call wires sources/includes/
-# SNES_LAUNCHER/CXX/asset-staging; see launcher_ng/launcher_ng.cmake. Super
-# Metroid has no boxart.tga, so BOXART is omitted (optional arg).
-snesrecomp_target_launcher_ng(SuperMetroidSNESRecomp
+# Dear ImGui pre-boot launcher (GUI) from the shared recomp-ui repo. One call
+# wires sources/includes/RECOMP_LAUNCHER define/CXX/asset-staging (same SM
+# boxart; recomp-ui's default pad.tga is already the SNES pad).
+recomp_target_launcher_ui(SuperMetroidSNESRecomp
     BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
