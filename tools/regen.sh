@@ -42,11 +42,30 @@ fi
 
 step() { echo; echo "=== $* ==="; }
 
+ANALYSIS_BACKEND="${SNESRECOMP_ANALYSIS_BACKEND:-native}"
+case "$ANALYSIS_BACKEND" in
+  native|python|auto) ;;
+  *) echo "regen.sh: invalid SNESRECOMP_ANALYSIS_BACKEND: $ANALYSIS_BACKEND" >&2; exit 2 ;;
+esac
+
+if [ "$ANALYSIS_BACKEND" = native ]; then
+  step "Building native analyzer"
+  "$PYTHON" snesrecomp/tools/build_native_analyzer.py
+fi
+
 step "Regenerating banks"
-# The runtime profile selects optional AOT work only. Missing or rejected exact
-# variants continue to execute the real ROM through authoritative LLE.
+# The runtime profile selects observed AOT work, while the generator-only
+# widescreen root file materializes the three exact hook families required by
+# the checked-in postprocessor. Missing or rejected work still executes LLE.
 "$PYTHON" snesrecomp/tools/v2_emit.py --rom "$ROM" \
-    --cfg-dir recomp --out-dir src/gen --profile-manifest "$PROFILE"
+    --cfg-dir recomp --out-dir src/gen \
+    --source-root src \
+    --source-root recomp/widescreen_aot_roots.c \
+    --profile-manifest "$PROFILE" \
+    --analysis-backend "$ANALYSIS_BACKEND"
+
+step "Applying widescreen overrides"
+"$PYTHON" tools/apply_widescreen_overrides.py --gen-dir src/gen
 
 step "Syncing funcs.h"
 "$PYTHON" snesrecomp/tools/v2_sync_funcs_h.py --cfg-dir recomp \
@@ -56,7 +75,12 @@ if [ "$STRICT_IDEMPOTENT" -eq 1 ]; then
   step "Checking idempotency"
   TMP_GEN="$(mktemp -d)"
   "$PYTHON" snesrecomp/tools/v2_emit.py --rom "$ROM" \
-      --cfg-dir recomp --out-dir "$TMP_GEN" --profile-manifest "$PROFILE"
+      --cfg-dir recomp --out-dir "$TMP_GEN" \
+      --source-root src \
+      --source-root recomp/widescreen_aot_roots.c \
+      --profile-manifest "$PROFILE" \
+      --analysis-backend "$ANALYSIS_BACKEND"
+  "$PYTHON" tools/apply_widescreen_overrides.py --gen-dir "$TMP_GEN"
   "$PYTHON" snesrecomp/tools/v2_compare_output.py \
       --expected src/gen --actual "$TMP_GEN"
   rm -rf "$TMP_GEN"

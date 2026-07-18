@@ -30,6 +30,26 @@ RULES = {
     ),
 }
 
+# Manifest-driven emission may retain the cfg name or use the canonical LoROM
+# mirror name, and it emits only processor-mode variants proven reachable.
+# Patch every emitted form instead of assuming four synthetic M/X variants.
+EMITTED_NAMES = {
+    "DetermineWhichEnemiesToProcess": {
+        "DetermineWhichEnemiesToProcess", "bank_20_8EB6", "bank_A0_8EB6",
+    },
+    "CheckIfEnemyIsOnScreen": {
+        "CheckIfEnemyIsOnScreen", "bank_20_AD70", "bank_A0_AD70",
+    },
+    "EnemyWithNormalSpritesIsOffScreen": {
+        "EnemyWithNormalSpritesIsOffScreen", "bank_20_ADE7", "bank_A0_ADE7",
+    },
+}
+LOGICAL_NAME = {
+    emitted: logical
+    for logical, emitted_names in EMITTED_NAMES.items()
+    for emitted in emitted_names
+}
+
 FUNC_RE = re.compile(
     r"^RecompReturn\s+(?P<base>[A-Za-z0-9_]+)_M[01]X[01]"
     r"\(CpuState \*cpu\) \{",
@@ -67,7 +87,8 @@ def patch_function(body: str, base: str) -> tuple[str, int]:
             continue
         branch = re.compile(
             rf"if \(cpu->_flag_N == 1\)(?P<tail> \{{ cpu->cycles \+= 1; "
-            rf"cpu->master_cycles \+= 8; goto L_{target}_M[01]X[01]; \}})"
+            rf"cpu->master_cycles \+= (?:8|\(g_memsel \? 6 : 8\)); "
+            rf"goto L_{target}_M[01]X[01]; \}})"
         )
         replaced, n = branch.subn(
             rf"if (cpu->_flag_N == 1 && !{helper}(cpu) {MARKER})\g<tail>",
@@ -98,13 +119,15 @@ def process_file(path: Path, do_restore: bool) -> tuple[int, dict[str, int]]:
         return n, {}
 
     original = text
-    matches = [m for m in FUNC_RE.finditer(text) if m.group("base") in RULES]
+    matches = [m for m in FUNC_RE.finditer(text)
+               if m.group("base") in LOGICAL_NAME]
     counts = {name: 0 for name in RULES}
     for match in reversed(matches):
+        logical_name = LOGICAL_NAME[match.group("base")]
         start, end = function_extent(text, match.start())
-        body, n = patch_function(text[start:end], match.group("base"))
+        body, n = patch_function(text[start:end], logical_name)
         text = text[:start] + body + text[end:]
-        counts[match.group("base")] += n
+        counts[logical_name] += n
     # Preserve bank object timestamps after the first injection. This matters
     # now that generated compilation is sharded per bank: an ordinary build
     # should not rebuild bank $A0 just because the verification target ran.
@@ -135,12 +158,13 @@ def main() -> int:
         print(f"apply_widescreen_overrides: restored {changed} branch(es)")
         return 0
 
-    # Four M/X entry variants, two horizontal branches per function.
-    expected = {name: 8 for name in RULES}
-    if totals != expected:
+    # Each emitted function form has two horizontal branches. Exact processor
+    # mode analysis can legitimately prune impossible variants, but every
+    # target family must remain present and every emitted form must be patched.
+    if any(count == 0 or count % len(RULES[name]) != 0
+           for name, count in totals.items()):
         raise SystemExit(
-            f"apply_widescreen_overrides: coverage mismatch: {totals}, "
-            f"expected {expected}"
+            f"apply_widescreen_overrides: incomplete coverage: {totals}"
         )
     if args.check:
         print(f"apply_widescreen_overrides: verified {sum(totals.values())} branches")

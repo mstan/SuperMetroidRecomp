@@ -552,6 +552,13 @@ static void SdlRenderer_Destroy(void) {
   SDL_DestroyRenderer(g_renderer);
 }
 
+static void SdlRenderer_GetOutputSize(int *width, int *height) {
+  if (SDL_GetRendererOutputSize(g_renderer, width, height) != 0) {
+    *width = 0;
+    *height = 0;
+  }
+}
+
 static void SdlRenderer_BeginDraw(int width, int height, uint8 **pixels, int *pitch) {
   g_sdl_renderer_rect.w = width;
   g_sdl_renderer_rect.h = height;
@@ -575,6 +582,7 @@ static void SdlRenderer_EndDraw(void) {
 static const struct RendererFuncs kSdlRendererFuncs = {
   &SdlRenderer_Init,
   &SdlRenderer_Destroy,
+  &SdlRenderer_GetOutputSize,
   &SdlRenderer_BeginDraw,
   &SdlRenderer_EndDraw,
 };

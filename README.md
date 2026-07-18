@@ -51,7 +51,9 @@ It remains a work in progress and needs broader end-to-end regression testing.
 Prerequisites: a `snesrecomp` checkout at `./snesrecomp` (junction/symlink
 to the sibling repo, pinned in `snesrecomp.pin`), a verified Super Metroid
 ROM at the repo root, SDL2 + OpenGL, and the mingw64 toolchain (cmake,
-gcc, ninja) on `PATH`.
+gcc, ninja) on `PATH`. Regeneration also requires `rustup`; it builds and
+requires the fast native analyzer by default. Set
+`SNESRECOMP_ANALYSIS_BACKEND=python` only to use the slower reference path.
 
 ```sh
 # 1. (once) clone the snesrev/sm decomp as the symbol/oracle reference
@@ -59,8 +61,8 @@ gcc, ninja) on `PATH`.
 git clone --depth 1 https://github.com/snesrev/sm.git refs/snesrev-sm
 python tools/ingest_sm_decomp.py   # funcs -> recomp/*.cfg; tables -> recomp/sm_decomp_symbols.json
 
-# 2. deterministic profile-guided regeneration. Strict mode independently
-#    regenerates and requires byte-identical output.
+# 2. deterministic profile + widescreen-root regeneration. Strict mode
+#    independently regenerates and requires byte-identical output.
 ./tools/regen.sh --strict-idempotent
 
 # 3. configure + build
