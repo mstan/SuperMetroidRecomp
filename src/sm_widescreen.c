@@ -211,3 +211,63 @@ int SmWidescreenEnemyBoxInView(CpuState *cpu) {
   (void)cpu;
   return SmWsEnemyInView(1);
 }
+
+int SmWidescreenEprojCenterInView(CpuState *cpu) {
+  if (!g_ws_active || g_ws_extra <= 0)
+    return 0;
+
+  uint16_t eproj_index = cpu->X;
+  uint16_t x = SmWsRead16((uint16_t)(0x1A4B + eproj_index));
+  uint16_t camera_x = SmWsRead16(0x0911);
+
+  int32_t left_distance = (int32_t)x - camera_x + g_ws_extra;
+  int32_t right_distance = (int32_t)camera_x + 256 + g_ws_extra - x;
+  return left_distance >= 0 && right_distance >= 0;
+}
+
+static int SmWsProjectileInHorizontalView(CpuState *cpu, int left_slack,
+                                          int right_slack) {
+  if (!g_ws_active || g_ws_extra <= 0)
+    return 0;
+
+  uint16_t projectile_index = cpu->X;
+  uint16_t x = SmWsRead16((uint16_t)(0x0B64 + projectile_index));
+  uint16_t camera_x = SmWsRead16(0x0911);
+
+  int32_t left_distance = (int32_t)x - camera_x + left_slack + g_ws_extra;
+  int32_t right_distance =
+      (int32_t)camera_x + 256 + right_slack + g_ws_extra - x;
+  return left_distance >= 0 && right_distance >= 0;
+}
+
+int SmWidescreenProjectileCenterInView(CpuState *cpu) {
+  return SmWsProjectileInHorizontalView(cpu, 0, 0);
+}
+
+int SmWidescreenProjectileSbaInView(CpuState *cpu) {
+  return SmWsProjectileInHorizontalView(cpu, 32, 32);
+}
+
+int SmWidescreenProjectileFarInView(CpuState *cpu) {
+  return SmWsProjectileInHorizontalView(cpu, 64, 64);
+}
+
+int SmWidescreenAtmosphericXInView(CpuState *cpu) {
+  if (!g_ws_active || g_ws_extra <= 0)
+    return 0;
+
+  uint16_t atmospheric_index = cpu->Y;
+  uint16_t x = SmWsRead16((uint16_t)(0x0ADC + atmospheric_index));
+  uint16_t camera_x = SmWsRead16(0x0911);
+
+  int32_t screen_x = (int32_t)x - camera_x - 4;
+  return screen_x >= -g_ws_extra && screen_x < 256 + g_ws_extra;
+}
+
+int SmWidescreenScreenXInView(CpuState *cpu) {
+  if (!g_ws_active || g_ws_extra <= 0)
+    return 0;
+
+  int32_t screen_x = (int16_t)cpu_read_a16(cpu);
+  return screen_x >= -g_ws_extra && screen_x < 256 + g_ws_extra;
+}

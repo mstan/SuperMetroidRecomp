@@ -55,8 +55,9 @@ fi
 
 step "Regenerating banks"
 # The runtime profile selects observed AOT work, while the generator-only
-# widescreen root file materializes the three exact hook families required by
-# the checked-in postprocessor. Missing or rejected work still executes LLE.
+# widescreen root file materializes the exact enemy/e-projectile hook families
+# required by the checked-in postprocessor. Missing or rejected work still
+# executes LLE.
 "$PYTHON" snesrecomp/tools/v2_emit.py --rom "$ROM" \
     --cfg-dir recomp --out-dir src/gen \
     --source-root src \

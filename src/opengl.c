@@ -6,6 +6,7 @@
 #include "util.h"
 #include "glsl_shader.h"
 #include "config.h"
+#include "sm_display.h"
 
 #define CODE(...) #__VA_ARGS__
 
@@ -168,17 +169,14 @@ static void OpenGLRenderer_EndDraw(void) {
 
   SDL_GL_GetDrawableSize(g_window, &drawable_width, &drawable_height);
   
-  int viewport_width = drawable_width, viewport_height = drawable_height;
-
-  if (!g_config.ignore_aspect_ratio) {
-    if (viewport_width * g_draw_height < viewport_height * g_draw_width)
-      viewport_height = viewport_width * g_draw_height / g_draw_width;  // limit height
-    else
-      viewport_width = viewport_height * g_draw_width / g_draw_height;  // limit width
-  }
-
-  int viewport_x = (drawable_width - viewport_width) >> 1;
-  int viewport_y = (drawable_height - viewport_height) >> 1;
+  SmDisplayViewport viewport;
+  SmDisplay_ComputeViewport(g_draw_width, g_draw_height,
+                            drawable_width, drawable_height,
+                            g_config.ignore_aspect_ratio, false,
+                            &viewport);
+  int viewport_width = viewport.width, viewport_height = viewport.height;
+  int viewport_x = viewport.x;
+  int viewport_y = viewport.y;
 
   glBindTexture(GL_TEXTURE_2D, g_texture.gl_texture);
   if (g_draw_width == g_texture.width && g_draw_height == g_texture.height) {

@@ -11,6 +11,20 @@
 #include "variables.h"
 #include "sm_rtl.h"
 
+const RamRoutineGuard g_ram_routine_guards[1] = {{0, 0, 0}};
+const unsigned g_ram_routine_guard_count = 0;
+
+RecompReturn GrappleFunc_AF87_M0X0(CpuState *cpu);
+RecompReturn GrappleFunc_AF87_M1X0(CpuState *cpu);
+
+RecompReturn bank_94_AF87_M0X0(CpuState *cpu) {
+  return GrappleFunc_AF87_M0X0(cpu);
+}
+
+RecompReturn bank_94_AF87_M1X0(CpuState *cpu) {
+  return GrappleFunc_AF87_M1X0(cpu);
+}
+
 /* WaitForNMI ($80:8338). The original routine raises waiting_for_nmi
  * ($7E:05B4) and spins until the NMI handler ($80:9583) clears it. In
  * the recompiled build there is no mid-frame NMI to clear it, so the

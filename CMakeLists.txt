@@ -13,6 +13,37 @@ project(SuperMetroidSNESRecomp C)
 set(CMAKE_C_STANDARD 11)
 
 set(SNESRECOMP_ROOT ${CMAKE_SOURCE_DIR}/snesrecomp)
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(sm_display_test tests/sm_display_test.c src/sm_display.c)
+    target_include_directories(sm_display_test PRIVATE
+        src
+        ${SNESRECOMP_ROOT}/runner/src)
+    add_test(NAME sm_display_geometry COMMAND sm_display_test)
+
+    add_executable(ppu_window_test tests/ppu_window_test.c)
+    target_include_directories(ppu_window_test PRIVATE
+        ${SNESRECOMP_ROOT}/runner/src)
+    add_test(NAME ppu_widescreen_windows COMMAND ppu_window_test)
+
+    add_executable(sm_widescreen_test tests/sm_widescreen_test.c src/sm_widescreen.c)
+    target_include_directories(sm_widescreen_test PRIVATE
+        src
+        ${SNESRECOMP_ROOT}/runner/src)
+    add_test(NAME sm_widescreen_helpers COMMAND sm_widescreen_test)
+
+    add_test(NAME sm_widescreen_visual_smoke
+        COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tools/widescreen_visual_smoke.py
+                --root ${CMAKE_SOURCE_DIR}
+                --skip-missing)
+    set_tests_properties(sm_widescreen_visual_smoke PROPERTIES
+        SKIP_RETURN_CODE 77)
+endif()
+
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
 # Launcher UI backend: the SHARED recomp-ui launcher (F:\Projects\recomp-ui,
@@ -23,8 +54,6 @@ include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
 # Generated recompiler output (produced by tools/regen.sh; not committed).
 file(GLOB SM_GEN_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/gen/*.c)
 if(NOT SM_GEN_SOURCES)
@@ -35,7 +64,7 @@ endif()
 
 # Generated sources are regenerated from the ROM and remain untracked. Apply
 # the opt-in, runtime-gated enemy range branches before any bank is compiled so
-# regen cannot silently discard widescreen spawning/culling support.
+# regen cannot silently discard widescreen spawning/effect culling support.
 add_custom_target(sm_widescreen_overrides ALL
     COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_SOURCE_DIR}/tools/apply_widescreen_overrides.py
@@ -49,6 +78,7 @@ add_executable(SuperMetroidSNESRecomp
     ${SNESRECOMP_RUNNER_SOURCES}
     # game-specific runtime
     src/config.c
+    src/sm_display.c
     src/glsl_shader.c
     src/main.c
     src/post_mortem.c

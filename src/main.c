@@ -24,9 +24,12 @@
 
 #include "types.h"
 #include "sm_rtl.h"
+#include "cpu_state.h"
 #include "common_cpu_infra.h"
+#include "funcs.h"
 #include "framedump.h"
 #include "config.h"
+#include "sm_display.h"
 #include "util.h"
 #include "sm_spc_player.h"
 
@@ -97,8 +100,6 @@ static uint8_t g_my_pixels[kPpuBufWidth * 4 * 240];
 
 extern uint8_t g_ram[0x20000];
 
-enum { kSmWidescreenExtra = 71 };  // 256 + 2*71 = 398; 398/224 ~= 16:9
-
 
 enum {
   kDefaultFullscreen = 0,
@@ -132,6 +133,8 @@ static bool g_display_perf;
 static int g_curr_fps;
 static int g_ppu_render_flags = 0;
 static int g_snes_width, g_snes_height;
+static int g_last_drawable_width, g_last_drawable_height;
+static const char *g_active_config_file;
 static int g_sdl_audio_mixer_volume = SDL_MIX_MAXVOLUME;
 static struct RendererFuncs g_renderer_funcs;
 
@@ -139,20 +142,120 @@ static GamepadInfo g_gamepad[2];
 
 extern Snes *g_snes;
 
+static void SmDisplay_PreparePpuFrame(void) {
+  int drawable_width = 0, drawable_height = 0;
+  if (g_renderer_funcs.GetOutputSize)
+    g_renderer_funcs.GetOutputSize(&drawable_width, &drawable_height);
+  if (drawable_width <= 0 || drawable_height <= 0)
+    SDL_GetWindowSize(g_window, &drawable_width, &drawable_height);
+  if (drawable_width > 0 && drawable_height > 0) {
+    g_last_drawable_width = drawable_width;
+    g_last_drawable_height = drawable_height;
+  } else {
+    drawable_width = g_last_drawable_width;
+    drawable_height = g_last_drawable_height;
+  }
+
+  int width = SmDisplay_ComputeFrameWidth(drawable_width, drawable_height,
+                                          g_config.widescreen);
+  g_snes_width = width;
+  g_ws_extra = (width - 256) / 2;
+  g_ws_active = g_ws_extra != 0;
+  g_new_ppu = g_ws_active ||
+              (g_ppu_render_flags & kPpuRenderFlags_NewRenderer) != 0;
+  if (g_config.no_sprite_limits || g_ws_active)
+    g_ppu_render_flags |= kPpuRenderFlags_NoSpriteLimits;
+  else
+    g_ppu_render_flags &= ~kPpuRenderFlags_NoSpriteLimits;
+  PpuBeginDrawing(g_ppu, g_my_pixels, (size_t)width * 4, 0);
+}
+
+static void SmDisplay_StretchWidescreenLiquidBand(void) {
+  if (!g_ws_active || g_snes_width <= 256)
+    return;
+
+  uint16_t fx_type = (uint16_t)(g_ram[0x196E] | (g_ram[0x196F] << 8));
+  if (fx_type != 2 && fx_type != 4)
+    return;
+
+  int camera_y = g_ram[0x0915] | (g_ram[0x0916] << 8);
+  int fx_y = g_ram[0x1962] | (g_ram[0x1963] << 8);
+  int y0 = fx_y - camera_y;
+  if (y0 < 32) y0 = 32;
+  if (y0 >= g_snes_height)
+    return;
+
+  uint32_t native_line[kPpuXPixels];
+  for (int y = y0; y < g_snes_height; y++) {
+    uint32_t *row = (uint32_t *)(g_my_pixels + (size_t)y * g_snes_width * 4);
+    memcpy(native_line, row + g_ws_extra, sizeof(native_line));
+    for (int x = 0; x < g_snes_width; x++) {
+      int sx = (x * kPpuXPixels) / g_snes_width;
+      if (sx >= kPpuXPixels) sx = kPpuXPixels - 1;
+      row[x] = native_line[sx];
+    }
+  }
+}
+
+void SmDisplay_SetWidescreenEnabled(bool enabled) {
+  if (g_config.widescreen == enabled)
+    return;
+  g_config.widescreen = enabled;
+  WriteConfigFile(g_active_config_file);
+  printf("Widescreen renderer = %s\n", enabled ? "on" : "off");
+}
+
+bool SmDisplay_IsWidescreenEnabled(void) { return g_config.widescreen; }
+bool SmDisplay_IsWidescreenActive(void) { return g_ws_active; }
+int SmDisplay_GetCurrentFrameWidth(void) {
+  return g_snes_width > 0 ? g_snes_width : 256;
+}
+
 // --- Scripted input ---
 typedef struct {
   uint32 mask;      // button bits to hold
   int hold_frames;  // frames to hold mask (0 = release)
   int wait_frames;  // frames to wait after hold ends before next entry
+  uint32 poke_addr; // script-only WRAM write address
+  uint8 *poke_bytes;
+  int poke_count;
 } ScriptEntry;
+
+typedef struct {
+  uint32 addr;
+  uint8 *bytes;
+  int count;
+} ScriptForcePoke;
 
 static ScriptEntry *g_script_entries;
 static int g_script_count;
 static int g_script_index;    // current entry
 static int g_script_phase;    // 0=holding, 1=waiting
 static int g_script_counter;  // frames left in current phase
+static ScriptForcePoke *g_script_force_pokes;
+static int g_script_force_poke_count;
+static int g_script_force_poke_cap;
 
 static uint32 ParseButtonMask(const char *name) {
+  const char *sep = strpbrk(name, "+,|");
+  if (sep) {
+    uint32 mask = 0;
+    const char *p = name;
+    while (*p) {
+      size_t len = strcspn(p, "+,|");
+      char part[32];
+      if (len == 0 || len >= sizeof(part))
+        return 0;
+      memcpy(part, p, len);
+      part[len] = 0;
+      mask |= ParseButtonMask(part);
+      p += len;
+      if (*p)
+        p++;
+    }
+    return mask;
+  }
+
   if (strcmp(name, "start")  == 0) return 0x0008;
   if (strcmp(name, "select") == 0) return 0x0004;
   if (strcmp(name, "up")     == 0) return 0x0010;
@@ -167,6 +270,62 @@ static uint32 ParseButtonMask(const char *name) {
   if (strcmp(name, "r")      == 0) return 0x0800;
   fprintf(stderr, "script: unknown button '%s'\n", name);
   return 0;
+}
+
+static int ParseHexByte(const char *s, uint8 *out) {
+  int hi = s[0], lo = s[1];
+  hi = (hi >= '0' && hi <= '9') ? hi - '0' :
+       (hi >= 'a' && hi <= 'f') ? hi - 'a' + 10 :
+       (hi >= 'A' && hi <= 'F') ? hi - 'A' + 10 : -1;
+  lo = (lo >= '0' && lo <= '9') ? lo - '0' :
+       (lo >= 'a' && lo <= 'f') ? lo - 'a' + 10 :
+       (lo >= 'A' && lo <= 'F') ? lo - 'A' + 10 : -1;
+  if (hi < 0 || lo < 0)
+    return 0;
+  *out = (uint8)((hi << 4) | lo);
+  return 1;
+}
+
+static uint8 *ParseHexBytes(uint32 addr, const char *hex, int *out_count) {
+  size_t hex_len = strlen(hex);
+  int byte_count = (int)(hex_len / 2);
+  if ((hex_len & 1) || byte_count <= 0 || addr + byte_count > 0x20000u)
+    return NULL;
+
+  uint8 *bytes = (uint8 *)malloc((size_t)byte_count);
+  if (!bytes)
+    return NULL;
+  for (int i = 0; i < byte_count; i++) {
+    if (!ParseHexByte(hex + i * 2, &bytes[i])) {
+      free(bytes);
+      return NULL;
+    }
+  }
+  *out_count = byte_count;
+  return bytes;
+}
+
+static void AddScriptForcePoke(uint32 addr, uint8 *bytes, int count) {
+  if (g_script_force_poke_count >= g_script_force_poke_cap) {
+    g_script_force_poke_cap = g_script_force_poke_cap
+        ? g_script_force_poke_cap * 2 : 8;
+    g_script_force_pokes = (ScriptForcePoke *)realloc(
+        g_script_force_pokes,
+        (size_t)g_script_force_poke_cap * sizeof(ScriptForcePoke));
+  }
+  ScriptForcePoke *p = &g_script_force_pokes[g_script_force_poke_count++];
+  p->addr = addr;
+  p->bytes = bytes;
+  p->count = count;
+}
+
+static void ApplyScriptForcePokes(void) {
+  for (int i = 0; i < g_script_force_poke_count; i++) {
+    ScriptForcePoke *p = &g_script_force_pokes[i];
+    if (p->bytes && p->count > 0 &&
+        p->addr + (uint32)p->count <= 0x20000u)
+      memcpy(g_ram + p->addr, p->bytes, (size_t)p->count);
+  }
 }
 
 static void LoadScript(const char *path) {
@@ -202,6 +361,70 @@ static void LoadScript(const char *path) {
       e->mask = 0x80000000 | (slot & 0xF);  // special flag: high bit = loadstate
       e->hold_frames = 1;
       e->wait_frames = pending_wait;
+      e->poke_addr = 0;
+      e->poke_bytes = NULL;
+      e->poke_count = 0;
+      pending_wait = 0;
+    } else if (strcmp(cmd, "spawnpb") == 0) {
+      if (g_script_count >= cap) {
+        cap *= 2;
+        g_script_entries = (ScriptEntry *)realloc(g_script_entries, cap * sizeof(ScriptEntry));
+      }
+      ScriptEntry *e = &g_script_entries[g_script_count++];
+      e->mask = 0x10000000;  // special flag: spawn power bomb HDMA objects
+      e->hold_frames = 1;
+      e->wait_frames = pending_wait;
+      e->poke_addr = 0;
+      e->poke_bytes = NULL;
+      e->poke_count = 0;
+      pending_wait = 0;
+    } else if (strcmp(cmd, "forcepoke") == 0) {
+      unsigned addr = 0;
+      char hex[256] = {0};
+      if (sscanf(line, "%*s %x %255s", &addr, hex) != 2)
+        continue;
+      int byte_count = 0;
+      uint8 *bytes = ParseHexBytes(addr, hex, &byte_count);
+      if (!bytes)
+        continue;
+      if (g_script_count >= cap) {
+        cap *= 2;
+        g_script_entries = (ScriptEntry *)realloc(g_script_entries, cap * sizeof(ScriptEntry));
+      }
+      ScriptEntry *e = &g_script_entries[g_script_count++];
+      e->mask = 0x20000000;  // special flag: persistent WRAM poke
+      e->hold_frames = 1;
+      e->wait_frames = pending_wait;
+      e->poke_addr = addr;
+      e->poke_bytes = bytes;
+      e->poke_count = byte_count;
+      pending_wait = 0;
+    } else if (strcmp(cmd, "poke") == 0 || strcmp(cmd, "pokefor") == 0) {
+      unsigned addr = 0;
+      char hex[256] = {0};
+      int hold = 1;
+      int matched = strcmp(cmd, "pokefor") == 0
+          ? sscanf(line, "%*s %x %255s %d", &addr, hex, &hold)
+          : sscanf(line, "%*s %x %255s", &addr, hex);
+      if (matched < 2)
+        continue;
+      if (hold < 1)
+        hold = 1;
+      int byte_count = 0;
+      uint8 *bytes = ParseHexBytes(addr, hex, &byte_count);
+      if (!bytes)
+        continue;
+      if (g_script_count >= cap) {
+        cap *= 2;
+        g_script_entries = (ScriptEntry *)realloc(g_script_entries, cap * sizeof(ScriptEntry));
+      }
+      ScriptEntry *e = &g_script_entries[g_script_count++];
+      e->mask = 0x40000000;  // special flag: WRAM poke
+      e->hold_frames = hold;
+      e->wait_frames = pending_wait;
+      e->poke_addr = addr;
+      e->poke_bytes = bytes;
+      e->poke_count = byte_count;
       pending_wait = 0;
     } else if (strcmp(cmd, "press") == 0) {
       int hold = (sscanf(line, "%*s %*s %d", &n) == 1) ? n : 1;
@@ -213,6 +436,9 @@ static void LoadScript(const char *path) {
       e->mask = ParseButtonMask(arg1);
       e->hold_frames = hold;
       e->wait_frames = pending_wait;
+      e->poke_addr = 0;
+      e->poke_bytes = NULL;
+      e->poke_count = 0;
       pending_wait = 0;
     }
   }
@@ -227,6 +453,8 @@ static void LoadScript(const char *path) {
 }
 
 static uint32 TickScript(void) {
+  ApplyScriptForcePokes();
+
   if (!g_script_entries || g_script_index >= g_script_count)
     return 0;
 
@@ -246,6 +474,22 @@ static uint32 TickScript(void) {
       if (e->mask & 0x80000000) {
         // loadstate command
         RtlSaveLoad(kSaveLoad_Load, e->mask & 0xF);
+        return 0;
+      }
+      if (e->mask & 0x40000000) {
+        if (e->poke_bytes && e->poke_count > 0 &&
+            e->poke_addr + (uint32)e->poke_count <= 0x20000u)
+          memcpy(g_ram + e->poke_addr, e->poke_bytes, (size_t)e->poke_count);
+        return 0;
+      }
+      if (e->mask & 0x20000000) {
+        if (e->poke_bytes && e->poke_count > 0)
+          AddScriptForcePoke(e->poke_addr, e->poke_bytes, e->poke_count);
+        return 0;
+      }
+      if (e->mask & 0x10000000) {
+        EnableHdmaObjects(&g_cpu);
+        SpawnPowerBombExplosion(&g_cpu);
         return 0;
       }
       return e->mask;
@@ -294,14 +538,16 @@ void ChangeWindowScale(int scale_step) {
       bt = 31;
     }
     // Allow a scale level slightly above the max that fits on screen
-    int mw = (bounds.w - bl - br + g_snes_width / 4) / g_snes_width;
-    int mh = (bounds.h - bt - bb + g_snes_height / 4) / g_snes_height;
+    int logical_width = SmDisplay_GetWindowBaseWidth(g_snes_width);
+    int logical_height = SmDisplay_GetWindowBaseHeight();
+    int mw = (bounds.w - bl - br + logical_width / 4) / logical_width;
+    int mh = (bounds.h - bt - bb + logical_height / 4) / logical_height;
     max_scale = IntMin(mw, mh);
   }
   int new_scale = IntMax(IntMin(g_current_window_scale + scale_step, max_scale), 1);
   g_current_window_scale = new_scale;
-  int w = new_scale * g_snes_width;
-  int h = new_scale * g_snes_height;
+  int w = new_scale * SmDisplay_GetWindowBaseWidth(g_snes_width);
+  int h = new_scale * SmDisplay_GetWindowBaseHeight();
 
   //SDL_RenderSetLogicalSize(g_renderer, w, h);
   SDL_SetWindowSize(g_window, w, h);
@@ -394,23 +640,35 @@ void RtlDrawPpuFrame(uint8 *pixel_buffer, size_t pitch, uint32 render_flags) {
       SmWidescreenPrefillRoomMargins(camera_x, camera_y, layer2_x, layer2_y,
                                      left, right);
       /* BG3 is a room-specific effect layer, not a general world layer.
-       * Landing Site uses it for rain, but other rooms leave unrelated or
-       * deliberately windowed data in its 32x32 tilemap. Widening BG3 in
-       * every room exposed that data as attract-demo garble and FX seams. */
-      PpuSetWidescreenBg3Widen(g_ppu, landing_site ? 32 : 0);
+       * Landing Site rain has valid map data, so let it render naturally.
+       * Other rooms get a below-HUD stretch band: lava/water/effect layers
+       * fill 16:9, but stale offscreen BG3 tilemap cells never leak in.
+       * Lava/acid get a final composed liquid-band stretch after PPU render so
+       * BG2/BG3/color math stay locked together with no 4:3 seam. */
+      if (landing_site) {
+        PpuSetWidescreenBg3Widen(g_ppu, 32);
+      } else {
+        PpuSetWidescreenBg3Widen(g_ppu, 0);
+        uint16_t fx_type = (uint16_t)(g_ram[0x196E] | (g_ram[0x196F] << 8));
+        if (fx_type != 2 && fx_type != 4)
+          PpuSetWidescreenLayerStretchBand(g_ppu, 2, 32, 224);
+      }
 
       /* HUD columns: 0..9 energy/reserve, 10..25 weapon selector, 26..31
        * minimap. Anchor the outer groups to their respective 16:9 edges and
        * retain the weapon selector at the original screen center. */
       PpuSetWidescreenHudSplit(
           g_ppu, g_config.widescreen_hud ? 32 : 0, 80, 208);
+      PpuSetWsHudOamShiftRange(g_ppu, 16, g_config.widescreen_hud ? 67 : 0);
     } else {
       WsShadowFrame(g_ppu);
       PpuSetWidescreenBg3Widen(g_ppu, 0);
       PpuSetWidescreenHudSplit(g_ppu, 0, 80, 208);
+      PpuSetWsHudOamShiftRange(g_ppu, 0, 0);
     }
   }
   g_rtl_game_info->draw_ppu_frame();
+  SmDisplay_StretchWidescreenLiquidBand();
   RtlWidescreenPresent(pixel_buffer, pitch, g_my_pixels,
                        g_snes_width, g_snes_height);
 }
@@ -438,6 +696,7 @@ static uint16_t mmx_runner_to_snes_joypad(uint16_t r) {
 #endif
 
 static void DrawPpuFrameWithPerf(void) {
+  SmDisplay_PreparePpuFrame();
   int render_scale = PpuGetCurrentRenderScale(g_ppu, g_ppu_render_flags);
   uint8 *pixel_buffer = 0;
   int pitch = 0;
@@ -511,6 +770,7 @@ static void SDLCALL AudioCallback(void *userdata, Uint8 *stream, int len) {
 static SDL_Renderer *g_renderer;
 static SDL_Texture *g_texture;
 static SDL_Rect g_sdl_renderer_rect;
+static SDL_Rect g_sdl_present_rect;
 
 static bool SdlRenderer_Init(SDL_Window *window) {
   if (g_config.shader)
@@ -532,8 +792,6 @@ static bool SdlRenderer_Init(SDL_Window *window) {
     printf("\n");
   }
   g_renderer = renderer;
-  if (!g_config.ignore_aspect_ratio)
-    SDL_RenderSetLogicalSize(renderer, g_snes_width, g_snes_height);
   if (g_config.linear_filtering)
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
 
@@ -560,6 +818,24 @@ static void SdlRenderer_GetOutputSize(int *width, int *height) {
 }
 
 static void SdlRenderer_BeginDraw(int width, int height, uint8 **pixels, int *pitch) {
+  int texture_width, texture_height;
+  SDL_QueryTexture(g_texture, NULL, NULL, &texture_width, &texture_height);
+  if (texture_width != width || texture_height != height) {
+    SDL_DestroyTexture(g_texture);
+    g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888,
+                                  SDL_TEXTUREACCESS_STREAMING, width, height);
+    if (!g_texture)
+      Die("SDL widescreen texture allocation failed");
+  }
+  int output_width = 0, output_height = 0;
+  SdlRenderer_GetOutputSize(&output_width, &output_height);
+  SmDisplayViewport viewport;
+  SmDisplay_ComputeViewport(width, height, output_width, output_height,
+                            g_config.ignore_aspect_ratio, false, &viewport);
+  g_sdl_present_rect.x = viewport.x;
+  g_sdl_present_rect.y = viewport.y;
+  g_sdl_present_rect.w = viewport.width;
+  g_sdl_present_rect.h = viewport.height;
   g_sdl_renderer_rect.w = width;
   g_sdl_renderer_rect.h = height;
   if (SDL_LockTexture(g_texture, &g_sdl_renderer_rect, (void **)pixels, pitch) != 0) {
@@ -575,7 +851,8 @@ static void SdlRenderer_EndDraw(void) {
   //  float v = (double)(after - before) / SDL_GetPerformanceFrequency();
   //  printf("%f ms\n", v * 1000);
   SDL_RenderClear(g_renderer);
-  SDL_RenderCopy(g_renderer, g_texture, &g_sdl_renderer_rect, NULL);
+  SDL_RenderCopy(g_renderer, g_texture, &g_sdl_renderer_rect,
+                 &g_sdl_present_rect);
   SDL_RenderPresent(g_renderer); // vsyncs to 60 FPS?
 }
 
@@ -736,6 +1013,7 @@ int main(int argc, char** argv) {
     argc -= 2, argv += 2;
   }
   ParseConfigFile(config_file);
+  g_active_config_file = config_file;
   // Apply local overrides if present (gitignored). Lets a developer
   // mute audio etc. without touching the checked-in mmx.ini. Last
   // parser to set a key wins, so local overrides take precedence.
@@ -865,7 +1143,7 @@ int main(int argc, char** argv) {
         gi.has_expected_crc = 1;
         gi.known_sha256 = &kSuperMetroidSha256;   /* single accepted digest */
         gi.num_known_sha256 = 1;
-        gi.widescreen_supported = 0;   /* SM widescreen exists but has problems — hide the toggle for now */
+        gi.widescreen_supported = 1;
         gi.msu1_supported = 0;         /* hide MSU-1 panel */
         gi.config_path = config_file;  /* hotkey editor targets the live config */
 
@@ -969,16 +1247,17 @@ int main(int argc, char** argv) {
 
   g_gamepad[0].joystick_id = g_gamepad[1].joystick_id = -1;
   /* Match SMW's explicit opt-in contract: config defaults off, with an env
-   * override for automated A/B runs. Super Metroid exposes exactly 16:9
-   * rather than following arbitrary window aspect ratios. */
+   * override for automated A/B runs. A persisted widescreen launch opens a
+   * useful 16:9 window before display-derived width is calculated. */
   {
     const char *ws_env = getenv("SNESRECOMP_WIDESCREEN");
     if (ws_env && *ws_env)
       g_config.widescreen = atoi(ws_env) != 0;
   }
-  g_ws_active = g_config.widescreen;
-  g_ws_extra = g_ws_active ? kSmWidescreenExtra : 0;
-  g_snes_width = 256 + 2 * g_ws_extra;
+  g_snes_width = g_config.widescreen
+      ? SmDisplay_ComputeFrameWidth(16, 9, true) : 256;
+  g_ws_extra = (g_snes_width - 256) / 2;
+  g_ws_active = g_ws_extra != 0;
   g_snes_height = 224;// (g_config.extend_y ? 240 : 224);
   g_ppu_render_flags = g_config.new_renderer * kPpuRenderFlags_NewRenderer |
     g_config.extend_y * kPpuRenderFlags_Height240 |
@@ -1025,8 +1304,10 @@ int main(int argc, char** argv) {
   keybinds_init(program_path);
 
   bool custom_size = g_config.window_width != 0 && g_config.window_height != 0;
-  int window_width = custom_size ? g_config.window_width : g_current_window_scale * g_snes_width;
-  int window_height = custom_size ? g_config.window_height : g_current_window_scale * g_snes_height;
+  int window_width = custom_size ? g_config.window_width :
+      g_current_window_scale * SmDisplay_GetWindowBaseWidth(g_snes_width);
+  int window_height = custom_size ? g_config.window_height :
+      g_current_window_scale * SmDisplay_GetWindowBaseHeight();
 
   if (g_config.output_method == kOutputMethod_OpenGL) {
     g_win_flags |= SDL_WINDOW_OPENGL;
@@ -1173,7 +1454,7 @@ error_reading:;
     host_report_breadcrumb("audio disabled in config");
   }
 
-  PpuBeginDrawing(g_ppu, g_my_pixels, g_snes_width * 4, 0);
+  SmDisplay_PreparePpuFrame();
 
   MkDir("saves");
     
@@ -1324,6 +1605,7 @@ error_reading:;
     inputs |= TickScript();
     inputs |= debug_server_get_controller_inputs();
     RtlRunFrame(inputs | GetActiveControllers() | debug_server_get_controller_active_mask());
+    ApplyScriptForcePokes();
 
 #ifdef ENABLE_ORACLE_BACKEND
     // Step the oracle emulator with the same input. The runner's per-player
@@ -1353,8 +1635,12 @@ error_reading:;
       host_report_breadcrumb("heartbeat: frame=%u", frameCtr);
     g_snes->disableRender = g_turbo && (frameCtr & 0xf) != 0;
 
-    if (!g_snes->disableRender)
+    if (!g_snes->disableRender) {
       DrawPpuFrameWithPerf();
+    } else {
+      SmDisplay_PreparePpuFrame();
+      g_rtl_game_info->draw_ppu_frame();
+    }
 
     // if vsync isn't working, delay manually
     curTick = SDL_GetTicks();
@@ -1504,7 +1790,11 @@ static void HandleCommand(uint32 j, bool pressed) {
     case kKeys_ToggleRenderer:
       g_ppu_render_flags ^= kPpuRenderFlags_NewRenderer;
       printf("New renderer = %x\n", g_ppu_render_flags & kPpuRenderFlags_NewRenderer);
-      g_new_ppu = (g_ppu_render_flags & kPpuRenderFlags_NewRenderer) != 0;
+      g_new_ppu = g_ws_active ||
+                  (g_ppu_render_flags & kPpuRenderFlags_NewRenderer) != 0;
+      break;
+    case kKeys_ToggleWidescreen:
+      SmDisplay_SetWidescreenEnabled(!g_config.widescreen);
       break;
     case kKeys_VolumeUp:
     case kKeys_VolumeDown: HandleVolumeAdjustment(j == kKeys_VolumeUp ? 1 : -1); break;
@@ -1753,6 +2043,9 @@ static const char kDefaultSmwIniContent[] =
   "WindowSmaller = Ctrl+Down\n"
   "VolumeUp = Shift+=\n"
   "VolumeDown = Shift+-\n"
+  "DisplayPerf = f\n"
+  "ToggleRenderer = r\n"
+  "ToggleWidescreen = Alt+w\n"
   "Load =      F1,     F2,     F3,     F4,     F5,     F6,     F7,     F8,     F9,     F10\n"
   "Save = Shift+F1,Shift+F2,Shift+F3,Shift+F4,Shift+F5,Shift+F6,Shift+F7,Shift+F8,Shift+F9,Shift+F10\n"
   "\n"
