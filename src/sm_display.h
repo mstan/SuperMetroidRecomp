@@ -7,8 +7,6 @@
 extern "C" {
 #endif
 
-void SmDisplay_SetWidescreenEnabled(bool enabled);
-bool SmDisplay_IsWidescreenEnabled(void);
 bool SmDisplay_IsWidescreenActive(void);
 int SmDisplay_GetCurrentFrameWidth(void);
 

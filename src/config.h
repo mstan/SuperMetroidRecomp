@@ -23,7 +23,6 @@ enum {
   kKeys_WindowSmaller,
   kKeys_DisplayPerf,
   kKeys_ToggleRenderer,
-  kKeys_ToggleWidescreen,
   kKeys_VolumeUp,
   kKeys_VolumeDown,
   kKeys_Total,

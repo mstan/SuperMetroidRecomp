@@ -197,15 +197,6 @@ static void SmDisplay_StretchWidescreenLiquidBand(void) {
   }
 }
 
-void SmDisplay_SetWidescreenEnabled(bool enabled) {
-  if (g_config.widescreen == enabled)
-    return;
-  g_config.widescreen = enabled;
-  WriteConfigFile(g_active_config_file);
-  printf("Widescreen renderer = %s\n", enabled ? "on" : "off");
-}
-
-bool SmDisplay_IsWidescreenEnabled(void) { return g_config.widescreen; }
 bool SmDisplay_IsWidescreenActive(void) { return g_ws_active; }
 int SmDisplay_GetCurrentFrameWidth(void) {
   return g_snes_width > 0 ? g_snes_width : 256;
@@ -1051,8 +1042,8 @@ int main(int argc, char** argv) {
 
 #if defined(SNES_LAUNCHER) || defined(RECOMP_LAUNCHER)
     /* GUI launcher: pick/verify ROM + tune settings before boot. Super
-     * Metroid HAS widescreen (panel shown) and HAS battery SRAM (SAVES panel
-     * shown), but no MSU-1. Skipped for headless paths / positional ROM / env.
+     * Metroid HAS battery SRAM (SAVES panel shown), but no MSU-1. Skipped for
+     * headless paths / positional ROM / env.
      * SM has no --launcher flag / force_launcher variable, so SkipLauncher
      * alone gates the cached-ROM fast path (unlike MMX's force_launcher). */
     {
@@ -1098,8 +1089,6 @@ int main(int argc, char** argv) {
         ls.fullscreen    = g_config.fullscreen;
         ls.ignore_aspect = g_config.ignore_aspect_ratio;
         ls.linear_filter = g_config.linear_filtering;
-        ls.widescreen    = (g_config.widescreen != 0);
-        ls.widescreen_hud= (g_config.widescreen_hud != 0);
         ls.enable_audio  = g_config.enable_audio;
         ls.audio_freq    = g_config.audio_freq;
         ls.volume        = 100;
@@ -1126,10 +1115,10 @@ int main(int argc, char** argv) {
 #if defined(RECOMP_LAUNCHER)
         RecompLauncherCGameInfo gi;
         memset(&gi, 0, sizeof(gi));
-        /* SNES system identity (theme=CRT, platform="SUPER NINTENDO", rom_noun
-         * "ROM", widescreen_supported=1); SM overrides the per-game specifics
-         * below. One profile call keeps the identity from drifting across
-         * SNES titles, exactly as the PSX host does for its. */
+        /* SNES system identity (theme=CRT, platform="SUPER NINTENDO",
+         * rom_noun="ROM"). SM overrides the per-game specifics below. One
+         * profile call keeps the identity from drifting across SNES titles,
+         * exactly as the PSX host does for its. */
         launcher_profile_apply("snes", &gi);
 #else
         SnesLauncherCGameInfo gi;
@@ -1143,7 +1132,7 @@ int main(int argc, char** argv) {
         gi.has_expected_crc = 1;
         gi.known_sha256 = &kSuperMetroidSha256;   /* single accepted digest */
         gi.num_known_sha256 = 1;
-        gi.widescreen_supported = 1;
+        gi.widescreen_supported = 0;
         gi.msu1_supported = 0;         /* hide MSU-1 panel */
         gi.config_path = config_file;  /* hotkey editor targets the live config */
 
@@ -1168,8 +1157,6 @@ int main(int argc, char** argv) {
           g_config.fullscreen          = (uint8)ls.fullscreen;
           g_config.ignore_aspect_ratio = ls.ignore_aspect != 0;
           g_config.linear_filtering    = ls.linear_filter != 0;
-          g_config.widescreen          = ls.widescreen != 0;
-          g_config.widescreen_hud      = ls.widescreen_hud != 0;
           g_config.enable_audio        = true;   /* always on */
           g_config.audio_freq          = (uint16)ls.audio_freq;
           g_config.enable_gamepad[0]   = ls.player_src[0] == 2;
@@ -1246,9 +1233,7 @@ int main(int argc, char** argv) {
   }
 
   g_gamepad[0].joystick_id = g_gamepad[1].joystick_id = -1;
-  /* Match SMW's explicit opt-in contract: config defaults off, with an env
-   * override for automated A/B runs. A persisted widescreen launch opens a
-   * useful 16:9 window before display-derived width is calculated. */
+  /* Hidden opt-in for automated A/B and smoke runs. */
   {
     const char *ws_env = getenv("SNESRECOMP_WIDESCREEN");
     if (ws_env && *ws_env)
@@ -1793,9 +1778,6 @@ static void HandleCommand(uint32 j, bool pressed) {
       g_new_ppu = g_ws_active ||
                   (g_ppu_render_flags & kPpuRenderFlags_NewRenderer) != 0;
       break;
-    case kKeys_ToggleWidescreen:
-      SmDisplay_SetWidescreenEnabled(!g_config.widescreen);
-      break;
     case kKeys_VolumeUp:
     case kKeys_VolumeDown: HandleVolumeAdjustment(j == kKeys_VolumeUp ? 1 : -1); break;
     default: assert(0);
@@ -2021,8 +2003,6 @@ static const char kDefaultSmwIniContent[] =
   "\n"
   "# Remove the sprite limits per scan line\n"
   "NoSpriteLimits = 1\n"
-  "Widescreen = 0\n"
-  "WidescreenHud = 1\n"
   "\n"
   "[Sound]\n"
   "EnableAudio = 1\n"
@@ -2045,7 +2025,6 @@ static const char kDefaultSmwIniContent[] =
   "VolumeDown = Shift+-\n"
   "DisplayPerf = f\n"
   "ToggleRenderer = r\n"
-  "ToggleWidescreen = Alt+w\n"
   "Load =      F1,     F2,     F3,     F4,     F5,     F6,     F7,     F8,     F9,     F10\n"
   "Save = Shift+F1,Shift+F2,Shift+F3,Shift+F4,Shift+F5,Shift+F6,Shift+F7,Shift+F8,Shift+F9,Shift+F10\n"
   "\n"

@@ -27,19 +27,6 @@ host-fiber yield for performance.
 The ROM is **never** redistributed — you supply your own legally-dumped
 copy.
 
-## Optional 16:9 mode
-
-Set `Widescreen = 1` in `config.ini` to enable the presentation-only 16:9
-viewport. `WidescreenHud = 1` keeps energy/reserve at the left edge, the
-minimap at the right edge, and the weapon selector centered. For temporary
-testing, `SNESRECOMP_WIDESCREEN=0` or `1` overrides the config value.
-
-The wider playfield follows each room's valid scroll-screen bounds,
-reconstructs offscreen BG1 tiles and the Landing Site's ship-bearing BG2 tiles
-from decompressed room blockmaps, widens the Landing Site's below-HUD BG3 rain,
-and expands enemy activation/culling horizontally. The opt-out path retains
-the original 256x224 behavior.
-
 ## Current status
 
 The default LLE-first build boots, renders, plays audio, completes the attract
@@ -61,7 +48,7 @@ requires the fast native analyzer by default. Set
 git clone --depth 1 https://github.com/snesrev/sm.git refs/snesrev-sm
 python tools/ingest_sm_decomp.py   # funcs -> recomp/*.cfg; tables -> recomp/sm_decomp_symbols.json
 
-# 2. deterministic profile + widescreen-root regeneration. Strict mode
+# 2. deterministic profile + override-root regeneration. Strict mode
 #    independently regenerates and requires byte-identical output.
 ./tools/regen.sh --strict-idempotent
 
