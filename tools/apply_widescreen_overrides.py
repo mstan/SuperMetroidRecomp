@@ -72,15 +72,38 @@ CUSTOM_OAM_WRITERS = {
     "bank_94_B14B": (0, 3, False),
 }
 HDMA_EFFECT_BOUNDS = {
-    "bank_88_8896": (0, 2, 2),   # CalculateXrayHdmaTable
-    "bank_88_8C62": (1, 1, 1),   # CalculatePowerBombHdmaObjectTablePtrs
-    "bank_88_8F56": (1, 1, 1),   # CalculatePowerBombHdmaTablePointers
-    "bank_88_A42F": (1, 1, 1),   # CalculateCrystalFlashHdmaObjectTablePtrs
-    "bank_88_D9A1": (2, 2, 2),   # HdmaobjPreInstr_RainBg3Scroll
-    "bank_88_DA47": (2, 1, 1),   # HdmaobjPreInstr_SporesBG3Xscroll
-    "bank_88_DB36": (2, 1, 1),   # HdmaobjPreInstr_FogBG3Scroll
-    "bank_88_DF94": (0, 1, 2),   # HdmaobjPreInstr_DF94
-    "bank_88_E987": (0, 1, 1),   # sub_88E987
+    # (0xff00 masks, camera-X reads, camera-Y reads, emitted variants)
+    #
+    # The bank-88 forms come from the attract profile. The canonical bank-08
+    # aliases are explicit widescreen roots and can have more live M/X
+    # variants; audit both forms because they execute the same HDMA bounds
+    # calculations through different LoROM mirrors.
+    "bank_88_8896": (0, 2, 2, 1),   # CalculateXrayHdmaTable
+    "bank_88_8C62": (1, 1, 1, 1),   # CalculatePowerBombHdmaObjectTablePtrs
+    "bank_88_8F56": (1, 1, 1, 1),   # CalculatePowerBombHdmaTablePointers
+    "bank_88_A42F": (1, 1, 1, 1),   # CalculateCrystalFlashHdmaObjectTablePtrs
+    "bank_88_D9A1": (2, 2, 2, 1),   # HdmaobjPreInstr_RainBg3Scroll
+    "bank_88_DA47": (2, 1, 1, 1),   # HdmaobjPreInstr_SporesBG3Xscroll
+    "bank_88_DB36": (2, 1, 1, 1),   # HdmaobjPreInstr_FogBG3Scroll
+    "bank_88_DF94": (0, 1, 2, 1),   # HdmaobjPreInstr_DF94
+    "bank_88_E987": (0, 1, 1, 1),   # sub_88E987
+    "CalculateXrayHdmaTable": (0, 2, 2, 4),
+    "CalculatePowerBombHdmaObjectTablePtrs": (1, 1, 1, 2),
+    "CalculatePowerBombHdmaTablePointers": (1, 1, 1, 2),
+    "CalculateCrystalFlashHdmaObjectTablePtrs": (1, 1, 1, 2),
+    "HdmaobjPreInstr_RainBg3Scroll": (2, 2, 2, 2),
+    "HdmaobjPreInstr_SporesBG3Xscroll": (2, 1, 1, 2),
+    "HdmaobjPreInstr_FogBG3Scroll": (2, 1, 1, 2),
+    "HdmaobjPreInstr_DF94": (0, 1, 2, 2),
+    "sub_88E987": (0, 1, 1, 4),
+}
+HDMA_POINTER_WRITERS = {
+    "bank_88_8C62",
+    "bank_88_8F56",
+    "bank_88_A42F",
+    "CalculatePowerBombHdmaObjectTablePtrs",
+    "CalculatePowerBombHdmaTablePointers",
+    "CalculateCrystalFlashHdmaObjectTablePtrs",
 }
 RESIDUAL_CAMERA_X_RISK = {
     # These functions still combine camera-X reads with native-looking masks,
@@ -120,6 +143,24 @@ RESIDUAL_CAMERA_X_RISK = {
     "bank_94_B14B": ("bank94_v2.c", 1, 0, 0, 3, 1, 38),
     "bank_9B_A3CC": ("bank9b_v2.c", 1, 4, 0, 0, 7, 109),
     "bank_9B_C036": ("bank9b_v2.c", 2, 2, 0, 0, 12, 102),
+    "CalculateCrystalFlashHdmaObjectTablePtrs":
+        ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
+    "CalculatePowerBombHdmaObjectTablePtrs":
+        ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
+    "CalculatePowerBombHdmaTablePointers":
+        ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
+    "CalculateXrayHdmaTable":
+        ("bank08_v2.c", 4, 0, 0, 0, 28, 300),
+    "HdmaobjPreInstr_DF94":
+        ("bank08_v2.c", 2, 0, 0, 0, 14, 60),
+    "HdmaobjPreInstr_FogBG3Scroll":
+        ("bank08_v2.c", 2, 4, 0, 0, 6, 51),
+    "HdmaobjPreInstr_RainBg3Scroll":
+        ("bank08_v2.c", 2, 4, 0, 0, 6, 87),
+    "HdmaobjPreInstr_SporesBG3Xscroll":
+        ("bank08_v2.c", 2, 4, 0, 0, 6, 55),
+    "sub_88E987":
+        ("bank08_v2.c", 4, 0, 0, 0, 8, 152),
 }
 
 # Manifest-driven emission may retain the cfg name or use the canonical LoROM
@@ -370,51 +411,50 @@ def verify_hdma_effect_bounds(gen_dir: Path) -> int:
     native vertical checks and table clipping math; this verifier prevents
     mistaking those paths for OAM culls and catches regenerated shape changes.
     """
-    path = gen_dir / "bank88_v2.c"
-    if not path.exists():
-        raise SystemExit(f"apply_widescreen_overrides: missing {path}")
-    text = path.read_text(encoding="utf-8")
     counts = {name: 0 for name in HDMA_EFFECT_BOUNDS}
-    for match in FUNC_RE.finditer(text):
-        base = match.group("base")
-        if base not in HDMA_EFFECT_BOUNDS:
-            continue
-        start, end = function_extent(text, match.start())
-        body = text[start:end]
-        expected_ff_masks, expected_cam_x, expected_cam_y = (
-            HDMA_EFFECT_BOUNDS[base]
-        )
-        if "0xfe00" in body or "0x037" in body:
-            raise SystemExit(
-                "apply_widescreen_overrides: HDMA effect path gained a "
-                f"sprite-style mask/OAM write in "
-                f"{match.group(0).split('(')[0].strip()}"
+    for path in sorted(gen_dir.glob("*.c")):
+        text = path.read_text(encoding="utf-8")
+        for match in FUNC_RE.finditer(text):
+            base = match.group("base")
+            if base not in HDMA_EFFECT_BOUNDS:
+                continue
+            start, end = function_extent(text, match.start())
+            body = text[start:end]
+            expected_ff_masks, expected_cam_x, expected_cam_y, _count = (
+                HDMA_EFFECT_BOUNDS[base]
             )
-        ff_masks = len(re.findall(r"uint16\s+_v\d+\s+=\s+0xff00;", body))
-        if ff_masks != expected_ff_masks:
-            raise SystemExit(
-                "apply_widescreen_overrides: HDMA effect mask count changed "
-                f"in {match.group(0).split('(')[0].strip()}: expected "
-                f"{expected_ff_masks}, got {ff_masks}"
-            )
-        cam_x = body.count("0x0911")
-        cam_y = body.count("0x0915")
-        if cam_x != expected_cam_x or cam_y != expected_cam_y:
-            raise SystemExit(
-                "apply_widescreen_overrides: HDMA effect camera usage "
-                f"changed in {match.group(0).split('(')[0].strip()}: "
-                f"expected x/y {expected_cam_x}/{expected_cam_y}, got "
-                f"{cam_x}/{cam_y}"
-            )
-        if "0x18c0" not in body.lower() and base in {
-            "bank_88_8C62", "bank_88_8F56", "bank_88_A42F",
-        }:
-            raise SystemExit(
-                "apply_widescreen_overrides: HDMA table pointer writer "
-                f"changed in {match.group(0).split('(')[0].strip()}"
-            )
-        counts[base] += 1
-    expected_counts = {name: 1 for name in HDMA_EFFECT_BOUNDS}
+            if "0xfe00" in body or "0x037" in body:
+                raise SystemExit(
+                    "apply_widescreen_overrides: HDMA effect path gained a "
+                    f"sprite-style mask/OAM write in "
+                    f"{match.group(0).split('(')[0].strip()}"
+                )
+            ff_masks = len(re.findall(
+                r"uint16\s+_v\d+\s+=\s+0xff00;", body))
+            if ff_masks != expected_ff_masks:
+                raise SystemExit(
+                    "apply_widescreen_overrides: HDMA effect mask count "
+                    f"changed in {match.group(0).split('(')[0].strip()}: "
+                    f"expected {expected_ff_masks}, got {ff_masks}"
+                )
+            cam_x = body.count("0x0911")
+            cam_y = body.count("0x0915")
+            if cam_x != expected_cam_x or cam_y != expected_cam_y:
+                raise SystemExit(
+                    "apply_widescreen_overrides: HDMA effect camera usage "
+                    f"changed in {match.group(0).split('(')[0].strip()}: "
+                    f"expected x/y {expected_cam_x}/{expected_cam_y}, got "
+                    f"{cam_x}/{cam_y}"
+                )
+            if "0x18c0" not in body.lower() and base in HDMA_POINTER_WRITERS:
+                raise SystemExit(
+                    "apply_widescreen_overrides: HDMA table pointer writer "
+                    f"changed in {match.group(0).split('(')[0].strip()}"
+                )
+            counts[base] += 1
+    expected_counts = {
+        name: spec[3] for name, spec in HDMA_EFFECT_BOUNDS.items()
+    }
     if counts != expected_counts:
         raise SystemExit(
             "apply_widescreen_overrides: expected HDMA effect variants "
