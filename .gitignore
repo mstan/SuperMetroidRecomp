@@ -26,6 +26,7 @@ saves/
 # Crash / boot diagnostics (generated at runtime)
 last_run_report.json
 boot_trace*.txt
+tier2_coverage.json
 
 # IDE
 .vs/

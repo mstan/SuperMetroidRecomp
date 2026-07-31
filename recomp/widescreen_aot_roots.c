@@ -25,6 +25,18 @@ void SmWidescreenOverrideAotRoots(CpuState *cpu) {
   AtmosphericTypeFunc_1_FootstepSplash(cpu);
   SamusBottomDrawn_0_Standing(cpu);
   Samus_ArmCannon_Draw(cpu);
+  /* DrawSamusSpritemap runs from the $81 mirror at draw time; the X=1 entry
+   * is not reachable from the attract profile roots but the postprocessor
+   * verifies both mirror variants. */
+  cpu_dispatch_pc(cpu, 0x8189AE);
+  Samus_CalcSpritemapPos_Default(cpu);
+  Samus_CalcSpritemapPos_Standing(cpu);
+  Samus_CalcSpritemapPos_Crouch(cpu);
+  AtmosphericTypeFunc_Common(cpu);
+  ProjectileTrail_Func5(cpu);
+  HandleGrappleBeamFlare(cpu);
+  /* HandleGrappleBeamFlare also draws from the $9B mirror. */
+  cpu_dispatch_pc(cpu, 0x9BC036);
   GrappleBeamHandler(cpu);
   GrappleBeamFunc_FireGoToCancel(cpu);
   GrappleBeamFunc_Firing(cpu);

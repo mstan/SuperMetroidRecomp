@@ -11,9 +11,6 @@
 #include "variables.h"
 #include "sm_rtl.h"
 
-const RamRoutineGuard g_ram_routine_guards[1] = {{0, 0, 0}};
-const unsigned g_ram_routine_guard_count = 0;
-
 RecompReturn GrappleFunc_AF87_M0X0(CpuState *cpu);
 RecompReturn GrappleFunc_AF87_M1X0(CpuState *cpu);
 
