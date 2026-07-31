@@ -44,6 +44,12 @@ if(BUILD_TESTING)
         SKIP_RETURN_CODE 77)
 endif()
 
+# The SM host shell (main.c, opengl.c, sm_display.c) is written against
+# SDL2; pin the framework's compatibility backend until the shell is ported
+# to the SDL3 default.
+set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
+    "Desktop SDL backend (SDL3 or SDL2)")
+
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
 # Launcher UI backend: the SHARED recomp-ui launcher (F:\Projects\recomp-ui,
@@ -149,4 +155,5 @@ endif()
 # wires sources/includes/RECOMP_LAUNCHER define/CXX/asset-staging (same SM
 # boxart; recomp-ui's default pad.tga is already the SNES pad).
 recomp_target_launcher_ui(SuperMetroidSNESRecomp
+    CONSOLE snes
     BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)

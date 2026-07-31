@@ -48,7 +48,6 @@ typedef struct Config {
   uint8 audio_channels;
   uint16 audio_samples;
   bool autosave;
-  bool extend_y;
   bool no_sprite_limits;
   // Opt-in 16:9 presentation. Off preserves the authentic 256-wide view.
   bool widescreen;
