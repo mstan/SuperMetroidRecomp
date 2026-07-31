@@ -71,3 +71,10 @@ _*
 # Release artifacts (built locally, uploaded via gh release upload)
 SuperMetroidSNESRecomp-windows-*.zip
 release-stage/
+
+# Android build: pinned SDL2 source (android/fetch_sdl.sh) + gradle output
+android/app/jni/SDL/
+android/.gradle/
+android/app/build/
+android/app/.cxx/
+android/local.properties
