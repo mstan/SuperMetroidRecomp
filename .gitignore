@@ -60,6 +60,7 @@ Thumbs.db
 # Screenshots / scratch BMPs and PNGs
 *.bmp
 *.png
+!android/app/src/main/res/mipmap-*/ic_launcher.png
 
 # Per-session debugging / triage scratch (any underscore-prefixed file
 # at the repo root is treated as scratch and not committed).
