@@ -1049,17 +1049,27 @@ int main(int argc, char** argv) {
     config_file = argv[1];
     argc -= 2, argv += 2;
   } else {
-    SwitchDirectory();
-    /* SwitchDirectory walks up 3 levels for an existing mmx.ini. If
-     * none found (typical first-launch from a release directory),
-     * write a default next to the executable and chdir there. */
+    /* Anchor cwd to the binary's own directory FIRST, using the shared engine
+     * helper the other SNES titles use. This is what makes an AppImage work:
+     * host_paths.c prefers $APPIMAGE over /proc/self/exe, so "next to the
+     * binary" means next to the user-visible .AppImage file rather than inside
+     * the read-only squashfs mount. Relying on argv[0] (as the previous
+     * walk-up + EnsureMmxIniNextToExe path did) resolved into the mount, so
+     * config.ini, keybinds.ini and saves/ were silently discarded on every
+     * Linux launch — tools/test_appimage_layout.sh catches exactly this. */
+    extern int snesrecomp_anchor_to_exe_dir(void);
+    int anchored = snesrecomp_anchor_to_exe_dir();
+    if (!anchored) {
+      /* Read-only install: fall back to the historical walk-up so a Windows
+       * copy in an unwritable directory still finds a config. */
+      SwitchDirectory();
+    }
     EnsureMmxIniNextToExe(program_path);
-    /* SM has no exe-dir anchor helper; the walk-up + exe-dir fallback
-     * above is its equivalent — record where config resolution landed. */
     {
       char cwdbuf[1024];
-      host_report_breadcrumb("config dir anchored: %s",
-                             getcwd(cwdbuf, sizeof(cwdbuf)) ? cwdbuf : "(unknown)");
+      host_report_breadcrumb("config dir anchored: %s (exe-dir anchor: %s)",
+                             getcwd(cwdbuf, sizeof(cwdbuf)) ? cwdbuf : "(unknown)",
+                             anchored ? "ok" : "declined");
     }
   }
   int start_paused = 0;
@@ -1296,13 +1306,17 @@ int main(int argc, char** argv) {
       }
     }
     if (debug_server_init(debug_port) == 0) {
+#if SNESRECOMP_TRACE
       fprintf(stderr, "[main] Debug server ready on port %d\n", debug_port);
+#endif
     } else {
       fprintf(stderr, "[main] Debug server failed to bind port %d\n", debug_port);
     }
     if (start_paused) {
       debug_server_start_paused();
+#if SNESRECOMP_TRACE
       fprintf(stderr, "[main] Started paused — send 'step N' or 'continue' via TCP\n");
+#endif
     }
   }
 
@@ -2219,5 +2233,18 @@ static void EnsureMmxIniNextToExe(const char *exe_path) {
     fclose(f);
     return;
   }
+  /* Prefer the anchored cwd: snesrecomp_anchor_to_exe_dir() has already pointed
+   * it at the .AppImage's folder (or the exe dir on Windows). Deriving the
+   * directory from argv[0] instead — as WriteDefaultMmxIni does — resolves
+   * inside the read-only AppImage mount, where the write silently fails and the
+   * player loses config, keybinds and saves on every launch. */
+  f = fopen("config.ini", "w");
+  if (f) {
+    fputs(kDefaultSmwIniContent, f);
+    fclose(f);
+    printf("[config.ini] Generated config.ini in the anchored directory\n");
+    return;
+  }
+  /* Anchor declined (read-only install): fall back to the exe-relative write. */
   WriteDefaultMmxIni(exe_path);
 }

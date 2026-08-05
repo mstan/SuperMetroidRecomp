@@ -7,34 +7,41 @@ contains the executable, MinGW runtime dependencies, recomp-ui launcher
 assets, configuration, and README. ROMs and ROM-derived generated C are never
 staged.
 
-Ships ONE windows zip (and ONLY a zip — never a bare exe; the exe is useless
-without SDL2.dll and the recomp-ui assets/ next to it). Zip lands in
-release-stage\SuperMetroidRecomp-windows-<Version>.zip. Publish via gh AFTER
-the user signs off:
+Ships ONE windows zip (and ONLY a zip - never a bare exe; the exe is useless
+without its SDL runtime and the recomp-ui assets/ next to it):
 
-  gh release create v<Version> release-stage\SuperMetroidRecomp-windows-<Version>.zip
+  SuperMetroidSNESRecomp-windows-x64-v<Version>.zip
 
 This script does NOT build. Build first, e.g.:
-  $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+  export PATH=/c/msys64/mingw64/bin:$PATH
   cmake --build build-recompui -j
 
+The archive is written with portable ('/') ZIP entry names and then re-read to
+reject any Windows-only entry name. This is what lets Linux/Steam Deck
+extractors rebuild the nested assets/ (and mods/packages/) hierarchy, so a
+Windows build running under Proton finds its bundled launcher assets.
+
+Zips land in release-stage\. Publish via gh only after review/sign-off.
+
 Example:
-  powershell -File tools\make_release.ps1 -Version 0.1.0 `
+  powershell -File tools\make_release.ps1 -Version 0.9.0 `
     -BuildDir build-recompui -RuntimeBinDir C:\msys64\mingw64\bin
 
-NOTE: mingw builds produce no .pdb, so this script does not archive one.
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [string]$BuildDir = 'build-recompui',
-  [string]$RuntimeBinDir = 'C:\msys64\mingw64\bin'
+  [string]$RuntimeBinDir = 'C:\msys64\mingw64\bin',
+  [ValidateSet('SDL3', 'SDL2')][string]$SdlBackend = 'SDL3'
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root $BuildDir
-$exe = Join-Path $build 'SuperMetroidSNESRecomp.exe'
+$exeName = 'SuperMetroidSNESRecomp.exe'
+$exe = Join-Path $build $exeName
 $assets = Join-Path $build 'assets'
+$mods = Join-Path $build 'mods'
 
 if (-not (Test-Path -LiteralPath $exe)) {
   throw "Release executable missing: $exe"
@@ -43,8 +50,22 @@ if (-not (Test-Path -LiteralPath $assets)) {
   throw "recomp-ui launcher assets/ missing: $assets"
 }
 
+# The exe must actually carry the version it is being packaged as. host_report
+# stamps crash breadcrumbs with SNESRECOMP_BUILD_VERSION, so a build configured
+# without it (or with it mangled) would ship reports that cannot be tied to this
+# release. PowerShell silently rewrites an unquoted `-DSNESRECOMP_BUILD_VERSION=
+# 0.10.0` to `0`, which is exactly how that happens in practice — always pass
+# `"-DSNESRECOMP_BUILD_VERSION:STRING=<version>"` quoted.
+$exeText = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($exe))
+if (-not $exeText.Contains($Version)) {
+  throw ("Release executable is not stamped with version '$Version'. " +
+    "Reconfigure with `"-DSNESRECOMP_BUILD_VERSION:STRING=$Version`" " +
+    'and rebuild before packaging.')
+}
+
 $out = Join-Path $root 'release-stage'
-$stageName = "SuperMetroidRecomp-windows-$Version"
+$stageBase = 'SuperMetroidSNESRecomp'
+$stageName = "$stageBase-windows-x64-v$Version"
 $stage = Join-Path $out $stageName
 $zip = Join-Path $out "$stageName.zip"
 
@@ -65,23 +86,42 @@ if (Test-Path -LiteralPath $zip) {
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
 Copy-Item -LiteralPath $exe -Destination $stage
-Copy-Item -LiteralPath (Join-Path $root 'config.ini') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $stage
 Copy-Item -LiteralPath $assets -Destination $stage -Recurse
+# Release-owned mod catalog, when the build stages one. Ships as a nested
+# directory tree, which is exactly what made portable ZIP entry names matter
+# (see the archive writer below).
+if (Test-Path -LiteralPath $mods) {
+  Copy-Item -LiteralPath $mods -Destination $stage -Recurse
+}
 
-# keybinds.ini is user-generated (PSR-style rebind UI) and only exists next
-# to the exe once someone has actually rebound a key; ship it if present.
+# keybinds.ini is auto-generated next to the exe on first run (regenerated if
+# deleted); ship whatever is currently sitting next to the built exe, if any.
 $kb = Join-Path $build 'keybinds.ini'
 if (Test-Path -LiteralPath $kb) {
   Copy-Item -LiteralPath $kb -Destination $stage
 }
 
+# config.ini ships Widescreen = 0 regardless of the repo's working-tree value
+# (a dev may have flipped it locally while testing); the launcher toggles +
+# persists the player's choice at runtime.
+(Get-Content (Join-Path $root 'config.ini')) -replace '^Widescreen\s*=.*$', 'Widescreen = 0' |
+  Out-File (Join-Path $stage 'config.ini') -Encoding ascii
+
 $runtimeDlls = @(
-  'SDL2.dll',
   'libgcc_s_seh-1.dll',
   'libstdc++-6.dll',
   'libwinpthread-1.dll'
 )
+$sdlDll = "$SdlBackend.dll"
+$sdlSource = Join-Path $build $sdlDll
+if (-not (Test-Path -LiteralPath $sdlSource)) {
+  $sdlSource = Join-Path $RuntimeBinDir $sdlDll
+}
+if (-not (Test-Path -LiteralPath $sdlSource)) {
+  throw "Required $SdlBackend runtime DLL missing from build or runtime bin: $sdlDll"
+}
+Copy-Item -LiteralPath $sdlSource -Destination $stage
 foreach ($name in $runtimeDlls) {
   $source = Join-Path $RuntimeBinDir $name
   if (-not (Test-Path -LiteralPath $source)) {
@@ -90,7 +130,60 @@ foreach ($name in $runtimeDlls) {
   Copy-Item -LiteralPath $source -Destination $stage
 }
 
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+# ZIP entry names always use '/', regardless of the host OS. Compress-Archive
+# preserves Windows backslashes, which POSIX extractors may treat as literal
+# filename characters instead of directory separators. That is what stopped
+# Linux/Steam Deck extractors from creating the nested assets/ and
+# mods/packages/ hierarchies, so a Windows build running under Proton could not
+# discover its bundled launcher assets or mod catalog.
+$stagePrefix = $stageFull.TrimEnd('\') + '\'
+$files = @(Get-ChildItem -LiteralPath $stage -File -Recurse |
+  Sort-Object FullName)
+$archive = [IO.Compression.ZipFile]::Open(
+  $zipFull, [IO.Compression.ZipArchiveMode]::Create)
+try {
+  foreach ($file in $files) {
+    $fileFull = [IO.Path]::GetFullPath($file.FullName)
+    if (-not $fileFull.StartsWith(
+        $stagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+      throw "Refusing to archive a file outside the release stage: $fileFull"
+    }
+    $entryName = $fileFull.Substring($stagePrefix.Length).Replace('\', '/')
+    if ($entryName.StartsWith('/') -or
+        $entryName -match '(^|/)\.\.(/|$)') {
+      throw "Unsafe ZIP entry name: $entryName"
+    }
+    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+      $archive, $fileFull, $entryName,
+      [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+  }
+} finally {
+  $archive.Dispose()
+}
+
+# Read the archive back and reject non-portable entry names outright, so a
+# regression in the writer cannot ship a zip that only extracts on Windows.
+$archive = [IO.Compression.ZipFile]::OpenRead($zipFull)
+try {
+  $badEntries = @($archive.Entries | Where-Object {
+    $_.FullName.Contains('\') -or
+    $_.FullName.StartsWith('/') -or
+    $_.FullName -match '(^|/)\.\.(/|$)'
+  })
+  if ($badEntries.Count -ne 0) {
+    throw "ZIP contains non-portable entry names: $(
+      ($badEntries | ForEach-Object FullName) -join ', ')"
+  }
+  if ($archive.Entries.Count -ne $files.Count) {
+    throw "ZIP entry count mismatch: expected $($files.Count), got $(
+      $archive.Entries.Count)"
+  }
+} finally {
+  $archive.Dispose()
+}
 
 Write-Host "--- $stageName ---"
 Get-ChildItem -LiteralPath $stage | Select-Object Name, Length | Out-Host
