@@ -1544,7 +1544,12 @@ error_reading:;
       return 1;
     }
     g_audio_channels = 2;
-    g_frames_per_block = (534 * have.freq) / 32000;
+    /* The SPC's native rate is 32040 Hz (1.024 MHz / 32), not 32000. This
+     * divisor and the AudioFreq default were corrected together for the other
+     * titles in snesrecomp f022984; that change never reached Super Metroid, so
+     * it opened the device 40 samples/s slower than the guest produces and
+     * walked the output ring to its cap in under three minutes of play. */
+    g_frames_per_block = (534 * have.freq + 32040 / 2) / 32040;
     g_audiobuffer = (uint8 *)calloc(g_frames_per_block * have.channels * sizeof(int16), 1);
     host_report_breadcrumb(
         "audio device opened: freq=%d (want %d) ch=%d samples=%d frames_per_block=%d",
