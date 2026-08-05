@@ -1549,6 +1549,9 @@ error_reading:;
      * titles in snesrecomp f022984; that change never reached Super Metroid, so
      * it opened the device 40 samples/s slower than the guest produces and
      * walked the output ring to its cap in under three minutes of play. */
+    /* The consumer converts the SPC's native 32040 Hz onto this rate and
+     * cannot infer it; see RtlSetAudioOutputRate in common_rtl.h. */
+    RtlSetAudioOutputRate(have.freq);
     g_frames_per_block = (534 * have.freq + 32040 / 2) / 32040;
     g_audiobuffer = (uint8 *)calloc(g_frames_per_block * have.channels * sizeof(int16), 1);
     host_report_breadcrumb(
