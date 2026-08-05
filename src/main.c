@@ -8,7 +8,9 @@
  * SDL2main's WinMain->SDL_main indirection (which left SDL_main
  * undefined at link). Link SDL2::SDL2 only and call SDL_SetMainReady. */
 #define SDL_MAIN_HANDLED 1
-#include <SDL.h>
+/* Shared SDL2/SDL3 include boundary. Selected by SNESRECOMP_SDL_BACKEND via
+ * snesrecomp_target_sdl() in CMakeLists.txt; do not include <SDL.h> directly. */
+#include "desktop/sdl_compat.h"
 #ifdef _WIN32
 #include <windows.h>
 #include "platform/win32/volume_control.h"

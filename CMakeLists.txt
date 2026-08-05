@@ -52,7 +52,6 @@ include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 # engine in favour of this shared, console-agnostic launcher.
 include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 
-find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 # Generated recompiler output (produced by tools/regen.sh; not committed).
 file(GLOB SM_GEN_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/gen/*.c)
@@ -103,8 +102,14 @@ target_include_directories(SuperMetroidSNESRecomp PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/recomp
     ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
-    ${SDL2_INCLUDE_DIRS}
 )
+
+# SDL3 by default, SDL2 via -DSNESRECOMP_SDL_BACKEND=SDL2. This replaces the
+# game's own find_package(SDL2)/SDL2::SDL2 wiring: recomp-ui and the runner now
+# select their SDL major through the same switch, and hardcoding SDL2 here put
+# two SDL majors in one binary once recomp-ui defaulted to SDL3. Host sources
+# include "desktop/sdl_compat.h" rather than <SDL.h> so both majors build.
+snesrecomp_target_sdl(SuperMetroidSNESRecomp)
 
 # Release version stamp: configure with -DSNESRECOMP_BUILD_VERSION=<ver>
 # (the CMake equivalent of the MSVC games' /p:SnesRecompBuildVersion); it
@@ -132,9 +137,10 @@ if(NOT MSVC)
         -w -Wno-implicit-function-declaration)
 endif()
 
+# SDL comes from snesrecomp_target_sdl() above (either major, no SDLmain;
+# main.c defines SDL_MAIN_HANDLED).
 target_link_libraries(SuperMetroidSNESRecomp PRIVATE
     ${SNESRECOMP_RUNNER_LIBRARIES}
-    SDL2::SDL2          # SDL2 only (no SDL2main); main.c defines SDL_MAIN_HANDLED
     OpenGL::GL
 )
 
@@ -148,5 +154,9 @@ endif()
 # Dear ImGui pre-boot launcher (GUI) from the shared recomp-ui repo. One call
 # wires sources/includes/RECOMP_LAUNCHER define/CXX/asset-staging (same SM
 # boxart; recomp-ui's default pad.tga is already the SNES pad).
+# CONSOLE is required by recomp-ui: it selects exactly one validated
+# assets/consoles/<id>/ manifest, so an SNES game cannot silently stage N64
+# cartridge or NES pad art next to the exe.
 recomp_target_launcher_ui(SuperMetroidSNESRecomp
+    CONSOLE snes
     BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
