@@ -1,6 +1,9 @@
 #pragma once
 #include "types.h"
-#include <SDL_keycode.h>
+/* SDL keycodes come through the shared SDL2/SDL3 boundary (SDL3 moved the
+ * header path); sdl_compat.h enables SDL3's old-name aliases so SDLK_* keep
+ * working across both majors. */
+#include "desktop/sdl_compat.h"
 
 enum {
   kKeys_Null,

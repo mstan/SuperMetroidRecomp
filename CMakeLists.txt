@@ -46,11 +46,12 @@ if(BUILD_TESTING AND NOT ANDROID)
         SKIP_RETURN_CODE 77)
 endif()
 
-# The SM host shell (main.c, opengl.c, sm_display.c) is written against
-# SDL2; pin the framework's compatibility backend until the shell is ported
-# to the SDL3 default.
-set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
-    "Desktop SDL backend (SDL3 or SDL2)")
+# Android uses the SDL2 source tree fetched by android/fetch_sdl.sh. Desktop
+# keeps the framework default (currently SDL3).
+if(ANDROID)
+    set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
+        "SDL backend (SDL3 or SDL2)" FORCE)
+endif()
 
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
@@ -62,9 +63,8 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 
 # On Android the SDL2 target comes from the sibling add_subdirectory(SDL) in
 # android/app/jni/CMakeLists.txt, and rendering goes through SDL_Renderer on
-# GLES — the desktop-GL presenter is not compiled at all.
+# GLES; the desktop-GL presenter is not compiled at all.
 if(NOT ANDROID)
-    find_package(SDL2 REQUIRED)
     find_package(OpenGL REQUIRED)
 endif()
 # Generated recompiler output (produced by tools/regen.sh; not committed).
@@ -126,8 +126,19 @@ target_include_directories(SuperMetroidSNESRecomp PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/recomp
     ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
-    ${SDL2_INCLUDE_DIRS}
 )
+
+# Desktop SDL is selected through the shared framework helper. Android already
+# has the vendored SDL2 target from android/app/jni/CMakeLists.txt, so wire that
+# target directly instead of asking find_package() for a host installation.
+if(ANDROID)
+    target_link_libraries(SuperMetroidSNESRecomp PRIVATE SDL2::SDL2)
+    target_compile_definitions(SuperMetroidSNESRecomp PRIVATE
+        SNESRECOMP_SDL3=0
+        SDL_MAIN_HANDLED)
+else()
+    snesrecomp_target_sdl(SuperMetroidSNESRecomp)
+endif()
 
 # Release version stamp: configure with -DSNESRECOMP_BUILD_VERSION=<ver>
 # (the CMake equivalent of the MSVC games' /p:SnesRecompBuildVersion); it
@@ -158,14 +169,12 @@ endif()
 if(ANDROID)
     target_link_libraries(SuperMetroidSNESRecomp PRIVATE
         ${SNESRECOMP_RUNNER_LIBRARIES}
-        SDL2::SDL2      # from the sibling SDL2 subproject
         android
         log
     )
 else()
     target_link_libraries(SuperMetroidSNESRecomp PRIVATE
         ${SNESRECOMP_RUNNER_LIBRARIES}
-        SDL2::SDL2      # SDL2 only (no SDL2main); main.c defines SDL_MAIN_HANDLED
         OpenGL::GL
     )
 endif()
@@ -180,6 +189,9 @@ endif()
 # Dear ImGui pre-boot launcher (GUI) from the shared recomp-ui repo. One call
 # wires sources/includes/RECOMP_LAUNCHER define/CXX/asset-staging (same SM
 # boxart; recomp-ui's default pad.tga is already the SNES pad).
+# CONSOLE is required by recomp-ui: it selects exactly one validated
+# assets/consoles/<id>/ manifest, so an SNES game cannot silently stage N64
+# cartridge or NES pad art next to the exe.
 recomp_target_launcher_ui(SuperMetroidSNESRecomp
     CONSOLE snes
     BOXART ${CMAKE_CURRENT_SOURCE_DIR}/recomp/launcher/boxart.tga)

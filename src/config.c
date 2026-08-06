@@ -2,7 +2,7 @@
 #include "types.h"
 #include <stdio.h>
 #include <string.h>
-#include <SDL.h>
+#include "desktop/sdl_compat.h"
 #include "util.h"
 
 enum {
@@ -427,7 +427,10 @@ void ParseConfigFile(const char *filename) {
    * exe leaves audio_freq/audio_channels/audio_samples at 0, which
    * either makes SDL_OpenAudioDevice fail or opens a degenerate
    * device with frames-per-block math that produces silence. */
-  g_config.audio_freq = 32000;
+  /* 32040, not 32000: the SPC outputs 32040 Hz natively (1.024 MHz / 32), so
+   * opening at 32000 both detunes everything -2.2 cents and under-drains the
+   * output ring. See the frames_per_block note in main.c. */
+  g_config.audio_freq = 32040;
   g_config.audio_channels = 2;
   g_config.audio_samples = 512;
   /* Default to gamepad-enabled so a freshly-extracted release (no
