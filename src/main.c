@@ -7,10 +7,18 @@
 /* MinGW/CMake build: keep plain main() as the entry point instead of
  * SDL2main's WinMain->SDL_main indirection (which left SDL_main
  * undefined at link). Link SDL2::SDL2 only and call SDL_SetMainReady. */
+#ifndef __ANDROID__
 #define SDL_MAIN_HANDLED 1
+#endif
 /* Shared SDL2/SDL3 include boundary. Selected by SNESRECOMP_SDL_BACKEND via
  * snesrecomp_target_sdl() in CMakeLists.txt; do not include <SDL.h> directly. */
 #include "desktop/sdl_compat.h"
+#ifdef __ANDROID__
+/* SDLActivity loads libmain.so and dlsyms its SDL_main. The build still
+ * defines SDL_MAIN_HANDLED (recomp-ui's cmake adds it for every backend),
+ * so SDL.h does not remap main — do it explicitly. */
+#define main SDL_main
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #include "platform/win32/volume_control.h"
@@ -1000,7 +1008,9 @@ static void post_mortem_atexit(void) {
   recomp_post_mortem_dump("atexit", NULL);
 }
 
-#undef main
+#ifndef __ANDROID__
+#undef main   /* desktop: keep plain main() even if SDL_main.h remapped it */
+#endif
 int main(int argc, char** argv) {
 #ifndef _WIN32
   /* On Windows, do NOT install a SIGSEGV handler: the CRT's signal shim
@@ -1011,6 +1021,15 @@ int main(int argc, char** argv) {
   signal(SIGSEGV, crash_handler);
 #endif
   signal(SIGABRT, crash_handler);
+#ifdef __ANDROID__
+  /* All relative I/O (config.ini, rom.cfg, saves/, last_run_report.json)
+   * lands in the app's external files dir, which is adb-pushable:
+   * /sdcard/Android/data/com.snesrecomp.supermetroid/files */
+  {
+    const char *storage = SDL_AndroidGetExternalStoragePath();
+    if (storage) chdir(storage);
+  }
+#endif
 #ifdef _WIN32
   SetUnhandledExceptionFilter(seh_handler);
   /* Suppress the Windows error dialog so SEH unwinds straight to our
@@ -1384,10 +1403,15 @@ int main(int argc, char** argv) {
   int window_height = custom_size ? g_config.window_height :
       g_current_window_scale * SmDisplay_GetWindowBaseHeight();
 
+#ifndef __ANDROID__
   if (g_config.output_method == kOutputMethod_OpenGL) {
     g_win_flags |= SDL_WINDOW_OPENGL;
     OpenGLRenderer_Create(&g_renderer_funcs);
-  } else {
+  } else
+#endif
+  {
+    /* Android: always SDL_Renderer (GLES-backed); the desktop-GL presenter
+     * is not compiled there. */
     g_renderer_funcs = kSdlRendererFuncs;
   }
 

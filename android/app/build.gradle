@@ -1,0 +1,39 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "com.snesrecomp.supermetroid"
+    compileSdkVersion 34
+    ndkVersion "26.3.11579264"
+    defaultConfig {
+        applicationId "com.snesrecomp.supermetroid"
+        // posix_spawn (recomp-ui launcher_files.c) needs bionic API 28+.
+        minSdkVersion 28
+        targetSdkVersion 34
+        versionCode 1
+        versionName "0.1"
+        externalNativeBuild {
+            cmake {
+                // The recompiled banks are huge; always compile them optimized.
+                arguments "-DANDROID_STL=c++_static",
+                          "-DCMAKE_BUILD_TYPE=Release"
+                abiFilters 'arm64-v8a'
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path 'jni/CMakeLists.txt'
+        }
+    }
+    // SDL's Java glue (org.libsdl.app) is copied from the pinned SDL2 source
+    // release by android/fetch_sdl.sh and must version-match jni/SDL.
+    lint {
+        abortOnError false
+    }
+}

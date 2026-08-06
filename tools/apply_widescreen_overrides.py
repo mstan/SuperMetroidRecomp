@@ -112,7 +112,19 @@ RESIDUAL_CAMERA_X_RISK = {
     # verifier above. Keep this list exact so new risky generated shapes cannot
     # slip in without being reviewed.
     "AtmosphericTypeFunc_Common": ("bank10_v2.c", 2, 2, 0, 0, 2, 38),
+    # Canonical low-bank twins of the audited bank_88_* HDMA calculators
+    # below: same code bodies materialized at the cfg-canonical $08 addresses
+    # by the widescreen root scan. Non-culling for the same reasons.
+    "CalculateCrystalFlashHdmaObjectTablePtrs": ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
+    "CalculatePowerBombHdmaObjectTablePtrs": ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
+    "CalculatePowerBombHdmaTablePointers": ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
+    "CalculateXrayHdmaTable": ("bank08_v2.c", 4, 0, 0, 0, 28, 300),
     "DrawGrappleOams3": ("bank14_v2.c", 2, 0, 0, 6, 2, 78),
+    "HdmaobjPreInstr_DF94": ("bank08_v2.c", 2, 0, 0, 0, 14, 60),
+    "HdmaobjPreInstr_FogBG3Scroll": ("bank08_v2.c", 2, 4, 0, 0, 6, 51),
+    "HdmaobjPreInstr_RainBg3Scroll": ("bank08_v2.c", 2, 4, 0, 0, 6, 87),
+    "HdmaobjPreInstr_SporesBG3Xscroll": ("bank08_v2.c", 2, 4, 0, 0, 6, 55),
+    "sub_88E987": ("bank08_v2.c", 4, 0, 0, 0, 8, 152),
     "HandleGrappleBeamFlare": ("bank1b_v2.c", 4, 4, 0, 0, 24, 204),
     "HandleGrappleBeamGfx": ("bank14_v2.c", 1, 1, 0, 0, 10, 95),
     "ProjectileTrail_Func5": ("bank1b_v2.c", 4, 16, 0, 0, 28, 436),
@@ -142,7 +154,9 @@ RESIDUAL_CAMERA_X_RISK = {
     "bank_94_B0F9": ("bank94_v2.c", 1, 1, 0, 3, 2, 47),
     "bank_94_B14B": ("bank94_v2.c", 1, 0, 0, 3, 1, 38),
     "bank_9B_A3CC": ("bank9b_v2.c", 1, 4, 0, 0, 7, 109),
-    "bank_9B_C036": ("bank9b_v2.c", 2, 2, 0, 0, 12, 102),
+    # All four provable variants of the $9B HandleGrappleBeamFlare mirror are
+    # materialized via the widescreen root scan (was 2 profile-reached ones).
+    "bank_9B_C036": ("bank9b_v2.c", 4, 4, 0, 0, 24, 204),
     "CalculateCrystalFlashHdmaObjectTablePtrs":
         ("bank08_v2.c", 2, 2, 0, 0, 8, 102),
     "CalculatePowerBombHdmaObjectTablePtrs":

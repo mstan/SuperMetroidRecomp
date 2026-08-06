@@ -12,12 +12,14 @@ project(SuperMetroidSNESRecomp C)
 
 set(CMAKE_C_STANDARD 11)
 
-set(SNESRECOMP_ROOT ${CMAKE_SOURCE_DIR}/snesrecomp)
+set(SNESRECOMP_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp)
 
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-include(CTest)
-if(BUILD_TESTING)
+if(NOT ANDROID)
+    include(CTest)
+endif()
+if(BUILD_TESTING AND NOT ANDROID)
     add_executable(sm_display_test tests/sm_display_test.c src/sm_display.c)
     target_include_directories(sm_display_test PRIVATE
         src
@@ -37,11 +39,18 @@ if(BUILD_TESTING)
 
     add_test(NAME sm_widescreen_visual_smoke
         COMMAND ${Python3_EXECUTABLE}
-                ${CMAKE_SOURCE_DIR}/tools/widescreen_visual_smoke.py
-                --root ${CMAKE_SOURCE_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/widescreen_visual_smoke.py
+                --root ${CMAKE_CURRENT_SOURCE_DIR}
                 --skip-missing)
     set_tests_properties(sm_widescreen_visual_smoke PROPERTIES
         SKIP_RETURN_CODE 77)
+endif()
+
+# Android uses the SDL2 source tree fetched by android/fetch_sdl.sh. Desktop
+# keeps the framework default (currently SDL3).
+if(ANDROID)
+    set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
+        "SDL backend (SDL3 or SDL2)" FORCE)
 endif()
 
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
@@ -50,11 +59,16 @@ include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 # consumed as the ./recomp-ui junction/submodule) so every recomp game drives
 # ONE launcher repo. The former in-tree launcher_ng has been retired from the
 # engine in favour of this shared, console-agnostic launcher.
-include(${CMAKE_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
 
-find_package(OpenGL REQUIRED)
+# On Android the SDL2 target comes from the sibling add_subdirectory(SDL) in
+# android/app/jni/CMakeLists.txt, and rendering goes through SDL_Renderer on
+# GLES; the desktop-GL presenter is not compiled at all.
+if(NOT ANDROID)
+    find_package(OpenGL REQUIRED)
+endif()
 # Generated recompiler output (produced by tools/regen.sh; not committed).
-file(GLOB SM_GEN_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/gen/*.c)
+file(GLOB SM_GEN_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/gen/*.c)
 if(NOT SM_GEN_SOURCES)
     message(FATAL_ERROR
         "src/gen/ is empty — run the regen (see header) with a verified "
@@ -66,50 +80,65 @@ endif()
 # regen cannot silently discard widescreen spawning/effect culling support.
 add_custom_target(sm_widescreen_overrides ALL
     COMMAND ${Python3_EXECUTABLE}
-            ${CMAKE_SOURCE_DIR}/tools/apply_widescreen_overrides.py
-            --check --gen-dir ${CMAKE_SOURCE_DIR}/src/gen
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/apply_widescreen_overrides.py
+            --check --gen-dir ${CMAKE_CURRENT_SOURCE_DIR}/src/gen
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Applying Super Metroid widescreen enemy range overrides"
     VERBATIM
 )
 
-add_executable(SuperMetroidSNESRecomp
+set(SM_HOST_SOURCES
     ${SNESRECOMP_RUNNER_SOURCES}
     # game-specific runtime
     src/config.c
     src/sm_display.c
-    src/glsl_shader.c
     src/main.c
     src/post_mortem.c
-    src/opengl.c
     src/gen_stubs.c
     src/sm_cpu_infra.c
     src/sm_rtl.c
     src/sm_spc_player.c
     src/sm_widescreen.c
-    src/fiber_compat.c    # Win32 Fiber API shim (ucontext) for non-Windows
-
-    # OpenGL function loader
-    third_party/gl_core/gl_core_3_1.c
+    src/fiber_compat.c    # Win32 Fiber API shim (ucontext/pthread) for non-Windows
     # recompiled banks (generated)
     ${SM_GEN_SOURCES}
 )
+if(NOT ANDROID)
+    list(APPEND SM_HOST_SOURCES
+        # desktop-GL presenter + GLSL presets + loader (SDL_Renderer on Android)
+        src/glsl_shader.c
+        src/opengl.c
+        third_party/gl_core/gl_core_3_1.c)
+endif()
+
+if(ANDROID)
+    # SDLActivity loads "libmain.so" and calls its SDL_main.
+    add_library(SuperMetroidSNESRecomp SHARED ${SM_HOST_SOURCES})
+    set_target_properties(SuperMetroidSNESRecomp PROPERTIES OUTPUT_NAME main)
+else()
+    add_executable(SuperMetroidSNESRecomp ${SM_HOST_SOURCES})
+endif()
 
 add_dependencies(SuperMetroidSNESRecomp sm_widescreen_overrides)
 
 target_include_directories(SuperMetroidSNESRecomp PRIVATE
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/recomp
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/recomp
     ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
 )
 
-# SDL3 by default, SDL2 via -DSNESRECOMP_SDL_BACKEND=SDL2. This replaces the
-# game's own find_package(SDL2)/SDL2::SDL2 wiring: recomp-ui and the runner now
-# select their SDL major through the same switch, and hardcoding SDL2 here put
-# two SDL majors in one binary once recomp-ui defaulted to SDL3. Host sources
-# include "desktop/sdl_compat.h" rather than <SDL.h> so both majors build.
-snesrecomp_target_sdl(SuperMetroidSNESRecomp)
+# Desktop SDL is selected through the shared framework helper. Android already
+# has the vendored SDL2 target from android/app/jni/CMakeLists.txt, so wire that
+# target directly instead of asking find_package() for a host installation.
+if(ANDROID)
+    target_link_libraries(SuperMetroidSNESRecomp PRIVATE SDL2::SDL2)
+    target_compile_definitions(SuperMetroidSNESRecomp PRIVATE
+        SNESRECOMP_SDL3=0
+        SDL_MAIN_HANDLED)
+else()
+    snesrecomp_target_sdl(SuperMetroidSNESRecomp)
+endif()
 
 # Release version stamp: configure with -DSNESRECOMP_BUILD_VERSION=<ver>
 # (the CMake equivalent of the MSVC games' /p:SnesRecompBuildVersion); it
@@ -137,12 +166,18 @@ if(NOT MSVC)
         -w -Wno-implicit-function-declaration)
 endif()
 
-# SDL comes from snesrecomp_target_sdl() above (either major, no SDLmain;
-# main.c defines SDL_MAIN_HANDLED).
-target_link_libraries(SuperMetroidSNESRecomp PRIVATE
-    ${SNESRECOMP_RUNNER_LIBRARIES}
-    OpenGL::GL
-)
+if(ANDROID)
+    target_link_libraries(SuperMetroidSNESRecomp PRIVATE
+        ${SNESRECOMP_RUNNER_LIBRARIES}
+        android
+        log
+    )
+else()
+    target_link_libraries(SuperMetroidSNESRecomp PRIVATE
+        ${SNESRECOMP_RUNNER_LIBRARIES}
+        OpenGL::GL
+    )
+endif()
 
 # post_mortem.c's crash backtrace uses the Win32 DbgHelp API (StackWalk64,
 # SymFromAddr, ...) on Windows. The MSVC .vcxproj links it via #pragma
@@ -159,4 +194,4 @@ endif()
 # cartridge or NES pad art next to the exe.
 recomp_target_launcher_ui(SuperMetroidSNESRecomp
     CONSOLE snes
-    BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
+    BOXART ${CMAKE_CURRENT_SOURCE_DIR}/recomp/launcher/boxart.tga)
