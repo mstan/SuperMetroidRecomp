@@ -126,4 +126,4 @@ Then fix the GENERATOR (recompiler/v2/* or runtime), never `src/gen`.
 
 `_read_demo.py` (ROM DemoRoomData reader), `_diag_db.py` (opcode + brute-force DB),
 `_tcp_query.py` (debug-server client). DB-trace hook in
-`snesrecomp/runner/src/cpu_trace.c` (env-gated, zero-cost off).
+`snesrecomp/runner/src/debug/cpu_trace.c` (env-gated, zero-cost off).

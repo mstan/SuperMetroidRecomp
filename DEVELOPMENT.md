@@ -147,7 +147,7 @@ value-switch) form cannot express them.
 ## Fix design (next session) — runtime indirect dispatch
 
 The runtime already has the complete machinery in
-`runner/src/cpu_state.c`:
+`runner/src/cpu/cpu_state.c`:
 
 - **`cpu_dispatch_pc_from(cpu, pc24, entry_s_for_miss_restore, source_pc24)`** —
   binary-searches `g_dispatch_table` for the function entry at `pc24`, calls the
@@ -241,7 +241,7 @@ of being suppressed:
   `test_decoder_smc_phantom_suppression` boundary is intact.
 - **`recompiler/v2/codegen.py`** `_emit_runtime_dispatch` + **`emit_function.py`**
   routing — reads the live WRAM pointer + calls `cpu_dispatch_call_pc`.
-- **`runner/src/cpu_state.c`** `cpu_dispatch_call_pc` — pushes the 2-byte JSR
+- **`runner/src/cpu/cpu_state.c`** `cpu_dispatch_call_pc` — pushes the 2-byte JSR
   frame, dispatches the live `(m,x)` AOT body (paired host-call), else falls to
   the interpreter tier (`interp_tier_run_call` in `interp_bridge.c`). Always
   balanced; logged in `g_dispatch_log`.
@@ -310,7 +310,7 @@ of the PHB'd `$A0`. (The stack-balance auditor mis-pointed at `Samus_ShootCheck`
 because it counts the return-frame pop; the always-on S-boundary probe settled it.)
 
 ### Fix (general, runtime-only, NO regen)
-- **`runner/src/cpu_state.c`** — new `cpu_dispatch_pc_paired(cpu, pc24, frame_size)`:
+- **`runner/src/cpu/cpu_state.c`** — new `cpu_dispatch_pc_paired(cpu, pc24, frame_size)`:
   the interp already pushed the return frame, so run the target with
   `host_return_valid = frame_size` and let its RTS/RTL **host-return to the
   bridge** (frame popped, S restored) instead of re-dispatching on the popped

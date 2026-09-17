@@ -27,30 +27,43 @@ find_package(Python3 COMPONENTS Interpreter REQUIRED)
 if(NOT ANDROID)
     include(CTest)
 endif()
+# Android uses the SDL2 source tree fetched by android/fetch_sdl.sh. Desktop
+# keeps the framework default (currently SDL3).
+if(ANDROID)
+    set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
+        "SDL backend (SDL3 or SDL2)" FORCE)
+endif()
+
+include(${SNESRECOMP_ROOT}/runner/runner.cmake)
+
+# After runner.cmake, so these targets can use ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
+# rather than naming runner/src subdirectories themselves -- the runner's
+# sources live in layer folders (cpu/, debug/, desktop/, ...) and that
+# variable is the framework's contract for finding their headers.
 if(BUILD_TESTING AND NOT ANDROID)
     add_executable(sm_display_test tests/sm_display_test.c src/sm_display.c)
     target_include_directories(sm_display_test PRIVATE
         src
-        ${SNESRECOMP_ROOT}/runner/src)
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_display_geometry COMMAND sm_display_test)
 
     # The overlay compositing step (framework helper, this port's only
     # consumer of it so far). See the test's header for why it is worth one.
     add_executable(sm_overlay_blit_test
         tests/sm_overlay_blit_test.c
-        ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
+        ${SNESRECOMP_ROOT}/runner/src/desktop/snes_overlay_draw.c)
     target_include_directories(sm_overlay_blit_test PRIVATE
-        ${SNESRECOMP_ROOT}/runner/src)
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_overlay_blit COMMAND sm_overlay_blit_test)
 
     # The open-gesture guard. A host that skips it gets a browser that
     # reopens the frame after it closes, forever -- a frozen game.
     add_executable(sm_savestate_gesture_test
         tests/sm_savestate_gesture_test.c
-        ${SNESRECOMP_ROOT}/runner/src/snes_savestate_menu.c
-        ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
+        ${SNESRECOMP_ROOT}/runner/src/desktop/snes_savestate_menu.c
+        ${SNESRECOMP_ROOT}/runner/src/desktop/snes_overlay_draw.c)
     target_include_directories(sm_savestate_gesture_test PRIVATE
-        ${SNESRECOMP_ROOT}/runner/src ${SNESRECOMP_ROOT}/runner/src/desktop)
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     # snes_savestate_menu.c reaches SDL only for the SDLK_* keycodes, so the
     # headers are enough; nothing here links an SDL library.
     find_package(PkgConfig QUIET)
@@ -63,21 +76,13 @@ if(BUILD_TESTING AND NOT ANDROID)
 
     add_executable(ppu_window_test tests/ppu_window_test.c)
     target_include_directories(ppu_window_test PRIVATE
-        ${SNESRECOMP_ROOT}/runner/src)
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME ppu_widescreen_windows COMMAND ppu_window_test)
     add_test(NAME sm_door_audio_trace
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/door_audio_trace_test.py)
 
 endif()
 
-# Android uses the SDL2 source tree fetched by android/fetch_sdl.sh. Desktop
-# keeps the framework default (currently SDL3).
-if(ANDROID)
-    set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
-        "SDL backend (SDL3 or SDL2)" FORCE)
-endif()
-
-include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
 # Launcher UI backend: the SHARED recomp-ui launcher (F:\Projects\recomp-ui,
 # consumed as the ./recomp-ui junction/submodule) so every recomp game drives
@@ -97,13 +102,13 @@ if(BUILD_TESTING AND NOT ANDROID)
         tests/sm_video_test.c src/sm_video.c src/sm_mods.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
     target_include_directories(sm_video_test PRIVATE src ${RECOMP_UI_ROOT}/src
-        ${SNESRECOMP_ROOT}/runner/src/desktop)
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_custom_video
         COMMAND sm_video_test ${CMAKE_CURRENT_BINARY_DIR}/sm-video-test.ini)
 
     add_executable(sm_renderer_test tests/sm_renderer_test.c src/sm_renderer.c src/sm_mode7.c)
     target_include_directories(sm_renderer_test PRIVATE
-        src ${SNESRECOMP_ROOT}/runner/src)
+        src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_custom_renderer
         COMMAND sm_renderer_test ${CMAKE_CURRENT_BINARY_DIR}/sm-renderer-test.capture)
     add_executable(sm_mode7_test tests/sm_mode7_test.c src/sm_mode7.c)
@@ -111,8 +116,8 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_test(NAME sm_custom_mode7 COMMAND sm_mode7_test)
     add_executable(sm_render_capture tools/sm_render_capture.c src/sm_renderer.c src/sm_video.c src/sm_mode7.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
-    target_include_directories(sm_render_capture PRIVATE src ${SNESRECOMP_ROOT}/runner/src
-        ${SNESRECOMP_ROOT}/runner/src/desktop)
+    target_include_directories(sm_render_capture PRIVATE src
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     # Assertions are the test oracle, including Release configurations.
     foreach(sm_test sm_video_test sm_renderer_test)
         if(MSVC)

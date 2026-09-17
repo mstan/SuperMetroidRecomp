@@ -11,7 +11,7 @@
 
 #include "types.h"
 
-/* g_ram is declared by snesrecomp/runner/src/common_rtl.h. */
+/* g_ram is declared by snesrecomp/runner/src/cpu/common_rtl.h. */
 
 /* Host-protocol frame counter (framework-shaped, not game-specific). */
 extern uint16 counter_global_frames;
