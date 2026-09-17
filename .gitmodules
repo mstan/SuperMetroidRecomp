@@ -1,7 +1,7 @@
 [submodule "snesrecomp"]
 	path = snesrecomp
 	url = https://github.com/mstan/snesrecomp.git
-	branch = main
+	branch = feat/launcher-core
 
 [submodule "recomp-ui"]
 	path = recomp-ui
