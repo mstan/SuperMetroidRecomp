@@ -676,6 +676,185 @@ generated C is refused by the framework, as it should be; and the ordinary
 build is unchanged — ctest 8/8 and a 1,200-frame guest trace byte-identical to
 before the change.
 
+## 2026-09-19 — three bugs behind one cfg generator, and the renderer this port never ran
+
+A day driven from live play on the TCP debug server rather than from scripts:
+Ceres escape rendering, then framerate, then the Morph Ball freeze. Two of the
+three trace back to the same generator defect; the third was a dead config
+gate. The Morph Ball freeze is diagnosed but NOT fixed — see Open items.
+
+### `ingest_sm_decomp.py` ends every function at the next symbol
+
+`tools/ingest_sm_decomp.py:270`:
+
+```python
+next_addr = filtered[i + 1][0] if i + 1 < len(filtered) else 0x10000
+section_lines.append(f"func {name} {addr:04x} end:{next_addr:04x}")
+```
+
+Every `end:` is the next harvested decomp symbol, and `0x10000` for the last in
+a bank. The script has no notion of where a function actually ends, so every
+gap between symbols — data tables, inline call arguments, padding — is
+swallowed into the function above it and translated as code. An audit over all
+5,668 `func` declarations found **105 spanning >= 0x400 bytes**, worst cases
+`$93:834D-$10000 DrawBombAndProjectileExplosions` (0x7CB3) and
+`$89:ACC3-$10000 RoomCode_CeresElevatorShaft` (0x533D).
+
+Two of today's bugs are instances. Both fixes are **hand-declared overrides
+placed ABOVE the `# >>> AUTO-INGESTED` markers**, which is the mechanism the
+script supports (`hand_pcs` suppresses ingested entries at the same PC). Edits
+*inside* the markers are lost on the next ingest, and worse, make the script
+refuse the whole bank with `SKIP ...: move them OUTSIDE the markers`. Both
+corrections were first written inside the block and had to be relocated.
+
+### Ceres escape: the room rendered as a filler quilt for ~95 frames — FIXED
+
+Re-entering the Ceres elevator shaft during the escape showed a repeating
+chevron field instead of the room, for 92-97 frames across every run, then
+snapped to the correct room and the tilt animated normally.
+
+The evidence ruled out the renderer twice over: per-line PPU state was
+identical between a broken frame and a correct one (225 lines, 0 differences),
+Mode 7 VRAM was identical (0/16384 character bytes, 4/16384 tilemap), and both
+Mode 7 samplers — `ppu.c:PpuDrawBackground_mode7` and
+`ppu_legacy.c:ppu_prepare_mode7`/`ppu_sample_mode7` — were proven equivalent
+offline over ~300k inputs (identity, scroll and centre sweeps, 200k random
+rotation matrices, all four flip combinations).
+
+Tracing `$211B`-`$2120` gave the matrix: **A=256, B=0, C=0, D=112, X=128,
+Y=1008**, against `DoorCode_CeresElevatorShaft` (`$8F:E4E0`,
+`refs/snesrev-sm/src/sm_8f.c:605`) which specifies **D=256**. Five of six
+values matched the ROM exactly; D was wrong, and D alone moves the sampled band
+from map y 512-735 (inside the room, which spans 0-767) to y 791-889 — 100%
+filler tiles 152-155.
+
+The writer, from a WRAM watch on `$7E:007E` (`reg_M7D`): a 16-bit store of
+`X = 0x0070` over the correct `0x0100`, from block `$88:D845`. That block
+exists because `$88:D865` is `JSL SpawnHdmaObjectToSlot0xA` followed by four
+bytes of **inline argument data** (`43 11 d0 d8`, the `SpawnHdmaObject_Args` in
+`sm_88.c:2221`) that the callee consumes off the return address. Decoded as
+code those bytes read `EOR $11` / `BNE $D845`, and that phantom branch stored X
+into direct page `$7E` and jumped to `$88:4915` — not a ROM address under
+LoROM, which is why it surfaced as an unresolved goto in the very first minute
+of the session and was set aside for hours.
+
+Fix in `recomp/bank08.cfg`: `SpawnBG3ScrollHdmaObject` ends at `d869`,
+`data_region 88 d869 d86d`, and `HdmaobjPreInstr_WaterBG2XScroll_Func1` ends at
+`c645` (it is 0x0F bytes, declared as 0x122F). Verified: `L_D845_M0X0` and
+`0x884915` both now appear 0 times in `src/gen/bank88_v2.c`, `unresolved_goto`
+reports 0 hits at runtime, and the tilt renders correctly from the first frame.
+
+Note for the next person: `data_region` alone does NOT stop linear decode. It
+is consumed by the dispatch-table reader and the auto-promote pass
+(`decoder.py:569`); bounding `end:` is what keeps the decoder out of the data.
+
+### Crateria framerate: `RunAhead = 3`, and 66% of CPU in the reference rasteriser
+
+30 fps on the Zebes surface. Measured 4.01 guest simulations per presented
+frame — three once-per-frame NMI functions each ran 1775 times against 443
+presented frames — which is exactly `RunAhead = 3` (N+1 simulations). The
+tracked `config.ini` ships `RunAhead = 0` with a warning; the live copy beside
+the executable had 3. Setting it to 0 restored 60 fps and resolved the report.
+
+`perf record` on the live process then showed where a frame actually goes:
+**`ppu_resolve_pixel` 35.2%, `SmRendererDraw` 24.0%,
+`ppu_draw_whole_line_legacy` 6.4%** — about two thirds of all CPU in pixel
+rendering, and 41.6% of it in the *reference* per-pixel rasteriser.
+
+Cause: `host_main.c:510` read
+`uint32 flags = g_game->native_widescreen ? g_ppu_render_flags : 0;`. Neither
+render flag is widescreen-specific — `kPpuRenderFlags_NewRenderer` selects the
+span renderer, `kPpuRenderFlags_NoSpriteLimits` lifts the sprite cap, and
+widescreen is carried by `PpuSetExtraSpace` — so gating the whole word on
+`native_widescreen` silently discarded both on every non-widescreen port. For
+this title that meant `config.ini`'s `NewRenderer = 1`, the `ToggleRenderer`
+hotkey and `no_sprite_limits` all resolved to a value the PPU never saw. The
+per-line `renderer` field added today confirms it: all 224 lines reported
+`legacy`.
+
+Fixed to pass `g_ppu_render_flags` through. Measured over the same 900-frame
+headless run: **3448.90 ms -> 2653.53 ms task-clock, -23%**, with
+`ppu_resolve_pixel` and `ppu_draw_whole_line_legacy` gone from the profile
+entirely (replaced by `ppu_runLine` at 9.0%). Fidelity: **103 of 103 presented
+frames byte-identical**; the only differing file was the timing CSV. Wall time
+was identical in both runs because a headless run paces to the simulation
+clock — it sleeps rather than saturating, so only CPU time shows the win.
+
+This is a framework change and affects every port that is not natively
+widescreen: all of them have been running the reference rasteriser.
+
+### Morph Ball freeze: diagnosed to a wrong M flag — NOT FIXED
+
+Picking up the Morph Ball hangs the game. Full chain, each link traced:
+
+1. Bank-`$84` PLM code executes with **M=1 where the ROM requires M=0**.
+   Decoding `$84:88FF` both ways and matching the interpreter's instruction
+   ring step-for-step against the m=1 column proves it: the real
+   `LDA #$0168` (3 bytes) runs as `LDA #$68` (2 bytes), the real
+   `JSL $82E118` is never executed, and `AND #$00FF` on an 8-bit accumulator
+   leaves `$FF`.
+2. `JSL $85:8080` (`DisplayMessageBox_Async`) is entered with `A=$00FF`, and
+   `STA $1C1F` at `$85:8086` writes one byte over `message_box_index`, which
+   the correct path had set to 9.
+3. `InitializeMessageBox` (`$85:8241`) reads 255 and computes
+   `(255-1)*6 = $05F4`.
+4. `JSR ($8264,X)` at `$85:8250` fetches a pointer `$05F4` past its table ->
+   `$85:703B`, outside ROM.
+5. Execution sleds ~170 `$00` bytes, crosses into real ROM, `RTL`s on a junk
+   stack to `$50:8513`, hits a `COP`, and lands in `InvalidInterrupt_Crash`
+   (`$80:8573` = `JML $808573`, the target of the COP/BRK/ABORT vectors).
+6. The interpreter burns its 2,000,000-step cap there, returns 0, and
+   `src/sm_rtl.c:338` sets `g_game_done`. The game stops.
+
+Only the origin of step 1 is unknown: where M becomes 1. The framework's M/X
+detectors (`mx_claim_check_arm`, `mx_async_check_arm`) were armed with
+`SNESRECOMP_TRACE=ON` and **did not fire** on this path, which points away from
+an AOT block claiming a wrong M/X — consistent with this port running ~100%
+interpreted — and toward the flag being architecturally real by then: something
+earlier set M=1 without restoring it, or a `PLP` restored a P its `PHP` never
+pushed. Next step is to trace the last `SEP`/`REP`/`PLP`/`RTI` before
+`$84:8905`.
+
+`recomp/bank05.cfg` was fixed along the way — `RestorePpuForMessageBox` ends
+with RTS at `$85:869A` (0x81 bytes) and was declared `end:10000` (0x79E6),
+swallowing `kMessageBoxDefs` at `$85:869B` and ~31 KB of message-box tables.
+Real bug, same class as the Ceres one, but **not** the cause of this freeze.
+
+### Instruments added, and the gaps that cost the most time
+
+New, all in `snesrecomp/` and all debug-only:
+
+- **WRAM write-site PC.** A watch event recorded only `cpu->PB << 16`, so every
+  capture read `PC ~$xx:????`. `g_cpu_trace_write_pc24` is published per step
+  by the interpreter while a watch is armed and cleared on AOT block entry.
+  This is what turned "somewhere in `InitializePpuForMessageBoxes`" into
+  `PC=$858086`, and without it the Morph Ball chain could not have been
+  followed past step 2.
+- **`SNESRECOMP_INTERP_CATCH_PC` / `_NTH` / `_OFFROM`.** The bail-time ring
+  dump is useless for a PC the guest then spins on — all 256 slots hold the
+  spin. These dump the ring at the *arrival*. `_OFFROM` fires on the first
+  execution in `$2000-$7FFF` outside banks `$7E`/`$7F` and caught the fault at
+  step 37 instead of step 9215; `_NTH` catches the nth visit, needed when a PC
+  is reached legitimately before it is reached wrongly.
+- **Per-line `bgmode`** in `ppu_lines`, plus `drawn_mode`/`renderer` recorded
+  from both renderer branches.
+
+Gaps worth fixing on their own account:
+
+- **`BRK` does not trap.** `interp816.c:934` treats `$00` as an inert one-byte
+  marker when `brkHookEnabled`. On hardware the first `$00` of the sled would
+  have vectored straight to `$80:8573`. Instead execution wandered ~170 bytes,
+  crossed into real code and corrupted the stack before anything trapped,
+  destroying the evidence of the original bad jump every single time.
+- **`get_reg_trace` truncates oldest-first** at its 512 KB buffer with no
+  marker, while reporting the true `entries` count. Two consecutive dumps came
+  back byte-identical and both missed the window being chased. `nostack` fits
+  far more rows; resetting the ring at the event of interest is better.
+- **`get_cpu_state` returns all zeros** for this port — `g_snes_cpu` is not the
+  live CPU here.
+- The debug server is **single-client, newest-wins** (`debug_server.c:8596`).
+  Any second tool silently steals the socket; a capture loop must expect it.
+
 ## Open items
 
 1. **Next attract blocker** — the f2689 freeze is fixed and the demo now plays
@@ -687,6 +866,29 @@ before the change.
 3. **Two divergent multi-tier base branches** (engine
    `feat/multi-tier-interp-fallback` vs `integ/sm-interp`) — reconciliation
    open, owner-gated.
+4. **Morph Ball freeze — where does M become 1?** Everything downstream is
+   traced (2026-09-19). Bank-`$84` PLM code runs 8-bit where the ROM needs
+   16-bit, which feeds `$FF` to `message_box_index` and ends in
+   `InvalidInterrupt_Crash`. The M/X claim/async detectors do not fire, so the
+   flag is architecturally real by then. Next: trace the last
+   `SEP`/`REP`/`PLP`/`RTI` before `$84:8905`. **This is the live blocker — the
+   game hangs on the Morph Ball pickup.**
+5. **cfg boundary class — 105 declarations >= 0x400 bytes.** Two fixed as
+   instances (`bank08.cfg`, `bank05.cfg`). The generator is
+   `tools/ingest_sm_decomp.py:270`, which ends every function at the next
+   decomp symbol; fixing it (stop at the terminating RTS/RTL, or emit
+   `data_region` for the gaps) retires the class instead of the instances.
+6. **`BRK` does not trap** (`interp816.c:934`). An off-rails run sleds through
+   blank memory and corrupts the stack before anything traps, destroying the
+   evidence of the original bad jump. Fixing this makes every future off-rails
+   bug stop at its culprit.
+7. **Instrument gaps** — `get_reg_trace` truncates oldest-first with no marker;
+   `get_cpu_state` returns zeros for this port. Both cost real time on
+   2026-09-19.
+8. **AOT carries zero cycles** — `aot_cycle_pct: 0.0`, every guest cycle
+   interpreted, ~2.6 ms per simulated frame. This is what makes run-ahead
+   expensive at any N; the renderer fix helped the fixed per-frame cost, not
+   the multiplier.
 
 ## Owner-gated (do NOT do without explicit decision)
 Merging `investigate/sm-0012-blocker` or the multi-tier branches to main;
