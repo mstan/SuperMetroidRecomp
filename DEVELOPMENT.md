@@ -679,9 +679,10 @@ before the change.
 ## 2026-09-19 — three bugs behind one cfg generator, and the renderer this port never ran
 
 A day driven from live play on the TCP debug server rather than from scripts:
-Ceres escape rendering, then framerate, then the Morph Ball freeze. Two of the
-three trace back to the same generator defect; the third was a dead config
-gate. The Morph Ball freeze is diagnosed but NOT fixed — see Open items.
+Ceres escape rendering, then framerate, then the Morph Ball freeze. Two trace
+back to the same cfg generator defect, one was a dead config gate, and the
+freeze was a nested interpreter frame with no yield contract. All three are
+fixed; the instruments built along the way are the more durable result.
 
 ### `ingest_sm_decomp.py` ends every function at the next symbol
 
@@ -783,7 +784,7 @@ clock — it sleeps rather than saturating, so only CPU time shows the win.
 This is a framework change and affects every port that is not natively
 widescreen: all of them have been running the reference rasteriser.
 
-### Morph Ball freeze: diagnosed to a wrong M flag — NOT FIXED
+### Morph Ball freeze: a nested frame with no yield contract — FIXED
 
 Picking up the Morph Ball hangs the game. Full chain, each link traced:
 
@@ -806,30 +807,68 @@ Picking up the Morph Ball hangs the game. Full chain, each link traced:
 6. The interpreter burns its 2,000,000-step cap there, returns 0, and
    `src/sm_rtl.c:338` sets `g_game_done`. The game stops.
 
-Only the origin of step 1 is unknown: where M becomes 1. The framework's M/X
-detectors (`mx_claim_check_arm`, `mx_async_check_arm`) were armed with
-`SNESRECOMP_TRACE=ON` and **did not fire** on this path, which points away from
-an AOT block claiming a wrong M/X — consistent with this port running ~100%
-interpreted — and toward the flag being architecturally real by then: something
-earlier set M=1 without restoring it, or a `PLP` restored a P its `PHP` never
-pushed. Next step is to trace the last `SEP`/`REP`/`PLP`/`RTI` before
-`$84:8905`.
+Step 1's origin, which took three theories to find: `$85:8136` waits a frame
+with `SEP #$20; LDA $05B8; CMP $05B8; BEQ -5`, and the Morph Ball reaches it
+through a PLM dispatch — so it is interpreted in a **nested** bridge frame
+(`yield_pc == 0`). Every cooperative-yield check in `interp_bridge.c` is gated
+on `yield_pc`, so the loop got none of them, span to the step cap, and the
+routine was abandoned mid-way. Its `SEP #$20` was therefore never undone by the
+`PLP` at `$85:8141`, and M=1 survived into the bank-`$84` PLM loop.
+
+The fix extends machinery that already existed. A nested frame standing on the
+scheduler's own yield PC already hands the block OUTWARD — arm the unwind here,
+end this frame, let it walk out until a frame that owns a yield contract
+resumes and services it. A stable-value poll is a block point for identical
+reasons (forward progress needs an interrupt; a nested frame cannot let one
+happen), but the condition keyed on the scheduler's PC alone and skipped it.
+One added disjunct, `_nested_poll_block`, matching `CMP abs / BEQ -5` at
+`steps > 16`, covers it.
+
+Verified: the Morph Ball pickup now completes, the message box displays and
+gameplay resumes (0 `[brk]`, 0 bails in the passing run, against 3 and 3 in the
+two runs before it). A 900-frame headless boot→Ceres trace is byte-identical to
+before the change and ctest is 8/8, so it is inert where the old path did not
+spin. That evidence covers ONE scene of ONE game: this changes interpreter
+behaviour for every port and wants a wider pass before it is merged.
+
+Two wrong theories died on the way, both killed by measurement rather than
+argument, and both worth recording so they are not re-run: (a) a resume
+re-entering `DisplayMessageBox_Async` mid-prologue — refuted by the instruction
+ring, which shows an ordinary `JSL` and the full `PHP/PHB/PHX/PHY/PHK/PLB`
+prologue; (b) two yield sites fighting over the single `s_lle_resume_pc24` —
+refuted by tracing every assignment, which showed **all 200** came from the
+scheduler's own site and the inner poll never claimed it at all. The third
+theory predicted a specific line of output (`yield_pc=$000000` at `$85:813C`)
+and the probe printed exactly that.
 
 `recomp/bank05.cfg` was fixed along the way — `RestorePpuForMessageBox` ends
 with RTS at `$85:869A` (0x81 bytes) and was declared `end:10000` (0x79E6),
 swallowing `kMessageBoxDefs` at `$85:869B` and ~31 KB of message-box tables.
 Real bug, same class as the Ceres one, but **not** the cause of this freeze.
 
+The `BRK` fix below is what made the last stretch tractable: once `$00`
+vectored again, the fault trapped at `$84:8911` — the operand byte of
+`AND #$00FF` — instead of ~9,000 steps downstream, and the wrong-M diagnosis
+followed immediately.
+
 ### Instruments added, and the gaps that cost the most time
 
 New, all in `snesrecomp/` and all debug-only:
 
+- **`cfg_boundary_audit.py`.** Decodes every declared `func` range from its
+  entry, follows fall-through, both branch directions and local jumps, and
+  reports ranges with a large unreachable tail. ROM and cfg only, so unlike
+  `smwdisx_boundary_check.py` it needs no per-game disassembly listing.
+- **Nested-frame block hand-off** for stable-value polls (the fix above).
 - **WRAM write-site PC.** A watch event recorded only `cpu->PB << 16`, so every
   capture read `PC ~$xx:????`. `g_cpu_trace_write_pc24` is published per step
   by the interpreter while a watch is armed and cleared on AOT block entry.
   This is what turned "somewhere in `InitializePpuForMessageBoxes`" into
   `PC=$858086`, and without it the Morph Ball chain could not have been
   followed past step 2.
+- **`SNESRECOMP_RESUME_DIAG`** (opt-in): reports every assignment to the LLE
+  resume PC as `old -> new` with its site. This is what refuted the
+  "two yields fighting over one resume PC" theory in a single run.
 - **`SNESRECOMP_INTERP_CATCH_PC` / `_NTH` / `_OFFROM`.** The bail-time ring
   dump is useless for a PC the guest then spins on — all 256 slots hold the
   spin. These dump the ring at the *arrival*. `_OFFROM` fires on the first
@@ -866,22 +905,29 @@ Gaps worth fixing on their own account:
 3. **Two divergent multi-tier base branches** (engine
    `feat/multi-tier-interp-fallback` vs `integ/sm-interp`) — reconciliation
    open, owner-gated.
-4. **Morph Ball freeze — where does M become 1?** Everything downstream is
-   traced (2026-09-19). Bank-`$84` PLM code runs 8-bit where the ROM needs
-   16-bit, which feeds `$FF` to `message_box_index` and ends in
-   `InvalidInterrupt_Crash`. The M/X claim/async detectors do not fire, so the
-   flag is architecturally real by then. Next: trace the last
-   `SEP`/`REP`/`PLP`/`RTI` before `$84:8905`. **This is the live blocker — the
-   game hangs on the Morph Ball pickup.**
-5. **cfg boundary class — 105 declarations >= 0x400 bytes.** Two fixed as
-   instances (`bank08.cfg`, `bank05.cfg`). The generator is
-   `tools/ingest_sm_decomp.py:270`, which ends every function at the next
-   decomp symbol; fixing it (stop at the terminating RTS/RTL, or emit
-   `data_region` for the gaps) retires the class instead of the instances.
-6. **`BRK` does not trap** (`interp816.c:934`). An off-rails run sleds through
-   blank memory and corrupts the stack before anything traps, destroying the
-   evidence of the original bad jump. Fixing this makes every future off-rails
-   bug stop at its culprit.
+4. **Nested-frame yield contract — widen the validation.** The Morph Ball
+   freeze is FIXED (2026-09-19): a stable-value poll reached through a nested
+   bridge frame now hands its block outward like the scheduler's own yield PC
+   already did. Evidence is byte-identical output on ONE scene of ONE game,
+   but the change is in `interp_bridge.c` and affects every port. Before
+   merging: run the same before/after trace comparison on at least one other
+   title, and check whether any port relied on the old spin-to-cap behaviour.
+5. **cfg boundary class — 618 declarations with an unreachable tail.**
+   `snesrecomp/tools/cfg_boundary_audit.py` (new, ROM+cfg only, works for any
+   port) measures what is actually unreachable rather than what is merely
+   large: 618 at >= 0x40, against the 105 that a size-only count found. Two
+   fixed as instances (`bank08.cfg`, `bank05.cfg`); the audit agrees both are
+   now clean. The generator is `tools/ingest_sm_decomp.py:270`, which ends
+   every function at the next decomp symbol; fixing it (stop at the
+   terminating RTS/RTL, or emit `data_region` for the gaps) retires the class.
+   Findings are CANDIDATES — a function reached only by indirect dispatch will
+   appear and be fine, so triage is a human's job.
+6. **`BRK` now traps — DONE** (`interp816.c:934`, 2026-09-19). Nothing plants
+   BRK markers any more, so the inert path only ever swallowed genuine faults.
+   It reports (capped) and vectors architecturally. It paid for itself the
+   same day: the Morph Ball fault moved from ~9,000 steps downstream to the
+   instruction next to its cause. 900-frame trace byte-identical, 0 BRKs in a
+   healthy run.
 7. **Instrument gaps** — `get_reg_trace` truncates oldest-first with no marker;
    `get_cpu_state` returns zeros for this port. Both cost real time on
    2026-09-19.
