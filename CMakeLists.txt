@@ -51,7 +51,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     # consumer of it so far). See the test's header for why it is worth one.
     add_executable(sm_overlay_blit_test
         tests/sm_overlay_blit_test.c
-        ${SNESRECOMP_ROOT}/runner/src/desktop/snes_overlay_draw.c)
+        ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
     target_include_directories(sm_overlay_blit_test PRIVATE
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_overlay_blit COMMAND sm_overlay_blit_test)
@@ -60,8 +60,8 @@ if(BUILD_TESTING AND NOT ANDROID)
     # reopens the frame after it closes, forever -- a frozen game.
     add_executable(sm_savestate_gesture_test
         tests/sm_savestate_gesture_test.c
-        ${SNESRECOMP_ROOT}/runner/src/desktop/snes_savestate_menu.c
-        ${SNESRECOMP_ROOT}/runner/src/desktop/snes_overlay_draw.c)
+        ${SNESRECOMP_ROOT}/runner/src/snes_savestate_menu.c
+        ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
     target_include_directories(sm_savestate_gesture_test PRIVATE
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     # snes_savestate_menu.c reaches SDL only for the SDLK_* keycodes, so the
