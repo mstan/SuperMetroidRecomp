@@ -36,6 +36,9 @@ endif()
 
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
+# The desktop host's headers (host_clock.h, ...) moved out of the runner's
+# default include set; every target here that uses them needs the directory.
+list(APPEND SNESRECOMP_RUNNER_INCLUDE_DIRS ${SNESRECOMP_ROOT}/runner/src/desktop)
 # After runner.cmake, so these targets can use ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
 # rather than naming runner/src subdirectories themselves -- the runner's
 # sources live in layer folders (cpu/, debug/, desktop/, ...) and that
