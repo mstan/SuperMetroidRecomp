@@ -1,5 +1,26 @@
 # SuperMetroidSNESRecomp
 
+## Windows frame composition
+
+The pinned shared framework uses cached HLE frame composition by default on
+Windows x64. This host presentation optimization is separate from the guest
+CPU's LLE scheduler and optional game-routine HLE described below. The existing
+CPU, audio and status interfaces remain intact. Build the maintained
+correctness-reference compositor separately with
+`cmake -S . -B build-frame-lle -DCMAKE_BUILD_TYPE=Release -DSNESRECOMP_FRAME_IMPL=LLE`,
+then `cmake --build build-frame-lle`. Selection is fixed at build time.
+LLE can reduce performance; it remains available for correctness checks. Other
+platforms keep LLE defaults, and existing CMake cache selections are preserved.
+See [HLE defaults and opt-out](snesrecomp/docs/HLE_DEFAULTS.md).
+
+The reviewed native-view, uncapped Windows route measured 427.737 to 1259.308 FPS
+(+194.41%, process CPU -66.67%); it includes boot/menu work and natural demo play.
+The owner accepted the normal-paced adaptive HLE build. These figures describe
+that measured build/route, not a new measurement of later upstream title changes
+or other platforms. Foreign compiler activity limits precision. Normal play
+retains normal pacing/audio. See the shared framework's
+[frame model](snesrecomp/docs/FRAME_MODEL_HOSTS.md).
+
 LLE-first recompilation of *Super Metroid* (SNES) into native C, using the
 [snesrecomp](https://github.com/mstan/snesrecomp) framework. This repo
 is the per-game side: the single-fiber runtime, the per-game `.cfg`, the
