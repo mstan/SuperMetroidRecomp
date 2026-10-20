@@ -125,8 +125,9 @@ static RecompReturn HleSmJmlIndirect(CpuState *cpu, uint16 ptr_addr,
      * The old prototype called cpu_dispatch_pc_from(), whose miss path only
      * restored S and silently skipped all handler side effects. */
     cpu->PB = target_bank;
+    /* The pointer is already resolved: enter the handler, not the JMP. */
     RecompReturn r = interp_tier_dispatch_balanced(
-        cpu, target, site_pc24, cpu->S, hrv);
+        cpu, target, site_pc24, cpu->S, hrv, false);
     cpu->PB = saved_pb;
     return r;
   }
@@ -148,8 +149,9 @@ static RecompReturn HleSmJmpIndirectIndexedTail(CpuState *cpu,
 
   if (!cpu_dispatch_has_entry(cpu, target)) {
     (void)cpu_trace_dispatch_oob(cpu, site_pc24, target);
+    /* The pointer is already resolved: enter the handler, not the JMP. */
     return interp_tier_dispatch_balanced(
-        cpu, target, site_pc24, cpu->S, hrv);
+        cpu, target, site_pc24, cpu->S, hrv, false);
   }
   return cpu_dispatch_pc_from(cpu, target, miss_s, site_pc24);
 }
