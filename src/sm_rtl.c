@@ -1,6 +1,7 @@
 #include "sm_rtl.h"
 #include "sm_renderer.h"
 #include "sm_spc_player.h"
+#include "sm_pause_options.h"
 #include "variables.h"
 #include "common_cpu_infra.h"
 #include "snes/snes.h"
@@ -118,20 +119,29 @@ static int sm_rtl_diag_enabled(void) {
  * otherwise resumes reset over restored WRAM. Use the framework's versioned,
  * pointer-free execution residue, never a serialized host fiber or C stack.
  * HLE fiber snapshots retain their historical limitations: there is no
- * portable on-disk representation of a suspended native call chain. */
+ * portable on-disk representation of a suspended native call chain.
+ *
+ * Version 2 appends one word after the header: whether the pause menu's
+ * Options panel is up (src/sm_pause_options.h). The guest parks on its Map
+ * screen under the panel, so restoring the RAM without the panel would leave
+ * a Map screen running over whatever the panel was covering. */
 #define SM_FILE_STATE_MAGIC 0x534D4653u  /* SMFS */
+#define SM_FILE_STATE_VERSION 2u
 static uint32_t g_loaded_file_state[7];
+static uint32_t g_loaded_pause_options;
 static bool g_loaded_file_state_valid;
 
 void SmStateSaveExtra(struct SaveLoadInfo *sli) {
   if (g_game_fiber || sm_execution_mode() != SNESRECOMP_EXECUTION_MODE_LLE)
     return;
   uint32_t header[7] = {
-    SM_FILE_STATE_MAGIC, 1, g_lle_resume_pc,
+    SM_FILE_STATE_MAGIC, SM_FILE_STATE_VERSION, g_lle_resume_pc,
     g_game_started ? 1u : 0u, g_game_done ? 1u : 0u,
     counter_global_frames, (uint32_t)SmSpcPlayer_StateSize()
   };
+  uint32_t pause_options = SmPauseOptions_IsActive() ? 1u : 0u;
   sli->func(sli, header, sizeof(header));
+  sli->func(sli, &pause_options, sizeof(pause_options));
   RtlSaveExecutionState(sli);
   if (header[6]) {
     void *spc = malloc(header[6]);
@@ -147,10 +157,19 @@ void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
   g_loaded_file_state_valid = false;
   sli->func(sli, g_loaded_file_state, sizeof(g_loaded_file_state));
   const uint32_t *h = g_loaded_file_state;
-  if (h[0] != SM_FILE_STATE_MAGIC || h[1] != 1 || h[2] > 0xFFFFFFu ||
-      h[3] > 1 || h[4] > 1 || (h[6] && h[6] != SmSpcPlayer_StateSize())) {
+  if (h[0] != SM_FILE_STATE_MAGIC || h[1] < 1 || h[1] > SM_FILE_STATE_VERSION ||
+      h[2] > 0xFFFFFFu || h[3] > 1 || h[4] > 1 ||
+      (h[6] && h[6] != SmSpcPlayer_StateSize())) {
     fprintf(stderr, "[sm_state] unrecognized execution-state extension\n");
     return;
+  }
+  g_loaded_pause_options = 0;
+  if (h[1] >= 2) {
+    sli->func(sli, &g_loaded_pause_options, sizeof(g_loaded_pause_options));
+    if (g_loaded_pause_options > 1) {
+      fprintf(stderr, "[sm_state] unrecognized execution-state extension\n");
+      return;
+    }
   }
   if (!RtlLoadExecutionState(sli)) {
     fprintf(stderr, "[sm_state] execution residue does not match this runtime\n");
@@ -169,6 +188,8 @@ void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
 
 void SmOnStateLoaded(uint32_t version) {
   SmRendererReset();
+  /* Host panel state from before the load never describes the loaded RAM. */
+  SmPauseOptions_SetActive(false);
   if (!g_loaded_file_state_valid || g_game_fiber ||
       sm_execution_mode() != SNESRECOMP_EXECUTION_MODE_LLE) {
     fprintf(stderr, "[sm_state] loaded legacy/incompatible v%u snapshot; "
@@ -181,6 +202,7 @@ void SmOnStateLoaded(uint32_t version) {
   g_game_started = g_loaded_file_state[3] != 0;
   g_game_done = g_loaded_file_state[4] != 0;
   counter_global_frames = (uint16_t)g_loaded_file_state[5];
+  SmPauseOptions_SetActive(g_loaded_pause_options != 0);
   g_loaded_file_state_valid = false;
 }
 
@@ -229,14 +251,15 @@ typedef struct SmExecHeader {
   SmCpuSave  game_saved;
   uint8_t    game_started;
   uint8_t    game_done;
-  uint8_t    pad[2];
+  uint8_t    pause_options;  /* Options pause panel up (see SmStateSaveExtra) */
+  uint8_t    pad;
   uint32_t   lle_resume_pc;
   uint32_t   fiber_bytes;
   uint32_t   spc_bytes;
 } SmExecHeader;
 
 #define SM_EXEC_MAGIC   0x534D4558u  /* 'SMEX' */
-#define SM_EXEC_VERSION 1u
+#define SM_EXEC_VERSION 2u
 
 size_t SmExecStateBound(void) {
   /* No fiber: this frame ran on the interpreter bridge, whose own position is
@@ -271,7 +294,8 @@ size_t SmExecStateSave(void *out, size_t capacity) {
   hdr.game_saved    = g_game_saved;
   hdr.game_started  = g_game_started ? 1u : 0u;
   hdr.game_done     = g_game_done ? 1u : 0u;
-  hdr.pad[0] = hdr.pad[1] = 0;
+  hdr.pause_options = SmPauseOptions_IsActive() ? 1u : 0u;
+  hdr.pad = 0;
   {
     size_t spc = SmSpcPlayer_SaveState((uint8_t *)out + sizeof(hdr) + fiber,
                                        capacity - sizeof(hdr) - fiber);
@@ -304,6 +328,7 @@ int SmExecStateLoad(const void *in, size_t size) {
   g_game_started  = hdr.game_started != 0;
   g_game_done     = hdr.game_done != 0;
   g_lle_resume_pc = hdr.lle_resume_pc;
+  SmPauseOptions_SetActive(hdr.pause_options != 0);
   return 1;
 }
 

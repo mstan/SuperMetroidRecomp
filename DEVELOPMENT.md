@@ -1001,6 +1001,47 @@ drivers; audio emulation remains enabled. The owner approved final play
 validation and authorized integration and the v0.3.10 release on 2026-10-14.
 Tracking: **beads-8wg.6.11**, **beads-8wg.2.126**.
 
+## 2026-10-20: pause Options tab edits the runner's display settings
+
+The pause panel's Options tab previously reached only the five Super Metroid
+video settings. It now also offers the five settings the runner already
+applies live: fullscreen (windowed/borderless), vsync (off/on/adaptive),
+frame blend, run-ahead (0..4), and window scale (1..10, disabled while
+fullscreen, where the host ignores it) — plus a graceful Exit. Eleven rows
+total, plus the existing Back-to-map action.
+
+The values cross the game/host boundary through the framework's new
+`host_api.h` get/set pairs, and persist through the host marking the config
+dirty and writing `config.ini` at shutdown; no second writer on the game
+side. Window scale re-enables automatically when the user leaves
+fullscreen, and navigation skips the disabled row in both directions,
+matching the panel's existing disabled-row semantics. The Exit row asks
+the host to end the run (`snesrecomp_request_exit`): the main loop exits
+on its next pass, after the requesting frame has presented, through the
+normal shutdown path — so a config the panel changed is written before
+the window closes.
+
+The pin for this is **open framework work**: snesrecomp
+[PR186](https://github.com/RetroPortingToolKit/snesrecomp/pull/186) (head
+`adf6f6d09765570ad89c7f1bf523b02509e0ab8f` over `f68aa0f`, the previous
+pin) adds the API, three new keymap entries, and the dirty-config shutdown
+write; the submodule is pinned one commit beyond the PR head,
+`425b53214b5e03c9f5405fc667e83b50911f9c21` (local branch
+`pr186-with-request-exit`), which adds `snesrecomp_request_exit`. That
+commit exists only locally until it is pushed to the PR's branch, and the
+pin follows the PR to merge and must be re-verified when it lands. The PR's
+new keys only act if bound in `[KeyMap]`; the shipped config binds none, so
+existing keybinds are unaffected (the key enum shifted, but saved binds
+store names).
+
+The panel test (`tests/sm_pause_options_test.c`) fakes the API with the
+host's own clamps and drives all eleven rows: choice wrap at both ends, INT
+clamping, the fullscreen-dependent enable row, the Exit action's host
+latch, and the existing pad ownership, fade-out, snapshot, and gesture
+sections. Its golden render hashes cover the eleven-row layout at
+256/342/456/684 px; regenerate with `PAUSE_OPTIONS_TEST_CALIBRATE` if the
+layout or rows change. All 10 test targets pass.
+
 ## Owner-gated (do NOT do without explicit decision)
 Merging `investigate/sm-0012-blocker` or the multi-tier branches to main;
 releasing any game; reconciling the multi-tier branches; editing `src/gen/`.

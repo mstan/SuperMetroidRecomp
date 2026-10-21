@@ -25,6 +25,10 @@ typedef struct SmVideoSettings {
 
 extern SmVideoSettings g_sm_video;
 
+/* Where g_sm_video lives beside the executable. The launcher's Mods page and
+ * the pause menu's Options tab both write it. */
+#define SM_VIDEO_CONFIG_FILE "sm-video.ini"
+
 typedef struct SmViewport {
   int width, extra;
   double aspect;

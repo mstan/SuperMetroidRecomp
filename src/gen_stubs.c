@@ -10,6 +10,7 @@
 #include "cpu_trace.h"
 #include "variables.h"
 #include "sm_rtl.h"
+#include "sm_pause_options.h"
 
 /* WaitForNMI ($80:8338). The original routine raises waiting_for_nmi
  * ($7E:05B4) and spins until the NMI handler ($80:9583) clears it. In
@@ -265,3 +266,21 @@ SM_JML1784_WRAPPER(HleSmJmlIndirect1784_A3AC, 0x20A3ACu)
 
 #undef SM_JML1784_WRAPPER
 #undef SM_JML178C_WRAPPER
+
+/* GameState_15_Paused_Async ($82:90E8), the pause screen's per-frame state.
+ * Reached through Game_RunOneFrameOfGame's JSR ($8981,X); ends in RTS.
+ *
+ * The Options pause tab (src/sm_pause_options.c) reads and edits this
+ * frame's pad and pause-menu state first; then the ROM's own routine runs,
+ * unmodified, in both execution modes. Under the LLE scheduler that is a
+ * yield back to the interpreter at the routine's entry. Otherwise the ROM
+ * bytes run in the interpreter tier, which consumes the caller's 2-byte
+ * frame and still bounces nested calls into compiled code
+ * (docs/HLE_FUNC.md, "Delegating to the original"). */
+RecompReturn HleSmGameState_15_Paused_Async(CpuState *cpu) {
+  const uint32 entry = ((uint32)cpu->PB << 16) | 0x90E8u;
+  SmPauseOptions_GuestTick();
+  if (interp_bridge_in_lle_scheduler())
+    return interp_bridge_lle_yield_unwind(cpu, entry);
+  return interp_tier_run_call_frame(cpu, entry, entry, 2, NULL);
+}
