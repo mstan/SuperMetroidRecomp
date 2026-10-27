@@ -49,3 +49,29 @@ label = "Always"
 [[plugin]]
 feature = "ammo-totals"
 id = "super-metroid.map-hud.ammo-totals"
+
+[[feature]]
+id = "laser-sight"
+name = "Laser sight"
+description = "A red sight line shows where shots will go while Samus aims diagonally, Metroid Prime style. It does not stop at walls."
+group = "HUD"
+default_enabled = false
+presentation_only = true
+
+[[option]]
+feature = "laser-sight"
+id = "when"
+label = "Show"
+description = "Only while aiming diagonally with the shoulder buttons, or in every direction Samus can shoot."
+type = "choice"
+default = "diagonal"
+[[option.choice]]
+value = "diagonal"
+label = "Diagonal aim"
+[[option.choice]]
+value = "always"
+label = "Always"
+
+[[plugin]]
+feature = "laser-sight"
+id = "super-metroid.map-hud.laser-sight"
