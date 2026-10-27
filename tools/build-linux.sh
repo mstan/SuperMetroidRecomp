@@ -61,9 +61,11 @@ PREBUILD_CMD=""
 POSTBUILD_CMD=""
 BOXART="recomp/launcher/boxart.tga"          # AppImage icon source (optional)
 EXTRA_PAYLOAD=()                             # repo-relative files -> usr/bin/
-# Widescreen and presentation FPS use the compiled-in Mods provider. They do
-# not need external package manifests staged alongside the executable.
-REQUIRED_MOD_MANIFESTS=()
+# Widescreen and presentation FPS use the compiled-in Mods provider; gameplay
+# and QoL features are packages for the engine's mod runtime.
+REQUIRED_MOD_MANIFESTS=(
+  "preloaded/packages/super-metroid.pacing/1.0.0/manifest.toml"
+)
 PROD_CMAKE_FLAGS=( -DSNESRECOMP_ENABLE_TRACE=OFF )
 DEBUG_CMAKE_FLAGS=( -DSNESRECOMP_ENABLE_TRACE=ON )
 # ============================================================================

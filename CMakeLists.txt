@@ -58,6 +58,10 @@ if(ANDROID)
         "SDL backend (SDL3 or SDL2)" FORCE)
 endif()
 
+# Gameplay and QoL features ship as packages for the engine's mod runtime
+# (snesrecomp docs/MOD_PACKAGES.md); widescreen and presentation FPS stay
+# built-in features (src/sm_mods.c) on the same Mods page.
+set(SNESRECOMP_ENABLE_MODS ON CACHE BOOL "Shared mod package runtime" FORCE)
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
 # Releases contain the complete native program. Missing generated code must
@@ -137,8 +141,6 @@ endif()
 # somewhere other than the in-tree submodule.
 set(RECOMP_UI_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui" CACHE PATH
     "Path to the shared recomp-ui checkout used by this game")
-set(RECOMP_UI_ENABLE_MODS ON CACHE BOOL
-    "Enable Super Metroid built-in presentation Mods" FORCE)
 include(${RECOMP_UI_ROOT}/recomp_ui.cmake)
 
 if(BUILD_TESTING AND NOT ANDROID)
@@ -266,6 +268,9 @@ set(SM_HOST_SOURCES
     src/sm_activity.c src/sm_activity_host.c
     src/sm_pause_options.c # 3rd pause tab: the Game Options overlay
     src/sm_mods.c         # built-in presentation mod provider
+    # Gameplay/QoL mod plugins, selected by mods/preloaded packages
+    src/mods/sm_mod_support.c
+    src/mods/sm_elevator_plugin.c
 )
 
 if(ANDROID)
@@ -357,6 +362,8 @@ snesrecomp_target_rom_cache(SuperMetroidSNESRecomp)
 # The tracked config.ini seeds the one beside the executable when none is
 # there yet; after that the file is the player's.
 snesrecomp_target_config_seed(SuperMetroidSNESRecomp)
+snesrecomp_target_mod_catalog(SuperMetroidSNESRecomp
+    "${CMAKE_CURRENT_SOURCE_DIR}/mods/preloaded")
 
 # ROM identity. rom_identity.txt is the one place the digests live: this turns
 # it into snesrecomp_rom_identity.h for src/main.c, and tools/regen.sh,
