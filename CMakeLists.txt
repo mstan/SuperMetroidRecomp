@@ -205,6 +205,11 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_executable(sm_mode7_test tests/sm_mode7_test.c src/sm_mode7.c)
     target_include_directories(sm_mode7_test PRIVATE src)
     add_test(NAME sm_custom_mode7 COMMAND sm_mode7_test)
+    # super-metroid.controls input transforms against a synthetic WRAM.
+    add_executable(sm_controls_test tests/sm_controls_test.c)
+    target_include_directories(sm_controls_test PRIVATE src/mods
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_controls COMMAND sm_controls_test)
     add_executable(sm_render_capture tools/sm_render_capture.c src/sm_renderer.c src/sm_video.c src/sm_mode7.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
     target_include_directories(sm_render_capture PRIVATE src
@@ -274,6 +279,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_shinespark_drain_plugin.c
     src/mods/sm_xray_plugin.c
     src/mods/sm_station_plugins.c
+    src/mods/sm_controls_plugin.c
 )
 
 if(ANDROID)
