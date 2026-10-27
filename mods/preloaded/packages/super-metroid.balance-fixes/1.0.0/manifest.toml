@@ -1,0 +1,52 @@
+format_version = 1
+id = "super-metroid.balance-fixes"
+version = "1.0.0"
+name = "Super Metroid Balance and Fixes"
+author = "SuperMetroidRecomp contributors"
+description = "Quality-of-life balance changes and fixes. Each feature is a separate switch. Ideas from Super Metroid Redux (ShadowOne333) and the Metroid Construction community, reimplemented for the stock game."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "supermetroid-jpn"
+rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
+
+[[feature]]
+id = "xray"
+name = "Wider X-ray scope"
+description = "The X-ray beam opens wider and can be aimed faster. Inspired by Super Metroid Redux."
+group = "Balance"
+default_enabled = false
+
+[[option]]
+feature = "xray"
+id = "width"
+label = "Beam width"
+description = "How far the beam opens."
+type = "choice"
+default = "wide"
+[[option.choice]]
+value = "wide"
+label = "Wide"
+[[option.choice]]
+value = "widest"
+label = "Widest (Redux)"
+
+[[option]]
+feature = "xray"
+id = "aim-speed"
+label = "Aim speed"
+description = "How fast the beam turns when aimed up or down."
+type = "choice"
+default = "2x"
+[[option.choice]]
+value = "1x"
+label = "Original"
+[[option.choice]]
+value = "2x"
+label = "2x"
+
+[[plugin]]
+feature = "xray"
+id = "super-metroid.balance-fixes.xray"

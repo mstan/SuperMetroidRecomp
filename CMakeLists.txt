@@ -271,6 +271,8 @@ set(SM_HOST_SOURCES
     # Gameplay/QoL mod plugins, selected by mods/preloaded packages
     src/mods/sm_mod_support.c
     src/mods/sm_elevator_plugin.c
+    src/mods/sm_shinespark_drain_plugin.c
+    src/mods/sm_xray_plugin.c
 )
 
 if(ANDROID)

@@ -1,0 +1,24 @@
+format_version = 1
+id = "super-metroid.combat"
+version = "1.0.0"
+name = "Super Metroid Combat"
+author = "SuperMetroidRecomp contributors"
+description = "Weapon and ability tweaks. Each feature is a separate switch. Ideas from Super Metroid Redux, Ancient Chozo and Ascent, reimplemented for the stock game."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "supermetroid-jpn"
+rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
+
+[[feature]]
+id = "shinespark-drain"
+name = "No shinespark energy drain"
+description = "A shinespark no longer costs energy while Samus flies. It still ends when she hits something."
+group = "Combat"
+default_enabled = false
+
+[[plugin]]
+feature = "shinespark-drain"
+id = "super-metroid.combat.shinespark-drain"
