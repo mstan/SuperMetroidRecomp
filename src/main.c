@@ -21,6 +21,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef SM_NATIVE_RASTER
+#define SM_NATIVE_RASTER 0
+#endif
 
 #ifndef __ANDROID__
 #define SDL_MAIN_HANDLED 1
@@ -68,6 +71,11 @@ static const char *kSmVideoConfig = SM_VIDEO_CONFIG_FILE;
 static SmViewport g_sm_viewport;
 static uint32_t g_sm_output[SM_MAX_WIDTH * SM_HEIGHT];
 static uint64_t g_sm_capture_generation;
+#if SM_NATIVE_RASTER
+static bool g_sm_composed_ready, g_sm_render_valid;
+static SmViewport g_sm_composed_view;
+static bool g_sm_composed_hud;
+#endif
 
 /* The shared generation changes on visible timeline jumps and is preserved
  * across speculative rollback. A rollback's on_state_loaded hook must not
@@ -76,6 +84,9 @@ static void SmSyncCaptureGeneration(void) {
   uint64_t generation = RtlStateGeneration();
   if (generation != g_sm_capture_generation) {
     SmRendererReset();
+#if SM_NATIVE_RASTER
+    g_sm_composed_ready = false;
+#endif
     g_sm_capture_generation = generation;
   }
 }
@@ -120,6 +131,9 @@ static void SmOnRomLoaded(const uint8_t *rom, size_t size) {
 
 static void SmOnReset(void) {
   SmRendererReset();
+#if SM_NATIVE_RASTER
+  g_sm_composed_ready = false;
+#endif
   /* The host also sends this notification after loading a snapshot. Keep
    * the panel flag restored by SmOnStateLoaded when the guest is paused;
    * ordinary gameplay and actual reset states close it through this sync. */
@@ -152,14 +166,39 @@ static void SmBeginSimFrame(unsigned number) {
 }
 
 static void SmEndSimFrame(const uint8_t *field, unsigned number) {
+#if SM_NATIVE_RASTER
+  g_sm_render_valid = false;
+  if (SmCustomRendererEnabled())
+    g_sm_render_valid = SmRendererEndFrame((const uint32_t *)field);
+#else
   if (SmCustomRendererEnabled())
     SmRendererEndFrame((const uint32_t *)field);
+#endif
   SmReplayRendered();
   const char *capture_frame = getenv("SM_CAPTURE_FRAME");
   const char *capture_path = getenv("SM_CAPTURE_PATH");
   if (capture_frame && capture_path && number == strtoul(capture_frame, NULL, 10))
     SmRendererSaveCapture(capture_path);
 }
+
+#if SM_NATIVE_RASTER
+static void SmPublishNativeField(uint8_t *field, unsigned number) {
+  (void)number;
+  g_sm_composed_ready = false;
+  if (!SmCustomRendererEnabled()) return;
+  if (!g_sm_render_valid ||
+      !SmRendererDraw(g_sm_output, g_sm_viewport, g_sm_video.hud_anchored, 1)) {
+    if (SmRendererNativeLines()) abort();
+    return;
+  }
+  g_sm_composed_view = g_sm_viewport;
+  g_sm_composed_hud = g_sm_video.hud_anchored;
+  g_sm_composed_ready = true;
+  for (unsigned y = 0; y < 224; ++y)
+    memcpy((uint32_t *)field + y * 256,
+        g_sm_output + y * g_sm_viewport.width + g_sm_viewport.extra, 256 * 4);
+}
+#endif
 
 static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
                        int frame_w, int frame_h, double alpha) {
@@ -168,7 +207,14 @@ static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
     return 0;
   SmSyncCaptureGeneration();
   int drew = 0;
-  if (SmCustomRendererEnabled())
+#if SM_NATIVE_RASTER
+  drew = g_sm_composed_ready && alpha >= 1 &&
+      g_sm_composed_view.width == g_sm_viewport.width &&
+      g_sm_composed_view.extra == g_sm_viewport.extra &&
+      g_sm_composed_hud == g_sm_video.hud_anchored;
+  g_sm_composed_ready = false;
+#endif
+  if (!drew && SmCustomRendererEnabled())
     drew = SmRendererDraw(g_sm_output, g_sm_viewport, g_sm_video.hud_anchored, alpha);
   if (!drew) {
     memset(g_sm_output, 0, sizeof(g_sm_output));
@@ -277,6 +323,9 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
   .prepare_frame = &SmPrepareFrame,
   .begin_sim_frame = &SmBeginSimFrame,
   .end_sim_frame = &SmEndSimFrame,
+#if SM_NATIVE_RASTER
+  .publish_native_field = &SmPublishNativeField,
+#endif
   .draw_frame = &SmDrawFrame,
   .presentation_hz = &SmPresentationHzHook,
   .window_base_width = &SmDisplay_GetWindowBaseWidth,

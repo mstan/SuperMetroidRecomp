@@ -476,7 +476,11 @@ void SmDrawPpuFrame(void) {
       if (i == 100) probe_mode_room = g_ppu->bgmode;
       if (i < 225) probe_modes[i] = g_ppu->bgmode;
     }
-    ppu_runLine(g_ppu, i);
+    if ((g_sm_video.enhanced || g_sm_video.fps_enabled) &&
+        SmRendererClaimNativeLine(g_ppu, (unsigned)i))
+      ppu_runLineState(g_ppu, i);
+    else
+      ppu_runLine(g_ppu, i);
   }
   SmRendererEndHardwareRaster();
   if (probe) {

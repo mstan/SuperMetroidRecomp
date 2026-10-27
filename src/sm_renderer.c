@@ -1,4 +1,11 @@
 #include "sm_renderer.h"
+#ifndef SM_NATIVE_RASTER
+#define SM_NATIVE_RASTER 0
+#endif
+#if SM_NATIVE_RASTER
+#include "snes/raster_jobs.h"
+#include "snes/raster_image.h"
+#endif
 #include "raster_snapshot.h"
 #include "sm_mode7.h"
 #include <string.h>
@@ -61,6 +68,22 @@ static struct {
 #define SM_RASTER_FULL_COPY 0
 #endif
 static unsigned current;
+#if SM_NATIVE_RASTER
+static SnesRasterImage stock_images[2];
+static bool native_capture;
+static bool read_stock_line(const void *context, unsigned y, SnesRasterImageLine *out) {
+  const SmSourceFrame *f = context;
+  if (!f->valid || y >= f->captured) return false;
+  const SmRasterLine *l = &f->lines[y];
+  *out = (SnesRasterImageLine){l->registers, l->high_oam, l->palette, l->oam, l->vram};
+  return true;
+}
+static bool materialize_stock(const SmSourceFrame *f) {
+  unsigned index = f == &frames[0] ? 0 : 1;
+  return SnesRasterImageMaterialize(&stock_images[index], frames[index].stock,
+      read_stock_line, f);
+}
+#endif
 static Ppu scanout;
 static const uint8_t *renderer_rom;
 static size_t renderer_rom_size;
@@ -93,6 +116,9 @@ SmRasterStats SmRendererGetRasterStats(void) {
       sizeof(frames), s->compared_bytes, s->count};
 }
 const uint32_t *SmRendererStockFrame(void) {
+#if SM_NATIVE_RASTER
+  if (!materialize_stock(&frames[current])) return NULL;
+#endif
   return frames[current].valid ? frames[current].stock : NULL;
 }
 void SmRendererSetRom(const uint8_t *rom, size_t size) {
@@ -109,6 +135,9 @@ static const uint8_t *rom_bytes(unsigned bank, unsigned address, size_t size) {
 
 static bool save_capture(const SmSourceFrame *frame, const char *path) {
   if (!path || !frame->valid) return false;
+#if SM_NATIVE_RASTER
+  if (!materialize_stock(frame)) return false;
+#endif
   FILE *file = fopen(path, "wb");
   if (!file) return false;
   const uint32_t header[3] = {0x534d5243, 2, sizeof(SmDiskFrame)};
@@ -129,6 +158,9 @@ bool SmRendererSaveCapture(const char *path) {
   return save_capture(&frames[current], path);
 }
 bool SmRendererLoadCapture(const char *path) {
+#if SM_NATIVE_RASTER
+  SnesRasterImageReset(&stock_images[current ^ 1]);
+#endif
   if (!path) return false;
   FILE *file = fopen(path, "rb");
   if (!file) return false;
@@ -351,6 +383,11 @@ static bool has_samus_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
   return false;
 }
 void SmRendererReset(void) {
+#if SM_NATIVE_RASTER
+  SnesRasterImageReset(&stock_images[0]);
+  SnesRasterImageReset(&stock_images[1]);
+  native_capture = false;
+#endif
   memset(frames, 0, sizeof(frames));
   hardware_raster.tracking=false;
   capture_failed[0] = capture_failed[1] = false;
@@ -370,6 +407,9 @@ void SmRendererReset(void) {
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number) {
   hardware_raster.tracking=false;
   current ^= 1;
+#if SM_NATIVE_RASTER
+  SnesRasterImageReset(&stock_images[current]);
+#endif
   SmSourceFrame *f = &frames[current];
   f->valid = false;
   f->captured = 0;
@@ -383,6 +423,10 @@ void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number) {
   object_state_latched = false;
 }
 void SmRendererBeginHardwareRaster(const Ppu *p) {
+#if SM_NATIVE_RASTER
+  native_capture = p && !frames[current].valid && !frames[current].captured;
+  if (native_capture) SnesRasterImageBegin(&stock_images[current], p);
+#endif
   hardware_raster.tracking=false;
 #if SM_RASTER_TRACK_WRITES && !SNESRECOMP_TRACE
   if(p) {
@@ -394,7 +438,32 @@ void SmRendererBeginHardwareRaster(const Ppu *p) {
   (void)p;
 #endif
 }
-void SmRendererEndHardwareRaster(void) { hardware_raster.tracking=false; }
+void SmRendererEndHardwareRaster(void) {
+  hardware_raster.tracking=false;
+#if SM_NATIVE_RASTER
+  native_capture = false;
+#endif
+}
+unsigned SmRendererNativeLines(void) {
+#if SM_NATIVE_RASTER
+  return stock_images[current].count;
+#else
+  return 0;
+#endif
+}
+bool SmRendererClaimNativeLine(const Ppu *p, unsigned line) {
+#if SM_NATIVE_RASTER
+  const SmSourceFrame *f = &frames[current];
+  if (!native_capture || capture_failed[current] || line < 1 || line > 224 ||
+      f->captured != line || !SnesRasterImageCanDefer(p) ||
+      !room_state(read16(f->ram, 0x998)) || (p->bgmode & 7) != 1 || (p->mosaic >> 4)) return false;
+  /* The HUD copies original OBJ/BG pixels as an opaque screen-space band. */
+  if (line <= 32 && p->screenEnabled[0] == 4 && !p->cgadsub && !p->cgwsel) return false;
+  return SnesRasterImageClaim(&stock_images[current], line);
+#else
+  (void)p; (void)line; return false;
+#endif
+}
 void SmRendererHardwareVramChanged(void) { hardware_raster.uncertain=true; }
 void SmRendererCaptureLine(const Ppu *p, unsigned line) {
   if (!p || capture_failed[current] || line < 1 || line > 224) return;
@@ -1929,6 +1998,18 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       else ++render_stats.power_bomb_lines;
     }
     if (scanout.inidisp & 128) continue;
+#if SM_NATIVE_RASTER
+    int wl[2] = {scanout.window1left == 0 ? -viewport.extra : scanout.window1left,
+                 scanout.window2left == 0 ? -viewport.extra : scanout.window2left};
+    int wr[2] = {scanout.window1right == 255 ? 255 + viewport.extra : scanout.window1right,
+                 scanout.window2right == 255 ? 255 + viewport.extra : scanout.window2right};
+    SnesRenderWindowPlan native_windows = SnesRenderWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
+    if (wide_windows[y].valid) {
+      unsigned which = !wide_windows[y].first;
+      wl[which] = wide_windows[y].left; wr[which] = wide_windows[y].right;
+    }
+    SnesRenderWindowPlan margin_windows = SnesRenderWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
+#endif
     int mode7_y = y + 1;
     int mode7_size = (scanout.mosaic >> 4) + 1;
     /* Mode 7 quantizes screen coordinates before the affine transform and
@@ -1997,6 +2078,19 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       for (int sx = 0; sx < viewport.width; ++sx)
         mode7_pixels[sx] = SmMode7Sample(&transform, l->vram, sx - viewport.extra);
     unsigned enabled = scanout.screenEnabled[0] | scanout.screenEnabled[1];
+#if SM_NATIVE_RASTER
+    /* The hardware center uses unmodified tilemap addressing; scene-aware
+     * room/object reconstruction still owns margins. Decode each enabled
+     * ordinary layer a tile at a time after raster-scroll interpolation. */
+    uint16_t native_backgrounds[3][256];
+    bool native_layer[3] = {false, false, false};
+    if (mode == 1) for (unsigned layer = 0; layer < 3; ++layer) {
+      if (!(enabled & (1u << layer)) ||
+          ((scanout.mosaic & (1u << layer)) && (scanout.mosaic >> 4))) continue;
+      native_layer[layer] = SnesRenderMode1TileRow(&scanout, l->vram, layer,
+          0, y + 1, 256, native_backgrounds[layer]);
+    }
+#endif
     /* BG1 scroll is meaningful when terrain is enabled. Color-only and
      * BG2-only effect lines can leave its registers stale. */
     int matte_x = mode == 1 && (enabled & 1) ? background_lines[0].world_x : camera_x;
@@ -2013,6 +2107,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           (matte_x + x < 0 || matte_x + x >= world->room_width ||
            matte_y + y + 1 < 0 || matte_y + y + 1 >= world->room_height)) continue;
       uint16_t screens[2] = {0x500, 0x500};
+#if SM_NATIVE_RASTER
+      unsigned window_mask = SnesRenderWindowMask(x < 0 || x >= 256 ? &margin_windows : &native_windows, x);
+#endif
       uint16_t backgrounds[3] = {0, 0, 0};
       int layers = mode == 7 ? ((scanout.setini & 64) ? 2 : 1) : 3;
       /* Tile addressing/decoding is identical on main and sub. Cache it
@@ -2032,6 +2129,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           }
           backgrounds[layer] = index ? (priority << 12) | (layer << 8) | index : 0;
         } else {
+#if SM_NATIVE_RASTER
+          if (native_layer[layer] && x >= 0 && x < 256) {
+            backgrounds[layer] = native_backgrounds[layer][x];
+            continue;
+          }
+#endif
           int sample_x = x, sample_y = y + 1;
           if (scanout.mosaic & (1u << layer)) {
             int size = (scanout.mosaic >> 4) + 1;
@@ -2050,16 +2153,28 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
         for (int layer = 0; layer < layers; ++layer) {
           if (!(scanout.screenEnabled[sub] & (1u << layer))) continue;
           if ((scanout.screenWindowed[sub] & (1u << layer)) &&
+#if SM_NATIVE_RASTER
+              (window_mask & (1u << layer))) continue;
+#else
               in_window(&scanout, layer, x, viewport.extra, &wide_windows[y])) continue;
+#endif
           if (backgrounds[layer] > screens[sub]) screens[sub] = backgrounds[layer];
         }
         if ((scanout.screenEnabled[sub] & 16) &&
             (!(scanout.screenWindowed[sub] & 16) ||
+#if SM_NATIVE_RASTER
+             !(window_mask & 16)) &&
+#else
              !in_window(&scanout, 4, x, viewport.extra, &wide_windows[y])) &&
+#endif
             objects[sx] > screens[sub]) screens[sub] = objects[sx];
       }
       out[y * viewport.width + sx] = colour(&scanout, l->palette, brightness, screens[0], screens[1],
+#if SM_NATIVE_RASTER
+                                            (window_mask & 32) != 0);
+#else
                                             in_window(&scanout, 5, x, viewport.extra, &wide_windows[y]));
+#endif
     }
   }
   return true;

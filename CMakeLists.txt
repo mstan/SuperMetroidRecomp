@@ -14,6 +14,16 @@ set(CMAKE_C_STANDARD 11)
 option(SM_VIEW_ACTIVITY "Process enemies throughout the visible wider view" ON)
 add_compile_definitions(SM_VIEW_ACTIVITY=$<BOOL:${SM_VIEW_ACTIVITY}>)
 option(SM_RASTER_FULL_COPY "Use full-copy VRAM raster storage as the reference" OFF)
+set(SM_RASTER_IMPL "LLE" CACHE STRING "Captured raster implementation (LLE or NATIVE)")
+set_property(CACHE SM_RASTER_IMPL PROPERTY STRINGS LLE NATIVE)
+if(SM_RASTER_IMPL STREQUAL "NATIVE")
+    set(SM_RENDERER_SOURCE src/sm_renderer_native.c)
+    set_property(SOURCE src/main.c APPEND PROPERTY COMPILE_DEFINITIONS SM_NATIVE_RASTER=1)
+elseif(SM_RASTER_IMPL STREQUAL "LLE")
+    set(SM_RENDERER_SOURCE src/sm_renderer.c)
+else()
+    message(FATAL_ERROR "SM_RASTER_IMPL must be LLE or NATIVE")
+endif()
 option(SM_RASTER_TRACK_WRITES "Track VRAM writes for title-owned capture intervals" ON)
 add_compile_definitions(SM_RASTER_TRACK_WRITES=$<BOOL:${SM_RASTER_TRACK_WRITES}>)
 set_property(SOURCE src/sm_renderer.c APPEND PROPERTY COMPILE_DEFINITIONS
@@ -158,6 +168,14 @@ if(BUILD_TESTING AND NOT ANDROID)
         src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_custom_renderer
         COMMAND sm_renderer_test ${CMAKE_CURRENT_BINARY_DIR}/sm-renderer-test.capture)
+    add_executable(sm_renderer_native_test tests/sm_renderer_test.c
+        src/sm_renderer_native.c src/sm_mode7.c tests/sm_renderer_ppu_stub.c)
+    target_include_directories(sm_renderer_native_test PRIVATE
+        src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_native_renderer
+        COMMAND sm_renderer_native_test ${CMAKE_CURRENT_BINARY_DIR}/sm-renderer-native-test.capture)
+    target_compile_definitions(sm_renderer_native_test PRIVATE
+        SM_RASTER_FULL_COPY=$<BOOL:${SM_RASTER_FULL_COPY}>)
     target_compile_definitions(sm_renderer_test PRIVATE
         SM_RASTER_FULL_COPY=$<BOOL:${SM_RASTER_FULL_COPY}>)
     add_executable(sm_renderer_fullcopy_test tests/sm_renderer_test.c
@@ -186,7 +204,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     # Assertions are the test oracle, including Release configurations.
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
-            sm_pause_options_test sm_renderer_test sm_mode7_test)
+            sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()
@@ -197,6 +215,7 @@ if(BUILD_TESTING AND NOT ANDROID)
         target_link_libraries(sm_video_test PRIVATE m)
         target_link_libraries(sm_pause_options_test PRIVATE m)
         target_link_libraries(sm_renderer_test PRIVATE m)
+        target_link_libraries(sm_renderer_native_test PRIVATE m)
         target_link_libraries(sm_render_capture PRIVATE m)
         target_link_libraries(sm_mode7_test PRIVATE m)
     endif()
@@ -233,7 +252,7 @@ set(SM_HOST_SOURCES
     src/sm_cpu_infra.c    # RtlGameInfo registration
     src/sm_post_mortem.c  # the "sm" crash-report section (framework hook)
     src/sm_spc_player.c   # SPC upload interception
-    src/sm_renderer.c     # read-only custom widescreen renderer
+    ${SM_RENDERER_SOURCE} # read-only custom widescreen renderer
     src/sm_mode7.c        # SM's mode-7 object projection
     src/sm_display.c      # SM presentation geometry
     src/sm_video.c        # SM aspect/HUD policy + presentation clock
@@ -300,7 +319,7 @@ file(GLOB SM_REPLAY_ID_INPUTS CONFIGURE_DEPENDS src/*.c src/*.h recomp/*.cfg pro
 list(APPEND SM_REPLAY_ID_INPUTS ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
     ${CMAKE_CURRENT_SOURCE_DIR}/framework_pins.txt ${CMAKE_CURRENT_SOURCE_DIR}/VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SM_REPLAY_ID_INPUTS})
-set(SM_REPLAY_SOURCE_ID "${CMAKE_C_FLAGS};${CMAKE_C_FLAGS_RELEASE};${CMAKE_CXX_FLAGS};${CMAKE_CXX_FLAGS_RELEASE};activity=${SM_VIEW_ACTIVITY}")
+set(SM_REPLAY_SOURCE_ID "${CMAKE_C_FLAGS};${CMAKE_C_FLAGS_RELEASE};${CMAKE_CXX_FLAGS};${CMAKE_CXX_FLAGS_RELEASE};activity=${SM_VIEW_ACTIVITY};raster=${SM_RASTER_IMPL};apu-time=${SNESRECOMP_APU_TIME_IMPL};crc=${SNESRECOMP_CRC32_IMPL}")
 foreach(input IN LISTS SM_REPLAY_ID_INPUTS)
     file(SHA256 ${input} input_hash)
     string(APPEND SM_REPLAY_SOURCE_ID ";${input_hash}")

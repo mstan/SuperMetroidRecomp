@@ -7,6 +7,8 @@ void SmRendererSetRom(const uint8_t *rom, size_t size);
 /* Call immediately before the next guest frame/NMI publishes OAM. */
 void SmRendererLatchObjectState(const uint8_t ram[0x20000]);
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number);
+bool SmRendererClaimNativeLine(const Ppu *p, unsigned line);
+unsigned SmRendererNativeLines(void);
 void SmRendererCaptureLine(const Ppu *ppu, unsigned line);
 void SmRendererBeginHardwareRaster(const Ppu *ppu);
 void SmRendererEndHardwareRaster(void);
