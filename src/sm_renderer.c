@@ -73,12 +73,13 @@ static SnesRasterImage stock_images[2];
 static bool native_capture;
 static bool read_stock_line(const void *context, unsigned y, SnesRasterImageLine *out) {
   const SmSourceFrame *f = context;
-  if (!f->valid || y >= f->captured) return false;
+  if (y >= f->captured) return false;
   const SmRasterLine *l = &f->lines[y];
   *out = (SnesRasterImageLine){l->registers, l->high_oam, l->palette, l->oam, l->vram};
   return true;
 }
 static bool materialize_stock(const SmSourceFrame *f) {
+  if (!f->valid) return false;
   unsigned index = f == &frames[0] ? 0 : 1;
   return SnesRasterImageMaterialize(&stock_images[index], frames[index].stock,
       read_stock_line, f);
@@ -485,7 +486,13 @@ void SmRendererCaptureLine(const Ppu *p, unsigned line) {
 #if SM_RASTER_TRACK_WRITES
   hardware_raster.writes=p->vramWriteCount;hardware_raster.uncertain=false;
 #endif
-  if (!l->vram) { capture_failed[current] = true; return; }
+  if (!l->vram) {
+#if SM_NATIVE_RASTER
+    if (stock_images[current].count && !SnesRasterImageRecoverPrefix(
+        &stock_images[current], f->stock, p, read_stock_line, f, f->captured)) abort();
+#endif
+    capture_failed[current] = true; return;
+  }
   ++f->captured;
 }
 bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
