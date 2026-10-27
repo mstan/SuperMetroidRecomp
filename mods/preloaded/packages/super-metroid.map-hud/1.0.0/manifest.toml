@@ -1,0 +1,51 @@
+format_version = 1
+id = "super-metroid.map-hud"
+version = "1.0.0"
+name = "Super Metroid Map and HUD"
+author = "SuperMetroidRecomp contributors"
+description = "Extra information on screen. These only draw on top of the picture; the game itself is unchanged. Each is a separate switch."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "supermetroid-jpn"
+rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
+
+[[feature]]
+id = "pause-stats"
+name = "Play time and item percentage"
+description = "The pause screens show your play time and item collection percentage. Inspired by Super Metroid Redux (counters by PHOSPHOTiDYL)."
+group = "HUD"
+default_enabled = false
+presentation_only = true
+
+[[plugin]]
+feature = "pause-stats"
+id = "super-metroid.map-hud.pause-stats"
+
+[[feature]]
+id = "ammo-totals"
+name = "Ammo totals"
+description = "Shows missiles, super missiles and power bombs as current / maximum."
+group = "HUD"
+default_enabled = false
+presentation_only = true
+
+[[option]]
+feature = "ammo-totals"
+id = "where"
+label = "Show"
+description = "Only on the pause screens, or also while playing (just under the HUD bar)."
+type = "choice"
+default = "pause"
+[[option.choice]]
+value = "pause"
+label = "Pause screens"
+[[option.choice]]
+value = "always"
+label = "Always"
+
+[[plugin]]
+feature = "ammo-totals"
+id = "super-metroid.map-hud.ammo-totals"

@@ -282,6 +282,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_xray_plugin.c
     src/mods/sm_station_plugins.c
     src/mods/sm_controls_plugin.c
+    src/mods/sm_hud_plugins.c
 )
 
 if(ANDROID)
