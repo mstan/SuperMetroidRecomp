@@ -7,8 +7,8 @@ BUILD="${1:-build}"
 PLATFORM="${2:?usage: package_release.sh BUILD PLATFORM}"
 VERSION="$(tr -d '[:space:]' < VERSION)"
 [[ "${RELEASE_VERSION:-$VERSION}" == "$VERSION" ]]
-grep -q '^SNESRECOMP_SETUP_HOST:BOOL=OFF$' "$BUILD/CMakeCache.txt"
-grep -q "^SNESRECOMP_BUILD_VERSION:STRING=$VERSION$" "$BUILD/CMakeCache.txt"
+grep -q '^SNESRECOMP_SETUP_HOST:BOOL=OFF$' <(tr -d '\r' < "$BUILD/CMakeCache.txt")
+grep -q "^SNESRECOMP_BUILD_VERSION:STRING=$VERSION$" <(tr -d '\r' < "$BUILD/CMakeCache.txt")
 NAME="supermetroid-$VERSION-$PLATFORM"
 STAGE="$ROOT/dist/$NAME"
 [[ ! -e "$STAGE" ]] || { echo "Stage already exists: $STAGE" >&2; exit 1; }
