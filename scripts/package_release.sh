@@ -27,7 +27,10 @@ cp config.ini "$STAGE/"
 mkdir -p "$STAGE/docs"
 cp docs/custom-renderer.md "$STAGE/docs/"
 cp -R docs/images "$STAGE/docs/"
-bash snesrecomp/tools/ci/bundle_runtime_libs.sh \
+FRAMEWORK="$(sed -n 's/^SNESRECOMP_ROOT:PATH=//p' "$BUILD/CMakeCache.txt" | tr -d '\r')"
+FRAMEWORK="${FRAMEWORK:-$ROOT/snesrecomp}"
+[[ -f "$FRAMEWORK/tools/ci/bundle_runtime_libs.sh" ]]
+bash "$FRAMEWORK/tools/ci/bundle_runtime_libs.sh" \
   --exe "$STAGE/$EXE" --stage "$STAGE" --build-dir "$BUILD" --strict
 if [[ "$PLATFORM" == linux-* ]]; then
   cat > "$STAGE/Launch.sh" <<'LAUNCH'
