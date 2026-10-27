@@ -14,10 +14,24 @@ rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
 
 [[feature]]
 id = "shinespark-drain"
-name = "No shinespark energy drain"
-description = "A shinespark no longer costs energy while Samus flies. It still ends when she hits something."
+name = "Shinespark energy drain"
+description = "A shinespark costs less or no energy while Samus flies. It still ends when she hits something."
 group = "Combat"
 default_enabled = false
+
+[[option]]
+feature = "shinespark-drain"
+id = "drain"
+label = "Drain"
+description = "Energy lost per frame of a shinespark, compared with the original game."
+type = "choice"
+default = "off"
+[[option.choice]]
+value = "off"
+label = "None"
+[[option.choice]]
+value = "half"
+label = "Half"
 
 [[plugin]]
 feature = "shinespark-drain"
