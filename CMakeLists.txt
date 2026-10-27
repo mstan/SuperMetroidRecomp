@@ -206,7 +206,8 @@ if(BUILD_TESTING AND NOT ANDROID)
     target_include_directories(sm_mode7_test PRIVATE src)
     add_test(NAME sm_custom_mode7 COMMAND sm_mode7_test)
     # super-metroid.controls input transforms against a synthetic WRAM.
-    add_executable(sm_controls_test tests/sm_controls_test.c)
+    add_executable(sm_controls_test tests/sm_controls_test.c
+        ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
     target_include_directories(sm_controls_test PRIVATE src/mods
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_controls COMMAND sm_controls_test)
@@ -275,6 +276,7 @@ set(SM_HOST_SOURCES
     src/sm_mods.c         # built-in presentation mod provider
     # Gameplay/QoL mod plugins, selected by mods/preloaded packages
     src/mods/sm_mod_support.c
+    src/mods/sm_mod_overlay.c
     src/mods/sm_elevator_plugin.c
     src/mods/sm_shinespark_drain_plugin.c
     src/mods/sm_xray_plugin.c

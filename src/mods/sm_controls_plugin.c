@@ -16,6 +16,8 @@
  * radial-menu: the right stick selects a HUD item by direction (up missiles,
  * right super missiles, down power bombs, left grapple, up-left X-ray) by
  * pulsing item select until the HUD shows it. Items Samus lacks are skipped.
+ * While the stick is pushed a ring of the five items is drawn over the room
+ * (presentation only), the pointed-at one highlighted, missing ones dimmed.
  *
  * Both act only during gameplay (game state 8) and pass every other screen
  * through untouched.
@@ -26,6 +28,7 @@
 #include <string.h>
 
 #include "mod_runtime.h"
+#include "sm_mod_overlay.h"
 #include "sm_mod_support.h"
 #include "snes_overlay_draw.h"
 
@@ -153,18 +156,48 @@ static bool Owned(const uint8_t *wram, int item) {
   }
 }
 
+/* Seat 0's pointed-at item for the ring; -1 when the stick is centred. */
+static int g_ring_target = -1;
+
 static uint16_t SmRadialMenu(uint16_t buttons, const SnesModInputContext *ctx) {
-  if (!ctx->wram || !InGameplay(ctx->wram)) return buttons;
+  if (!ctx->wram || !InGameplay(ctx->wram)) {
+    if (ctx->player == 0) g_ring_target = -1;
+    return buttons;
+  }
   Seat *seat = &g_radial_seats[ctx->player & 1];
   int target = RadialTarget(ctx);
+  if (ctx->player == 0) g_ring_target = target;
   if (target > 0 && Owned(ctx->wram, target) && Word(ctx->wram, kHudItem) != target)
     Pulse(seat, HostButtons(Word(ctx->wram, kCfgItemSwitch)));
   return (uint16_t)(buttons | PulseOutput(seat));
 }
 
+static void SmRadialRing(uint32_t *pixels, int stride, int width, int height,
+                         int stage_x, const uint8_t *wram) {
+  (void)width;
+  if (g_ring_target < 0 || !InGameplay(wram)) return;
+  static const struct { int item, dx, dy; const char *label; } kSlots[] = {
+    {1, 0, -40, "MSL"}, {2, 44, 0, "SUP"}, {3, 0, 40, "PB"},
+    {4, -44, 0, "GRP"}, {5, -32, -30, "XRY"},
+  };
+  int cx = stage_x + 128, cy = 112;
+  for (size_t i = 0; i < sizeof(kSlots) / sizeof(kSlots[0]); ++i) {
+    int item = kSlots[i].item;
+    bool owned = Owned(wram, item), selected = item == g_ring_target;
+    int x = cx + kSlots[i].dx - 14, y = cy + kSlots[i].dy - 6;
+    uint32_t fill = selected ? 0xFF2C6E2Cu : 0xFF101820u;
+    uint32_t ink = !owned ? 0xFF5A5A5Au : Word(wram, kHudItem) == item ? 0xFFFFE070u : 0xFFF0F0F0u;
+    snes_ovl_fill_rect(pixels, stride, height, x, y, 28, 12, fill);
+    snes_ovl_stroke_rect(pixels, stride, height, x, y, 28, 12, selected ? 0xFF8CF08Cu : 0xFF405060u);
+    snes_ovl_draw_text(pixels, stride, height, x + 2, y + 2, kSlots[i].label, ink, 1);
+  }
+}
+
 static void SmRadialMenuActivate(void) {
   memset(g_radial_seats, 0, sizeof(g_radial_seats));
+  g_ring_target = -1;
   snes_mod_register_input_transform(SmRadialMenu);
+  SmModOverlayRegister(SmRadialRing);
   fprintf(stderr, "[mods] radial weapon menu on the right stick\n");
 }
 

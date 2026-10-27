@@ -57,6 +57,7 @@
 #include "sm_activity.h"
 #if defined(RECOMP_LAUNCHER)
 #include "sm_mods.h"
+#include "mods/sm_mod_overlay.h"
 #endif
 
 #ifndef SNESRECOMP_BUILD_VERSION
@@ -203,7 +204,8 @@ static void SmPublishNativeField(uint8_t *field, unsigned number) {
 static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
                        int frame_w, int frame_h, double alpha) {
   const bool overlay = SmPauseOptions_Visible();
-  if (!SmCustomRendererEnabled() && !overlay)
+  const bool mod_overlay = SmModOverlayActive();
+  if (!SmCustomRendererEnabled() && !overlay && !mod_overlay)
     return 0;
   SmSyncCaptureGeneration();
   int drew = 0;
@@ -222,6 +224,8 @@ static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
       memcpy(g_sm_output + y * frame_w + g_sm_viewport.extra,
              field + y * 256 * 4, 256 * 4);
   }
+  if (mod_overlay)
+    SmModOverlayRender(g_sm_output, frame_w, frame_w, frame_h, g_sm_viewport.extra);
   if (overlay)
     SmPauseOptions_Render(g_sm_output, frame_w, frame_w, frame_h);
   RtlWidescreenPresent(dst, pitch, (const uint8_t *)g_sm_output, frame_w, frame_h);

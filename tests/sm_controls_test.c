@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "mod_runtime.h"
+#include "sm_mod_overlay.h"
 #include "sm_mod_support.h"
 
 static const char *g_options[4][2];
@@ -15,6 +16,8 @@ int snes_mod_register_activation_plugin(const char *id, SNESModActivationCallbac
   (void)id; (void)cb; return 1;
 }
 int snes_mod_register_input_transform(SNESModInputTransform t) { g_transform = t; return 1; }
+static int g_overlay_registered;
+bool SmModOverlayRegister(SmModOverlayDraw draw) { (void)draw; g_overlay_registered = 1; return true; }
 const char *SmModOption(SmModValue *out, const char *package, const char *feature,
                         const char *option, const char *fallback) {
   (void)package; (void)feature;
@@ -74,6 +77,7 @@ int main(void) {
 
   /* radial-menu: stick down picks power bombs only once owned. */
   SmRadialMenuActivate();
+  assert(g_overlay_registered);
   assert(Step(0, 0, 30000) == 0);                                        /* none owned */
   SetWord(kMaxPowerBombs, 5);
   assert(Step(0, 0, 30000) == SNES_PAD_SELECT);
@@ -81,6 +85,15 @@ int main(void) {
   SetWord(kHudItem, 3);
   assert(Step(0, 0, 30000) == 0);                                        /* reached */
   assert(Step(SNES_PAD_A, 0, 1000) == SNES_PAD_A);                       /* deadzone */
+  assert(g_ring_target == -1);
+  /* The ring draws while the stick points somewhere, and only then. */
+  static uint32_t frame[256 * 224];
+  Step(0, 0, 30000);
+  assert(g_ring_target == 3);
+  SmRadialRing(frame, 256, 256, 224, 0, g_wram);
+  int drawn = 0;
+  for (int i = 0; i < 256 * 224; ++i) drawn += frame[i] != 0;
+  assert(drawn > 0);
 
   puts("sm_controls_test: PASS");
   return 0;
