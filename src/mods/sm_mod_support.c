@@ -53,13 +53,12 @@ bool SmModPatchImm16(const char *name, uint32_t insn_addr,
   return SmModRomPatch(name, insn_addr + 1, before, after, 2);
 }
 
-const char *SmModOption(const char *package, const char *feature,
+const char *SmModOption(SmModValue *out, const char *package, const char *feature,
                         const char *option, const char *fallback) {
-  static char value[128];
-  if (snes_mod_runtime_feature_option_value_c(package, feature, option,
-                                              value, sizeof(value)) && value[0])
-    return value;
-  return fallback;
+  if (!snes_mod_runtime_feature_option_value_c(package, feature, option,
+                                               out->text, sizeof(out->text)) || !out->text[0])
+    snprintf(out->text, sizeof(out->text), "%s", fallback);
+  return out->text;
 }
 
 /* Runs before every activation: whatever the previous plan patched is stock

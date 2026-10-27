@@ -273,6 +273,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_elevator_plugin.c
     src/mods/sm_shinespark_drain_plugin.c
     src/mods/sm_xray_plugin.c
+    src/mods/sm_station_plugins.c
 )
 
 if(ANDROID)

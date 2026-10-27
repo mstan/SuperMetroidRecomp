@@ -29,7 +29,8 @@ bool SmModPatchImm16(const char *name, uint32_t insn_addr,
                      uint16_t stock, uint16_t value);
 
 /* The committed value of a manifest option, or `fallback` when the runtime
- * has none (feature disabled, option absent). Returns a static buffer valid
- * until the next call. */
-const char *SmModOption(const char *package, const char *feature,
+ * has none (feature disabled, option absent). Writes into `out` and returns
+ * it. */
+typedef struct SmModValue { char text[128]; } SmModValue;
+const char *SmModOption(SmModValue *out, const char *package, const char *feature,
                         const char *option, const char *fallback);

@@ -47,6 +47,28 @@ label = "Original"
 value = "2x"
 label = "2x"
 
+[[feature]]
+id = "missile-station"
+name = "Missile stations reload all ammo"
+description = "Missile stations also refill super missiles and power bombs, and work whenever any of them is short. Missile Station Enhancer by MoogleEmperor, as used in Super Metroid Redux."
+group = "Balance"
+default_enabled = false
+
+[[plugin]]
+feature = "missile-station"
+id = "super-metroid.balance-fixes.missile-station"
+
+[[feature]]
+id = "save-station"
+name = "Save stations refill everything"
+description = "Using a save station refills energy, reserve tanks and all ammo, like the gunship. Save Refills Everything by Adam, as used in Super Metroid Redux."
+group = "Balance"
+default_enabled = false
+
+[[plugin]]
+feature = "save-station"
+id = "super-metroid.balance-fixes.save-station"
+
 [[plugin]]
 feature = "xray"
 id = "super-metroid.balance-fixes.xray"

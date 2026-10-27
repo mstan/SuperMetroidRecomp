@@ -26,7 +26,8 @@ static const struct { uint32_t addr; bool subpixel; } kSites[] = {
 
 static void SmElevatorActivate(void) {
   /* Step in 1/65536 px: stock 0x18000 (1.5 px). */
-  const char *speed = SmModOption(PACKAGE, FEATURE, "speed", "2x");
+  SmModValue speed_value;
+  const char *speed = SmModOption(&speed_value, PACKAGE, FEATURE, "speed", "2x");
   uint32_t step = !strcmp(speed, "3x") ? 0x48000 : 0x30000;
   size_t applied = 0, count = sizeof(kSites) / sizeof(kSites[0]);
   for (size_t i = 0; i < count; ++i) {
