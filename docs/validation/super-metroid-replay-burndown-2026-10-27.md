@@ -8,7 +8,7 @@ Starting game commit: `e617b6573ea090e3bcab2690f4193ce5c2fa4869` (0.3.17).
 
 ## Burndown chart
 
-**1 / 7 unique clip reports fixed and validated; 6 unresolved reports deferred by the owner. No active implementation items remain in this pass.**
+**1 / 7 unique clip reports fixed and validated; 6 unresolved reports now have prepared scenarios awaiting owner review.**
 
 ```mermaid
 xychart-beta
@@ -22,6 +22,7 @@ xychart-beta
 | --- | ---: | ---: | ---: | ---: |
 | Intake, 2026-10-27 | 7 | 0 | 0 | 7 |
 | Room padding fix, 2026-10-28 | 7 | 1 | 0 | 6 |
+| Six owner review setups, 2026-10-28 | 7 | 1 | 0 | 6 |
 
 Append actual milestones to this table and update the chart. Do not invent dates or predicted completion. The seven rows are evidence-backed intake items, **not seven confirmed independent defects**. Split multiple defects from one clip into linked subitems when demonstrated; preserve the original seven-row accounting. A shared fix may resolve multiple rows only after each row's symptom is checked.
 
@@ -31,12 +32,12 @@ Names below are exact files in `E:\Downloads`. Scene descriptions and inspection
 
 | ID | Work order | Clip | Length | Scene / observed candidate | Status | Next decisive check and closure target |
 | --- | ---: | --- | ---: | --- | --- | --- |
-| SM27-01 | 6 | [clip_1,793,140,731,658.mp4](E:/Downloads/clip_1,793,140,731,658.mp4) | 8.292 s | Plasma Spark `$D340` upper shaft. The black left-margin cutout crosses a boundary between a full `$83FF` padding screen and real `$8210` wall blocks. | **Deferred: intended fault unconfirmed** | Reopen with an intended symptom beyond, or a decision about, the authored padding matte. Room/camera matches and the unresolved interpretation are retained below. |
-| SM27-02 | 7 | [clip_1,793,140,528,702.mp4](E:/Downloads/clip_1,793,140,528,702.mp4) | 10.724 s | Morph Ball eye room `$9E9F`; cone activation is visible in the clip, but a definite visual, audio or gameplay fault was not established. | **Deferred: symptom unknown** | The owner cannot identify a more specific symptom and authorized deferral. Keep the original clip; no cone fix is claimed for this report. |
-| SM27-03 | 4 | [clip_1,793,140,650,331.mp4](E:/Downloads/clip_1,793,140,650,331.mp4) | 9.717 s | Cathedral `$A788`, jumps above lava. Similar-inventory replays and native pixel checks pass; the alleged alignment/HUD problem was not localized. | **Deferred: defect unconfirmed** | Retain candidate replays 170/171 and captures. Reopen when a concrete failing timestamp/behavior is established; passing static native pixels is not motion acceptance. |
-| SM27-04 | 3 | [clip_1,793,140,682,203.mp4](E:/Downloads/clip_1,793,140,682,203.mp4) | 16.136 s | Wave Beam room `$ADDE` to Double Chamber `$ADAD`, then a speed-boosted lava run. Isolated-door frames alone do not establish a phantom-door defect. | **Deferred: transition defect unconfirmed** | Retain the clip and room identities. Reopen with a mismatched door or other concrete failure; do not treat ordinary black transition phases as a demonstrated bug. |
-| SM27-05 | 1 | [clip_1,793,140,699,506.mp4](E:/Downloads/clip_1,793,140,699,506.mp4) | 17.250 s | Crocomire `$A98D`. Apparent terrain/liquid discontinuities remain a candidate; sampled original captures, adjacent interpolation and nearby dense replays did not reproduce a definite bad seam. | **Deferred: seam not reproduced** | Retain matched candidate frames/captures and reproduction tools. Reopen with exact presentation/camera timing or another failing capture; no fix or already-fixed claim is made. |
-| SM27-06 | 5 | [clip_1,793,140,666,141.mp4](E:/Downloads/clip_1,793,140,666,141.mp4) | 3.181 s | Bubble Mountain `$ACB3`; two original 600-frame candidate segments pass, but the clip movement and a definite fault have not been matched. HUD-edge noise was only a hypothesis. | **Deferred: symptom unknown** | The owner cannot identify a more specific symptom and authorized deferral. Keep the original clip and selected diagnostic frames; no HUD fix is claimed. |
+| SM27-01 | 6 | [clip_1,793,140,731,658.mp4](E:/Downloads/clip_1,793,140,731,658.mp4) | 8.292 s | Plasma Spark `$D340` upper shaft. The black left-margin cutout crosses a boundary between a full `$83FF` padding screen and real `$8210` wall blocks. | **Awaiting owner review** | Use the matching ID in the prepared review selector; save a Bug found, Pass or Defer observation with notes and screenshot. Prior unconfirmed findings remain below. |
+| SM27-02 | 7 | [clip_1,793,140,528,702.mp4](E:/Downloads/clip_1,793,140,528,702.mp4) | 10.724 s | Morph Ball eye room `$9E9F`; cone activation is visible in the clip, but a definite visual, audio or gameplay fault was not established. | **Awaiting owner review** | Use the matching ID in the prepared review selector; save a Bug found, Pass or Defer observation with notes and screenshot. Prior unconfirmed findings remain below. |
+| SM27-03 | 4 | [clip_1,793,140,650,331.mp4](E:/Downloads/clip_1,793,140,650,331.mp4) | 9.717 s | Cathedral `$A788`, jumps above lava. Similar-inventory replays and native pixel checks pass; the alleged alignment/HUD problem was not localized. | **Awaiting owner review** | Use the matching ID in the prepared review selector; save a Bug found, Pass or Defer observation with notes and screenshot. Prior unconfirmed findings remain below. |
+| SM27-04 | 3 | [clip_1,793,140,682,203.mp4](E:/Downloads/clip_1,793,140,682,203.mp4) | 16.136 s | Wave Beam room `$ADDE` to Double Chamber `$ADAD`, then a speed-boosted lava run. Isolated-door frames alone do not establish a phantom-door defect. | **Awaiting owner review** | Use the matching ID in the prepared review selector; save a Bug found, Pass or Defer observation with notes and screenshot. Prior unconfirmed findings remain below. |
+| SM27-05 | 1 | [clip_1,793,140,699,506.mp4](E:/Downloads/clip_1,793,140,699,506.mp4) | 17.250 s | Crocomire `$A98D`. Apparent terrain/liquid discontinuities remain a candidate; sampled original captures, adjacent interpolation and nearby dense replays did not reproduce a definite bad seam. | **Awaiting owner review** | Use the matching ID in the prepared review selector; save a Bug found, Pass or Defer observation with notes and screenshot. Prior unconfirmed findings remain below. |
+| SM27-06 | 5 | [clip_1,793,140,666,141.mp4](E:/Downloads/clip_1,793,140,666,141.mp4) | 3.181 s | Bubble Mountain `$ACB3`; two original 600-frame candidate segments pass, but the clip movement and a definite fault have not been matched. HUD-edge noise was only a hypothesis. | **Awaiting owner review** | Use the matching ID in the prepared review selector; save a Bug found, Pass or Defer observation with notes and screenshot. Prior unconfirmed findings remain below. |
 | SM27-07 | 2 | [clip_1,793,140,718,500.mp4](E:/Downloads/clip_1,793,140,718,500.mp4) | 14.085 s | Plasma Spark room `$D340`, lower route: white cross-pattern strip in the left margin (6.35-13.98 s). | **Fixed and validated: complete unused screens clipped** | Built traversal left, right, then left; current-build save/load; immutable before/after capture at camera `(256,1280)`; native pixels unchanged at four widths. See outcome below. |
 
 The suggested order starts with the clearest visible candidates and may change when measurements identify a shared cause or a more consequential defect.
@@ -47,6 +48,25 @@ The suggested order starts with the clearest visible candidates and may change w
 | --- | --- |
 | `clip_1,793,140,666,141 (1).mp4` | Byte-identical to SM27-06; SHA256 `bc38b2817da48686c7231a4dd7da241a39056998a7c242527adc6f3f9ecb6664`. Covered by SM27-06, not an eighth defect. |
 | Concatenated/repeated `clip_1,793,140,731,658.mp4` path in the original message | One file, covered by SM27-01. |
+
+## Prepared owner review: six unresolved reports
+
+The owner requested playable setups for all six previously deferred reports. The prepared bundle is [human-review](../../../human-review/README.md), with one current-build state per report and a local selector. Start it with `human-review/Launch review.lnk`; it opens the first room paused in a normal window with normal audio. Select Keyboard or Controller, select a room, then **Load selected (paused)**. **Play**, **Pause** and **Restart** operate the private test game. Switching rooms replaces only this selector's child game.
+
+Use **Bug found**, **Pass (reviewed)**, **Defer** or **Save screenshot + note** to save timestamped notes and a screenshot. Records live in `human-review/observations.json`; images live in `human-review/runtime/notes`. Drafts autosave. Earlier failures remain in history even after a later Pass. These are owner observations, not automatic report closure; read them before deciding follow-up work.
+
+| Scenario | Starting room / review target |
+| --- | --- |
+| SM27-01 | Plasma Spark `$D340`, upper platforms: jump/drop and inspect camera edges |
+| SM27-02 | Morph Ball eye `$9E9F`, cone active: walk/jump near the eye |
+| SM27-03 | Cathedral `$A788`, right ledge above lava: jump across platforms |
+| SM27-04 | Wave Beam `$ADDE`: exit left into Double Chamber `$ADAD`, run and return |
+| SM27-05 | Crocomire `$A98D`: active boss, floor/liquid and camera edges |
+| SM27-06 | Bubble Mountain `$ACB3`: middle-left entrance, jumps and drops |
+
+The bundle uses candidate binary SHA256 `1f50d13af577326b4335e003382c23b021717ca2ed8314e01be8f8d2f5e2d7aa`, enhanced 16:9 rendering and 120 FPS presentation. Centered HUD is used for 01/04/05 and edge HUD for 02/03/06, matching the clip presentation targets. Setup grants equipment/health, bypasses reaching doors, and uses the ROM's room loader; 01 also uses diagnostic upper-platform placement followed by normal camera settling. No boss victory flags are set. These are reconstructed review setups, not exact original replay trajectories. Native saves/settings remain isolated.
+
+Automated selector checks passed for all six: guarded current-build load, expected room, frame advancement with input, override release, Play/next-frame Pause, stable paused frame, screenshot capture and atomic JSON storage. All six screenshots were inspected. The eye remains in the earlier room state where its enemy and beam exist; the later awake state removes it. The UI's requested size fits the configured panel. These checks do not establish human visual/audio acceptance. Evidence: [manifest](../../../human-review/manifest.json), [selector checks](../../../human-review/selector-storage-check.json), [six-scenario overview](../../../human-review/overview.jpg). No new runtime fix is claimed for these six reports.
 
 ## Replay archive and baseline evidence
 
