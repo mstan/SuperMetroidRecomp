@@ -157,3 +157,14 @@ default_enabled = false
 [[plugin]]
 feature = "beam-combo-select"
 id = "super-metroid.combat.beam-combo-select"
+
+[[feature]]
+id = "auto-charge"
+name = "Auto charge"
+description = "The Charge Beam charges automatically while idle. Tap Shoot to release the charged shot; quick repeated taps fire normal shots until it recharges. Requires the Charge Beam."
+group = "Combat"
+default_enabled = false
+
+[[plugin]]
+feature = "auto-charge"
+id = "super-metroid.combat.auto-charge"

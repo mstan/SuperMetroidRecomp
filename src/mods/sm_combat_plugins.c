@@ -93,6 +93,7 @@ static struct {
   bool magnet; uint16_t magnet_charge; uint32_t magnet_step;   /* 16.16 px */
   bool bomb_limit; uint16_t bombs, bomb_interval;
   bool combo_select;
+  bool auto_charge;
 } g;
 
 /* ── screw-attack ─────────────────────────────────────────────────────── */
@@ -250,7 +251,8 @@ uint32 SmBombLimitEnemyTypeHook(CpuState *cpu, uint32 pc24) {
 static bool ComboSelectNow(const CpuState *cpu) {
   if (!g.combo_select) return false;
   if (!(W(cpu, kNew) & W(cpu, kCfgItemSwitch))) return false;
-  if (!(W(cpu, kHeld) & W(cpu, kCfgShoot))) return false;
+  if (!(W(cpu, kHeld) & W(cpu, kCfgShoot)) &&
+      !(g.auto_charge && W(cpu, kGameState) == 8)) return false;
   uint16_t beams = W(cpu, kBeams);
   if (!(beams & 0x1000) || W(cpu, kHyperBeam)) return false;
   if ((int16_t)W(cpu, kFlare) < 60) return false;          /* full charge */
@@ -274,6 +276,33 @@ uint32 SmSbaSelectFireHook(CpuState *cpu, uint32 pc24) {
 }
 uint32 SmSbaSelectHudHook(CpuState *cpu, uint32 pc24) {
   return ComboSelectNow(cpu) ? At(pc24, 0xCCCA) : 0;       /* past the check */
+}
+
+/* Auto charge uses the guest's own counter, animation and shot routines.
+ * This PC is reached only by the normal, equipped Charge Beam handler.
+ * A tap takes the stock release path; other frames take its held-charge
+ * path. At full charge wait for a tap or explicit Select combo, so selecting
+ * power bombs never causes an unsolicited special attack. */
+uint32 SmAutoChargeInputHook(CpuState *cpu, uint32 pc24) {
+  if (!g.auto_charge || W(cpu, kGameState) != 8) return 0;
+  if (ComboSelectNow(cpu)) return At(pc24, 0xB843);
+  uint16_t charge = W(cpu, kFlare);
+  if (W(cpu, kNew) & W(cpu, kCfgShoot)) {
+    /* Keep the native power-bomb-selected special attack available. The
+     * tap enters its stock full-charge path; idle never spends ammunition. */
+    if (charge >= 120 && W(cpu, kHudItem) == 3) {
+      uint16_t cost = SmModReadRom16(0x90CC21 + 2u * (W(cpu, kBeams) & 0xF));
+      if (cost && W(cpu, kPowerBombs) >= cost) return At(pc24, 0xB843);
+    }
+    return At(pc24, charge >= 60 ? 0xB86D : 0xB864);
+  }
+  return At(pc24, charge >= 120 ? 0xB885 : 0xB843);
+}
+
+/* Stock emits an uncharged shot when a held charge starts. Auto charging
+ * must start silently; its explicit tap paths use B86A/B873 instead. */
+uint32 SmAutoChargeInitialShotHook(CpuState *cpu, uint32 pc24) {
+  return g.auto_charge && W(cpu, kGameState) == 8 ? At(pc24, 0xB885) : 0;
 }
 
 /* ── activation ───────────────────────────────────────────────────────── */
@@ -333,6 +362,11 @@ static void SmBeamComboSelectActivate(void) {
   ARM("beam-combo-select", 0x90C4E0, 0x90B843, 0x90CCC0);
 }
 
+static void SmAutoChargeActivate(void) {
+  g.auto_charge = true;
+  ARM("auto-charge", 0x90B83C, 0x90B857);
+}
+
 static void SmCombatReset(void) { memset(&g, 0, sizeof(g)); }
 
 SNES_MOD_CONSTRUCTOR(sm_register_combat_plugins) {
@@ -342,6 +376,7 @@ SNES_MOD_CONSTRUCTOR(sm_register_combat_plugins) {
     {"super-metroid.combat.item-magnet", SmItemMagnetActivate},
     {"super-metroid.combat.bomb-limit", SmBombLimitActivate},
     {"super-metroid.combat.beam-combo-select", SmBeamComboSelectActivate},
+    {"super-metroid.combat.auto-charge", SmAutoChargeActivate},
   };
   for (size_t i = 0; i < sizeof(kPlugins) / sizeof(kPlugins[0]); ++i)
     snes_mod_register_activation_plugin(kPlugins[i].id, kPlugins[i].activate);

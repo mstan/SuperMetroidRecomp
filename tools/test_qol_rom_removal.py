@@ -18,6 +18,10 @@ import re
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib  # Python 3.10, also used by the engine's tools.
 
 SOURCE = Path(__file__).resolve().parents[1]
 ROM_SHA = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
@@ -25,13 +29,24 @@ STOCK_TRACE = "66976992eb0baea5b7c6696cd6f8e0def597797cb8880497204a58ac93cfc947"
 
 
 def state(features):
+    catalog = {}
+    for path in sorted((SOURCE / "mods/preloaded/packages").glob("*/1.0.0/manifest.toml")):
+        package = tomllib.loads(path.read_text(encoding="utf8"))
+        for feature in package.get("feature", []):
+            catalog[package["id"] + "/" + feature["id"]] = package["version"]
+    selected = {f.partition(":")[0]: f.partition(":")[2] for f in features}
+    assert not selected.keys() - catalog.keys(), "unknown fixture feature"
     lines = ["format_version = 1\n"]
-    for package in sorted({f.split("/")[0] for f in features}):
-        lines += [f'[[package]]\nid = "{package}"\nversion = "1.0.0"\n']
-    for feature in features:
-        name, _, options = feature.partition(":")
-        package, name = name.split("/")
-        lines += [f'[[feature]]\npackage_id = "{package}"\nid = "{name}"\nenabled = true\n']
+    for package in sorted({f.split("/")[0] for f in catalog}):
+        version = next(version for name, version in catalog.items() if name.startswith(package + "/"))
+        lines += [f'[[package]]\nid = "{package}"\nversion = "{version}"\n']
+    # Explicitly disable unselected features, including correctness fixes
+    # whose normal user-facing defaults may be enabled.
+    for feature in sorted(catalog):
+        package, name = feature.split("/")
+        enabled = "true" if feature in selected else "false"
+        options = selected.get(feature, "")
+        lines += [f'[[feature]]\npackage_id = "{package}"\nid = "{name}"\nenabled = {enabled}\n']
         if options:
             lines += ["[feature.values]\n"]
             for option in options.split(","):
@@ -56,6 +71,49 @@ def read_rows(path):
                 for r in csv.DictReader(f)]
 
 
+def run_case(case, *, build, rom, out, interp_targets=None):
+    exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
+    config = (SOURCE / "config.ini").read_text(encoding="utf8")
+    config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
+    config = config.replace("Volume = 100", "Volume = 0").replace("Fullscreen = 1", "Fullscreen = 0")
+    tag, features, script, fields = case
+    profile = out / tag; profile.mkdir()
+    (profile / "config.ini").write_text(config, encoding="utf8")
+    shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
+    (profile / "mods/preloaded/state.toml").write_text(state(features), encoding="utf8")
+    env = dict(os.environ)
+    for key in ("SM_RUN_FRAMES", "SNESRECOMP_LLE_INTERP_TARGET_FILE", "SM_CAPTURE_PATH", "SM_CAPTURE_FRAME"):
+        env.pop(key, None)
+    env.update(SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy", SNESRECOMP_NO_LAUNCHER="1",
+               SM_REPLAY_RECORD="0", SM_STATE_TRACE=str(profile / "state.csv"),
+               SM_WRAM_PROBE=str(profile / "wram.csv"), SM_WRAM_PROBE_ADDRS=fields)
+    if interp_targets: env["SNESRECOMP_LLE_INTERP_TARGET_FILE"] = str(interp_targets.resolve())
+    executable = build / exe_name
+    command = [str(executable), "--config", str(profile / "config.ini")]
+    if script is None: env["SM_RUN_FRAMES"] = "3200"
+    else:
+        (profile / "scenario.txt").write_text(script, encoding="utf8")
+        command += ["--script", str(profile / "scenario.txt")]
+    command += [str(rom)]
+    with (profile / "stdout.log").open("w") as stdout, (profile / "stderr.log").open("w") as stderr:
+        result = subprocess.run(command, cwd=profile, env=env, stdout=stdout, stderr=stderr, timeout=300)
+    log = (profile / "stderr.log").read_text(errors="replace")
+    assert result.returncode == 0, f"{tag}: process exit {result.returncode}"
+    assert not re.search(r"TIMEOUT|\bFAILED\b|refused|step.cap|scheduler bail|abort|hook table full|registry full|no mod_hook", log, re.I), f"{tag}: inspect stderr"
+    info = {"exit": result.returncode, "command": command, "features": features,
+            "interp_targets": str(interp_targets) if interp_targets else None,
+            "exe_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+            "trace_sha256": hashlib.sha256((profile / "state.csv").read_bytes()).hexdigest()}
+    report_path = profile / "last_run_report.json"
+    if report_path.exists():
+        report = json.loads(report_path.read_text())
+        info["execution_share"] = report.get("execution_share")
+        info["tier2_coverage"] = report.get("tier2_coverage")
+    (profile / "identity.json").write_text(json.dumps(info, indent=2))
+    print(tag + " completed", flush=True)
+    return tag, info
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build", type=Path, required=True)
@@ -69,10 +127,6 @@ def main():
     a.build = a.build.resolve(); a.rom = a.rom.resolve(); a.out = a.out.resolve()
     assert hashlib.sha256(a.rom.read_bytes()).hexdigest() == ROM_SHA, "wrong source ROM"
     a.out.mkdir(parents=True, exist_ok=False)
-    exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
-    config = (SOURCE / "config.ini").read_text(encoding="utf8")
-    config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
-    config = config.replace("Volume = 100", "Volume = 0").replace("Fullscreen = 1", "Fullscreen = 0")
     probe = "079B:2,0998:2,0AF6:2,0AFA:2,0B2E:2,0B32:2,0B36:2,0A58:2,0A1C:2,183E:2,1840:2,00B1:2,00B3:2,00B5:2,00B7:2"
     cases = [("stock", [], None, probe)]
     walk = prefix() + "press right 70\nwait 30\n"
@@ -102,36 +156,8 @@ def main():
                           walk + "poke a68 b400\npoke acc 0100\npress a 2\n" + commands + "quit\n", probe))
 
     def run(case, build=None):
-        tag, features, script, fields = case
-        profile = a.out / tag; profile.mkdir()
-        (profile / "config.ini").write_text(config, encoding="utf8")
-        shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
-        (profile / "mods/preloaded/state.toml").write_text(state(features), encoding="utf8")
-        env = dict(os.environ)
-        for key in ("SM_RUN_FRAMES", "SNESRECOMP_LLE_INTERP_TARGET_FILE", "SM_CAPTURE_PATH", "SM_CAPTURE_FRAME"):
-            env.pop(key, None)
-        env.update(SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy", SNESRECOMP_NO_LAUNCHER="1",
-                   SM_REPLAY_RECORD="0", SM_STATE_TRACE=str(profile / "state.csv"),
-                   SM_WRAM_PROBE=str(profile / "wram.csv"), SM_WRAM_PROBE_ADDRS=fields)
-        if a.interp_targets: env["SNESRECOMP_LLE_INTERP_TARGET_FILE"] = str(a.interp_targets.resolve())
-        executable = (build or a.build) / exe_name
-        command = [str(executable), "--config", str(profile / "config.ini")]
-        if script is None: env["SM_RUN_FRAMES"] = "3200"
-        else:
-            (profile / "scenario.txt").write_text(script, encoding="utf8")
-            command += ["--script", str(profile / "scenario.txt")]
-        command += [str(a.rom)]
-        with (profile / "stdout.log").open("w") as stdout, (profile / "stderr.log").open("w") as stderr:
-            result = subprocess.run(command, cwd=profile, env=env, stdout=stdout, stderr=stderr, timeout=300)
-        log = (profile / "stderr.log").read_text(errors="replace")
-        assert result.returncode == 0, f"{tag}: process exit {result.returncode}"
-        assert not re.search(r"TIMEOUT|\bFAILED\b|refused|step.cap|scheduler bail|abort", log, re.I), f"{tag}: inspect stderr"
-        info = {"exit": result.returncode, "command": command, "features": features,
-                "exe_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-                "trace_sha256": hashlib.sha256((profile / "state.csv").read_bytes()).hexdigest()}
-        (profile / "identity.json").write_text(json.dumps(info, indent=2))
-        print(tag + " completed", flush=True)
-        return tag, info
+        return run_case(case, build=build or a.build, rom=a.rom, out=a.out,
+                        interp_targets=a.interp_targets if build is None else None)
 
     with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as pool:
         identities = dict(pool.map(run, cases))

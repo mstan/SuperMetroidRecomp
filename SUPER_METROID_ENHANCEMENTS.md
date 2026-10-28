@@ -250,7 +250,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .19 | Charge-beam item magnet (Ancient Chozo tractor beam) | Done. Drop moves 2 px/frame toward Samus and is collected. |
 | .21 | Raise bomb limit (count option + "frames between bombs" option) | Done. Stock peaks at 4 because the 16-frame inter-bomb wait is the real cap; mod reaches 10 (or 6 at limit 6). |
 | .23 | Charge combos via Select (Redux) | Done. Select fires the combo, 1 PB spent. Headless test forced the charge because scripts release all buttons for a frame between inputs. |
-| .20 | Auto charge | Defined by owner: charges as if Shoot were held while idle; one tap releases the charged shot, repeated taps are normal until it charges again. Implementation pending. |
+| .20 | Auto charge | Implemented to the owner's definition. Stock/auto/no-Charge-Beam and native/Select combos pass in both paths; four taps give charged/normal/normal/charged after waiting, no idle shots. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 
 ### `super-metroid.controls`
 | Bead | Feature | Status |
@@ -277,7 +277,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .39 | Wider X-ray (wide/widest, aim speed) | Done. Uses `mod_operand` `$88:8791`, `$88:8799`, `$88:87F7/8819/884F/887A`. |
 | .35 | Missile station refills supers and PBs | Done. Hooks `$84:8CD2`→8CDA, B2EE→B2F0, B321→B323, AEC5→AEC7. Hook `$85:8311` supplies the complete AMMO RELOAD row while stock code copies it into WRAM. Runtime check refills 5/3/2 ammo versus stock 5/0/0 and validates the surrounding spaces. |
 | .36 | Save station refills everything | Done. Hook `$84:8CF1`. |
-| .37 | Leave Tourian before Mother Brain | **Partial** (WIP 74a1abd). The boss bit is set after the drain (f11954) but the grey door still doesn't open (Samus blocked at x $3BB). Next: check whether the grey-door hook at `$84:C794` fires (probe the PLM id, room argument and lock type after the room loads); if it does, check the door's per-frame check at `$84:BDF2`; then re-enter the rooms to test the music and enemy-list changes. |
+| .37 | Leave Tourian before Mother Brain | Automated traversal passes: natural baby drain, recovery, both grey gates to DC65/DC19; re-entry selects DCDD, music 1E/5, nine corpse population entries. Stock stays locked. Complete selector interpreted path matches; a narrower mixed-path engine boundary failure remains tracked separately. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
 | .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | **Built, untested** (WIP 74a1abd). 12 vanilla fixes + 6 reserve-tank fixes, one option each. The ship-save fix can't be done with hooks. The source's "known bugs" list has no fixes to port. Next: run `F:\claude-tmp\smqol\cb\scen\{reserve_auto,sbjump,iframes}.txt` stock vs mod. |
 
@@ -339,7 +339,16 @@ burndown, Linux game build, netplay mismatch check and owner playtesting.
 The engine's isolated compiled/interpreter operand tests already pass; that
 does not replace game-level parity checks. No main merge, code push or release.
 
-### 6.2 Combat + balance-fixes branch (stopped at handoff)
+### 6.2 Combat + balance-fixes integration checkpoint
+
+Codex integrated both stopped commits as `bf3d0f8` and `cb79ac3` on
+`feat/qol-feature-mods`, preserving all ROM-write removal. Combined strict
+regeneration, Windows build, 20 CTests, unchanged disabled stock trace and
+all 36 features activating together pass. Auto-charge and Tourian now have
+reproducible compiled/interpreted gameplay fixtures. Evidence and the remaining
+mixed selector-boundary caveat are in `docs/validation/SM_COMBAT_20261028.md`.
+Vanilla/reserve fixes and the other inherited combat claims still need their
+new combined-build qualification. The historical stopped-branch details follow.
 
 `_wt-sm-qol-combat`, `feat/qol-combat`:
 - `6e80b43`: combat package (`src/mods/sm_combat_plugins.c`, cfg hooks, manifest). It was staged on its own and **never built in isolation**.
@@ -347,7 +356,7 @@ does not replace game-level parity checks. No main merge, code push or release.
 - HEAD builds after a full regen. Every feature uses `mod_hook` only, with no ROM patching.
 - Scenarios, probe CSVs and helper scripts: `F:\claude-tmp\smqol\cb\`. Beads .18/.19/.21/.23/.37/.38/.40 are `in_progress` with exact notes.
 
-Before merging into `feat/qol-feature-mods`:
+Historical handoff tasks (integration and combined gates above now complete):
 1. Fix Tourian (.37) and validate the bug fixes (.40) (see section 5).
 2. Run on HEAD (**not done since the last hook conversion**):
    - the stock-invariance hash;
@@ -469,7 +478,7 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 
 1. **Engine operand mechanism implemented/committed and SM writes converted** (6.1). Complete the remaining game-level qualification with the final feature set.
 2. Preserve the ROM-write removal while integrating further features.
-3. **Finish `feat/qol-combat`** (Tourian door, validate bug fixes, hook-table capacity, invariance/ctest/idempotent) and integrate into this feature branch (6.2). No main merge is authorized.
+3. **Finish combat qualification**: Tourian traversal and auto-charge now pass both execution paths; validate vanilla/reserve fixes and the remaining inherited combat features. Integration/capacity/stock/CTest/idempotence gates pass (6.2). No main merge is authorized.
 4. **Map work:** world model (.2) → Zero Mission pause map (.28) → zoomable
    world map (.29) → minimap (.30).
 5. **Pacing:**
