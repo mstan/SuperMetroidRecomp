@@ -220,6 +220,11 @@ if(BUILD_TESTING AND NOT ANDROID)
     target_include_directories(sm_bugfix_test PRIVATE src/mods
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_vanilla_reserve_fixes COMMAND sm_bugfix_test)
+    add_executable(sm_world_dump tools/sm_world_dump.c src/mods/sm_world.c)
+    target_include_directories(sm_world_dump PRIVATE src/mods)
+    add_executable(sm_world_test tests/sm_world_test.c src/mods/sm_world.c)
+    target_include_directories(sm_world_test PRIVATE src/mods)
+    add_test(NAME sm_world_model COMMAND sm_world_test)
     add_executable(sm_render_capture tools/sm_render_capture.c src/sm_renderer.c src/sm_video.c src/sm_mode7.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
     target_include_directories(sm_render_capture PRIVATE src
@@ -229,7 +234,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
             sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test
-            sm_controls_test sm_qol_data_test sm_bugfix_test)
+            sm_controls_test sm_qol_data_test sm_bugfix_test sm_world_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()
