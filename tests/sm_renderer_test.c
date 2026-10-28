@@ -202,6 +202,24 @@ static void shared_hud_liquid_map(void) {
       assert(output[223 * view.width + x] == 0x00ff00);
     }
   }
+  /* The ROM uploads FX beginning at $5BE0, not $5C00. Preserve the
+   * eight-pixel surface/bubble row while keeping earlier HUD rows black. */
+  word(0x1964, 0x8000);
+  BeginFixtureFrame(ram, 2);
+  for (unsigned y = 1; y <= 224; ++y) {
+    ppu.hScroll[2] = 773; ppu.vScroll[2] = y < 192 ? 0 : 55;
+    SmRendererCaptureLine(&ppu, y);
+  }
+  assert(SmRendererEndFrame(stock));
+  for (unsigned v = 0; v < sizeof(views) / sizeof(views[0]); ++v) {
+    SmViewport view = views[v]; assert(SmRendererDraw(output, view, false, 1));
+    for (int x = 0; x < view.width; ++x) {
+      bool native = x >= view.extra && x < view.extra + 256;
+      assert(output[190 * view.width + x] == (native ? 0xffffffu : 0));
+      assert(output[199 * view.width + x] == 0xffffffu);
+      assert(output[200 * view.width + x] == 0x00ff00);
+    }
+  }
   ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
 }
 
@@ -255,6 +273,56 @@ static void eye_beam_margins(void) {
   ResetFixtureRenderer(); SmRendererSetRom(NULL, 0);
   memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
   memset(rom, 0, sizeof(rom)); memset(stock, 0, sizeof(stock));
+}
+
+static void eye_beam_clamped_tail(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  for (unsigned mirror=0;mirror<2;++mirror) {
+    ResetFixtureRenderer(); memset(ram,0,sizeof(ram));
+    memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom)); word(0x998,8);
+    word(0x7a5,128); word(0x7a7,32); word(0x911,1030);
+    word(0xfb8,0xe6bf); word(0xfba,mirror?1000:1316); word(0xfbe,72);
+    word(0xfee,mirror?74:186);
+    rom[0x1066bf+12]=0xa8; romword(0x1066bf+18,0x9058);
+    word(0x18c0,0x8820); word(0x18f0,0xea3c); word(0x192c,4);
+    romword(0x8c9d4+(mirror?70:54)*2,mirror?1536:512);
+    romword(0x8c9d4+(mirror?78:62)*2,mirror?512:1536);
+    /* Independent integer slopes: downward cone edges advance 2 and 6
+     * pixels/row. Offscreen ROM walks saturate entire tails to $0000/$FFFF. */
+    for(int row=0;row<230;++row) {
+      int d=row-71,l=mirror?-30+2*d:286-6*d,r=mirror?-30+6*d:286-2*d;
+      unsigned bounds=0x00ff;
+      if(d>0) bounds=r<0?0:l>255?0xffff:(unsigned)(l<0?0:l)|((unsigned)(r>255?255:r)<<8);
+      word(0x9100+row*2,bounds);
+    }
+    ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1;
+    ppu.screenEnabled[0]=1; ppu.cgadsub=1; ppu.cgwsel=0x20;
+    ppu.windowsel=2u<<20; ppu.fixedColor=31<<10; ppu.cgram[1]=31;
+    for(unsigned row=0;row<8;++row) ppu.vram[4096+row]=255;
+    BeginFixtureFrame(ram,1);
+    for(unsigned y=1;y<=224;++y) {
+      unsigned b=ram[0x9100+y*2]|ram[0x9101+y*2]<<8;
+      ppu.window1left=b&255; ppu.window1right=b>>8;
+      SmRendererCaptureLine(&ppu,y);
+    }
+    assert(SmRendererEndFrame(stock));
+    uint32_t native[256*224];
+    assert(SmRendererDraw(native,views[0],false,1));
+    for(unsigned v=0;v<4;++v) {
+      SmViewport view=views[v]; assert(SmRendererDraw(output,view,false,1));
+      assert(SmRendererGetStats().eye_beam_lines==224);
+      for(unsigned y=0;y<224;++y)
+        assert(!memcmp(native+y*256,output+y*view.width+view.extra,256*sizeof(*native)));
+      if(!view.extra)continue;
+      int outside=mirror?266:-10,inside=mirror?290:-30;
+      assert(output[223*view.width+view.extra+outside]==0xff00ff);
+      assert(output[223*view.width+view.extra+inside]==0xff0000);
+    }
+  }
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
 }
 
 static void static_background_room_edges(void) {
@@ -467,14 +535,19 @@ static void cannon_motion(void) {
 static void nonrectangular_room_padding(void) {
   const SmViewport views[] = {{256,0,4.0/3,false}, {342,43,16.0/9,true},
       {448,96,21.0/9,true}, {682,213,32.0/9,true}};
-  for (unsigned real_content = 0; real_content < 2; ++real_content) {
+  for (unsigned real_content = 0; real_content < 4; ++real_content) {
     ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
     word(0x998,8); word(0x7a5,32); word(0x7a7,32);
     for (unsigned by=0;by<16;++by)
       for (unsigned bx=0;bx<16;++bx) word(0x10002+2*(by*32+bx),0x83ff);
     /* Even one nonpadding block preserves this screen, including content
      * outside today's view. Do not infer visibility from scroll permission. */
-    if (real_content) word(0x10002,0x8000);
+    if (real_content == 1) word(0x10002,0x8000);
+    if (real_content >= 2) {
+      for (unsigned by=16;by<32;++by)
+        for (unsigned bx=0;bx<16;++bx) word(0x10002+2*(by*32+bx),0x8000);
+      if (real_content == 3) word(0x10002+2*(16*32),0x8001);
+    }
     ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=1;
     ppu.cgadsub=32; ppu.fixedColor=31;
     for (unsigned frame=1;frame<=2;++frame) {
@@ -491,7 +564,7 @@ static void nonrectangular_room_padding(void) {
         for(int x=0;x<view.extra;++x) {
           int world_x=254+(int)phase*2+x-view.extra;
           assert(output[100*view.width+x]==
-              (real_content || world_x>=256 ? 0xff0000u : 0));
+              (real_content == 1 || real_content == 2 || world_x>=256 ? 0xff0000u : 0));
         }
       }
   }
@@ -503,6 +576,7 @@ int main(int argc, char **argv) {
   hud_colour_math_margins();
   shared_hud_liquid_map();
   eye_beam_margins();
+  eye_beam_clamped_tail();
   static_background_room_edges();
   parallax_register_aliases();
   door_layout_handover();

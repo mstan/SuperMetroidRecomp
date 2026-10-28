@@ -25,7 +25,7 @@ SCENARIOS = [
          expected='Layers and effects should stay aligned through jumps and scrolling. Describe the exact place and movement if something breaks.'),
     dict(id='SM27-04', title='Wave Beam / Double Chamber - doors and lava run', room=0xadde, door=0x961e,
          clip='682,203', items=0x3105, beams=0x1007, health=399, max_health=399, missiles=60, supers=5, bombs=0, hud=False,
-         steps='Exit left from the item room, run left through Double Chamber, then return. Hold Run for the speed boost. Inspect both door transitions and the lava run.',
+         steps='Shoot the blue door on the left (keyboard S), then walk left through it. In Double Chamber, hold Left + Run (Z), using Jump (X) across gaps. Turn around, go right, shoot the door and return. Inspect the door transitions and lava; no specific glitch needs to be triggered.',
          expected='Check for extra doors, stale room pieces, lava seams or sound problems. Black transition phases alone can be normal.'),
     dict(id='SM27-05', title='Crocomire - boss and lava', room=0xa98d, door=0x93d2,
          clip='699,506', items=0x3105, beams=0x1007, health=599, max_health=599, missiles=65, supers=5, bombs=0, hud=False,

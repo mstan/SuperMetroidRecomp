@@ -42,7 +42,7 @@ class ReviewGame:
         if hashlib.sha256(self.exe.read_bytes()).hexdigest()!=self.manifest['binary_sha256']:
             raise RuntimeError('Review binary differs from the prepared states. Prepare a new review bundle.')
         self.headless=headless;self.process=None;self.sock=None;self.stream=None;self.logs=[]
-        self.case=None
+        self.case=None;self.paused=True
 
     def command(self, command):
         self.sock.sendall(command.encode('ascii')+b'\n')
@@ -86,6 +86,7 @@ class ReviewGame:
         self.logs=[(self.runtime/(run+'-stdout.log')).open('wb'),(self.runtime/(run+'-stderr.log')).open('wb')]
         self.process=subprocess.Popen([str(self.exe),'--config',str(self.runtime/'config.ini'),'--paused','--no-launcher',self.manifest['rom']],
             cwd=self.runtime,env=env,stdout=self.logs[0],stderr=self.logs[1],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        self.paused=True
         deadline=time.monotonic()+30
         while time.monotonic()<deadline:
             if self.process.poll() is not None:raise RuntimeError('Game exited; see runtime logs.')
@@ -118,13 +119,16 @@ class ReviewGame:
                     camera=[word(0x911),word(0x915)],health=word(0x9c2),frame=self.command('frame'))
 
     def play(self):
-        self.command('clear_controller');return self.command('continue')
+        self.command('clear_controller');result=self.command('continue');self.paused=False
+        return result
 
     def pause(self):
         # Stop at the next frame boundary for owner interaction. The runner's
         # plain pause command is intentionally a no-op for ring-query tooling.
+        if self.paused:return self.command('frame')
         result=self.command('step 1')
         if result.get('timeout'):raise RuntimeError('Could not stop at a frame boundary.')
+        self.paused=True
         return result
 
     def capture(self,prefix):
@@ -243,6 +247,7 @@ def verify(root):
             game.play();time.sleep(.05);game.pause();time.sleep(.05)
             stopped=game.command('frame');time.sleep(.05)
             assert game.command('frame')['frame']==stopped['frame']
+            game.pause();assert game.command('frame')['frame']==stopped['frame']
             evidence=game.capture('selector-check-'+case['id'])
             results.append(dict(id=case['id'],before=before,after=after,step=step,controller=game.command('get_controller'),evidence=evidence))
             print(case['id']+' selector load/input/release passed',flush=True)
