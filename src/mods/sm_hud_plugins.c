@@ -18,6 +18,7 @@
 #include "mod_runtime.h"
 #include "sm_mod_overlay.h"
 #include "sm_mod_support.h"
+#include "sm_map_plugin.h"
 #include "snes_overlay_draw.h"
 
 #define PACKAGE "super-metroid.map-hud"
@@ -77,7 +78,7 @@ static void Panel(uint32_t *pixels, int stride, int height, int x, int y, const 
 static void SmPauseStatsDraw(uint32_t *pixels, int stride, int width, int height,
                              int stage_x, const uint8_t *wram) {
   (void)width;
-  if (!Paused(wram)) return;
+  if (!Paused(wram) || SmMapFullScreen(wram)) return;
   char text[48];
   snprintf(text, sizeof(text), "TIME %02u:%02u:%02u ITEMS %d%%",
            (unsigned)Word(wram, kTimeHours), (unsigned)Word(wram, kTimeMinutes),
@@ -87,7 +88,7 @@ static void SmPauseStatsDraw(uint32_t *pixels, int stride, int width, int height
 }
 
 static void SmPauseStatsActivate(void) {
-  SmModOverlayRegister(SmPauseStatsDraw);
+  SmModOverlayRegisterPriority(SmPauseStatsDraw, 20);
   fprintf(stderr, "[mods] pause time and item percentage\n");
 }
 
@@ -99,6 +100,7 @@ static void SmAmmoTotalsDraw(uint32_t *pixels, int stride, int width, int height
                              int stage_x, const uint8_t *wram) {
   (void)width;
   bool paused = Paused(wram);
+  if (SmMapFullScreen(wram)) return;
   if (!paused && !(g_ammo_in_play && Playing(wram))) return;
   char text[64];
   snprintf(text, sizeof(text), "M %u/%u S %u/%u P %u/%u",
@@ -113,7 +115,7 @@ static void SmAmmoTotalsDraw(uint32_t *pixels, int stride, int width, int height
 static void SmAmmoTotalsActivate(void) {
   SmModValue where;
   g_ammo_in_play = !strcmp(SmModOption(&where, PACKAGE, "ammo-totals", "where", "pause"), "always");
-  SmModOverlayRegister(SmAmmoTotalsDraw);
+  SmModOverlayRegisterPriority(SmAmmoTotalsDraw, 20);
   fprintf(stderr, "[mods] ammo totals (%s)\n", g_ammo_in_play ? "always" : "pause");
 }
 

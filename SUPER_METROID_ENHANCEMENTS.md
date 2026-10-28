@@ -1,4 +1,4 @@
-# Super Metroid enhancements: per-feature opt-in mods
+# Super Metroid enhancements: per-feature QoL mods
 
 Working handoff, updated 2026-10-28. Codex is working solo on the feature burndown; the old combat agent remains stopped. It records the plan, the owner's rulings, the
 current state of every branch, the work in flight and what is left, so another
@@ -266,10 +266,10 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .32 | Missile/super/PB totals (pause/always) | Done. Overlay. |
 | .33 | Laser sight (diagonal/always) | Done. Overlay; pose table `$91:B629` and muzzle offsets `$90:BA56`; the line stops at solid blocks. |
 | .34 | Reveal whole map (secrets option) | Done. Hooks `$80:85B1`, `$82:947F`, `$82:94EF`. |
-| .2 | SM world model (`src/mods/sm_world.c`): rooms, doors, cap colours, one-ways, items, explored bits from ROM/WRAM | TODO, needed by .28–.30 |
-| .28 | Zero Mission-style pause map (Falcon Zero reference; Redux DCMap + ItemCircles) | TODO |
-| .29 | Zoomable whole-world map (Symphony of the Night style) from pause | TODO |
-| .30 | Minimap overlay (live / pauses game; the pausing variant is gameplay and off in netplay) | TODO |
+| .2 | SM world model (`src/mods/sm_world.c`): rooms, doors, cap colours, one-ways, items, explored bits from ROM/WRAM | Read-only model committed a040b9f and extended: 255 rooms, 310 states, all 100 items, native crumble direction and live/saved exploration. Windows/Linux tests pass. Nine scripted/unused door positions and full reference audit remain unverified. |
+| .28 | Zero Mission-style pause map (Falcon Zero reference; Redux DCMap + ItemCircles) | Implemented; same-input guest trace/full WRAM stays stock-identical while composed image changes. Native scrolling/tabs retained. Owner review pending; see `docs/validation/SM_MAPS_20261028.md`. |
+| .29 | Zoomable whole-world map (Symphony of the Night style) from pause | Implemented. X opens; L/R zoom; D-pad pans; Y centres; X/B back. Seven map cases match observed fields, full WRAM and composed images across normal and interpreted surrounding gameplay; discovery/SRAM unchanged. Owner review pending. |
+| .30 | Minimap overlay (live / pauses game; the pausing variant is gameplay and off in netplay) | Implemented. Select+Start toggles; compact/wide options. Live clocks advance; paused clock/Samus/enemies stay still while interrupts advance; movement resumes on close. Native tests prevent freezing in netplay and close UI on restore. Main gameplay is intentionally LLE; coverage limit documented. |
 
 ### `super-metroid.balance-fixes`
 | Bead | Feature | Status |
@@ -468,8 +468,10 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 - **Required per feature:**
   - a stock-vs-mod numeric measurement;
   - a tier-parity run (compiled vs interpreter) for each hooked feature.
-    This is still owed for every feature. Use the interp-oracle deny-gate
-    recipe in the engine docs.
+    Auto-charge, Tourian's complete selector, core vanilla/reserve routes and
+    map views now have qualified comparisons. Verify actual interpreter work
+    increases: a routine may already be LLE-only. Each validation document
+    records exact coverage and limits.
 - **Not yet done:**
   - a Linux build (`tools/build-linux.sh`; `REQUIRED_MOD_MANIFESTS` lists each package);
   - a netplay effective-set mismatch check.
@@ -479,8 +481,9 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 1. **Engine operand mechanism implemented/committed and SM writes converted** (6.1). Complete the remaining game-level qualification with the final feature set.
 2. Preserve the ROM-write removal while integrating further features.
 3. **Finish combat qualification**: Tourian traversal and auto-charge now pass both execution paths; validate vanilla/reserve fixes and the remaining inherited combat features. Integration/capacity/stock/CTest/idempotence gates pass (6.2). No main merge is authorized.
-4. **Map work:** world model (.2) → Zero Mission pause map (.28) → zoomable
-   world map (.29) → minimap (.30).
+4. **Map views implemented:** finish the reference/scripted-door audit and owner
+   review. Seven-case checks and the LLE-authoritative pause-boundary limit
+   are recorded in `docs/validation/SM_MAPS_20261028.md`.
 5. **Pacing:**
    - quit to file select from gameplay;
    - elevator and boss-door headless checks.

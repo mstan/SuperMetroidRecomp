@@ -19,5 +19,7 @@ typedef void (*SmModOverlayDraw)(uint32_t *pixels, int stride, int width, int he
                                  int stage_x, const uint8_t *wram);
 
 bool SmModOverlayRegister(SmModOverlayDraw draw);
+/* Higher priorities draw later; equal priorities retain registration order. */
+bool SmModOverlayRegisterPriority(SmModOverlayDraw draw, int priority);
 bool SmModOverlayActive(void);
 void SmModOverlayRender(uint32_t *pixels, int stride, int width, int height, int stage_x);

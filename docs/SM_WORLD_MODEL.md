@@ -21,19 +21,24 @@ The current room's actual state pointer takes precedence over predicting its
 conditional state. Arrival-door conditions in other rooms remain unknown.
 
 On the owned stock ROM, the first complete audit reads **255 Zebes rooms,
-595 door-list entries, 310 room states and 324 state-specific markers**.
+595 door-list entries, 310 room states and 408 state-specific markers**.
 The markers contain **100 unique items**, 108 item entries including state
 variants, 170 coloured caps, 19 saves, five maps, seven energy stations,
-four ammo stations and 11 shootable gates. All 310 level streams decode with
+four ammo stations, 11 shootable gates and 84 crumble-floor markers. Crumble
+arrows resolve the native BTS/PLM setup and only mark down-only floors, not
+other special blocks. All 310 level streams decode with
 bounded output. Some rooms retain padded source rows; the size word locates
 BTS while the room dimensions bound playable coordinates.
 
 Nine entries have no door block in their level variants and retain coordinates
 `-1/-1`: `DD58:1`, `A0D2:1`, `D54D:0`, `D57A:0`, `D4EF:0`, `D51E:0`,
 `D461:2`, `D4C2:2`, `B3A5:2`. These need scripted/arrival-geometry handling in
-the views. A zero-destination elevator dummy is not a one-way exit. A missing
+the full audit. Atlas placement uses reverse arrival geometry where available;
+these do not receive invented physical blue door caps. A zero-destination
+elevator dummy is not a one-way exit. A missing
 reverse room edge alone does not establish the direction of an internal
-crumble passage. Full reference-map visual comparison remains pending.
+crumble passage; the crumble setup itself supplies that directional fact.
+Full reference-map visual comparison remains pending.
 
 With `BUILD_TESTING=ON`, `sm_world_dump` exports machine-readable facts:
 
@@ -45,4 +50,5 @@ The synthetic `sm_world_model` test checks graph/state/marker decoding,
 LoROM-crossing compression, malformed data rejection, page/bit ordering,
 live/saved exploration, item collection and unchanged guest memory.
 It passes GCC with `-Wall -Wextra -Werror` on Windows and Ubuntu/WSL.
-Raw stock audit: `G:/Temp/Codex/sm-qol-20261027/world-model.json`.
+Final raw stock audit: `G:/Temp/Codex/sm-qol-20261027/world-model-final.json`.
+Map-view qualification: [SM_MAPS_20261028.md](validation/SM_MAPS_20261028.md).

@@ -10,7 +10,7 @@ enum { SM_WORLD_AREAS = 6, SM_WORLD_ROOMS = 512, SM_WORLD_DOORS = 2048,
 typedef uint8_t (*SmWorldRead)(void *context, uint32_t address);
 typedef enum SmWorldMarkerKind {
   SM_MAP_ITEM, SM_MAP_SAVE, SM_MAP_MAP, SM_MAP_ENERGY, SM_MAP_AMMO,
-  SM_MAP_CAP, SM_MAP_GATE
+  SM_MAP_CAP, SM_MAP_GATE, SM_MAP_DROP
 } SmWorldMarkerKind;
 typedef enum SmWorldCap {
   SM_CAP_BLUE, SM_CAP_MISSILE, SM_CAP_SUPER, SM_CAP_POWER_BOMB, SM_CAP_GREY
@@ -22,7 +22,7 @@ typedef struct SmWorldRoom {
 typedef struct SmWorldDoor {
   uint16_t definition, source, destination, index;
   int16_t block_x, block_y; /* source room blocks; -1 if script-created */
-  uint8_t direction, flags, arrival_x, arrival_y;
+  uint8_t direction, flags, arrival_x, arrival_y, arrival_screen_x, arrival_screen_y;
   bool reciprocal;
 } SmWorldDoor;
 typedef struct SmWorldMarker {
@@ -37,6 +37,7 @@ typedef struct SmWorld {
   uint16_t room_count, door_count, marker_count, state_count;
   uint16_t tiles[SM_WORLD_AREAS][2048];
   uint8_t station_map[SM_WORLD_AREAS][256];
+  uint16_t room_at[SM_WORLD_AREAS][2048]; /* index + 1, zero if unmapped */
   char error[128];
 } SmWorld;
 
@@ -49,3 +50,8 @@ bool SmWorldKnown(const SmWorld *world, const uint8_t *wram,
                   unsigned area, int x, int y, bool reveal, bool secrets);
 bool SmWorldItemCollected(const uint8_t *wram, const SmWorldMarker *marker);
 uint16_t SmWorldTile(const SmWorld *world, unsigned area, int x, int y);
+const SmWorldRoom *SmWorldCellRoom(const SmWorld *world, unsigned area, int x, int y);
+/* Geometric room atlas from actual exits/arrivals. Returns the number of
+ * inconsistent directed constraints (warps/non-aligned passages); views may
+ * draw connectors for those rather than claiming a planar embedding. */
+unsigned SmWorldLayout(const SmWorld *world, int16_t xy[SM_WORLD_ROOMS][2]);

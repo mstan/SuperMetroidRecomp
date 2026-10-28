@@ -30,9 +30,10 @@ static void Fixture(void) {
   Word(0x8f9280,0xeed7); Byte(0x8f9282,4); Byte(0x8f9283,6); Word(0x8f9284,7);
   Word(0x8f9286,0xc836); Byte(0x8f9288,2); Byte(0x8f9289,3); Word(0x8f928a,10);
   Word(0x8f9460,0xb76f); Byte(0x8f9462,8); Byte(0x8f9463,10);
-  /* 512-byte level, first cell a door; 510 remaining tile bytes and 256
-   * BTS bytes zero-filled. Stream crosses a LoROM bank boundary. */
-  const uint8_t stream[]={1,0,2, 1,0,0x90, 0xe5,0xfd,0, 0xe4,0xff,0, 0xff};
+  /* 512-byte level, a door and two crumble blocks in one map cell; remaining
+   * tile/BTS bytes zero-filled. Stream crosses a LoROM bank boundary. */
+  const uint8_t stream[]={1,0,2, 5,0,0x90,0,0xb0,0,0xb0, 0xe5,0xf9,0, 0xe4,0xff,0, 0xff};
+  Word(0x949139,0xd000); Word(0x84d000,0xce37);
   uint32_t p=0xc0fffe;
   for (unsigned i=0; i<sizeof(stream); ++i) { Byte(p,stream[i]); ++p; if (!(p&0xffff)) p+=0x8000; }
   for (unsigned a=0; a<6; ++a) { Long(0x82964a+3*a,0xb58000); Word(0x829717+2*a,0x9800); }
@@ -42,17 +43,23 @@ static void Fixture(void) {
 }
 int main(void) {
   Fixture(); assert(SmWorldLoad(&world,Read,NULL));
-  assert(world.room_count==2 && world.door_count==2 && world.state_count==3 && world.marker_count==5);
+  assert(world.room_count==2 && world.door_count==2 && world.state_count==3 && world.marker_count==8);
   unsigned gates=0;
   for (unsigned i=0; i<world.marker_count; ++i) if (world.markers[i].kind==SM_MAP_GATE) {
     assert(world.markers[i].detail==SM_CAP_BLUE && world.markers[i].direction==1); ++gates;
   }
   assert(gates==2);
+  unsigned drops=0;
+  for (unsigned i=0; i<world.marker_count; ++i) if (world.markers[i].kind==SM_MAP_DROP) ++drops;
+  assert(drops==3);
   const SmWorldRoom *room=SmWorldFindRoom(&world,0x91f8);
   assert(room && room->x==23 && room->y==1 && room->default_state==0x920a);
   assert(!SmWorldFindRoom(&world,0xffff));
   assert(world.doors[0].source==0x91f8 && world.doors[0].destination==0x9400 && world.doors[0].reciprocal);
   assert(world.doors[0].block_x==0 && world.doors[0].block_y==0);
+  assert(SmWorldCellRoom(&world,0,23,1)==room && !SmWorldCellRoom(&world,0,0,0));
+  int16_t layout[SM_WORLD_ROOMS][2]; assert(!SmWorldLayout(&world,layout));
+  assert(layout[0][0]==23 && layout[0][1]==1 && layout[1][0]==24 && layout[1][1]==1);
   assert(SmWorldRoomState(room,Read,NULL,ram)==0x920a);
   ram[0xd822]=0x10; assert(SmWorldRoomState(room,Read,NULL,ram)==0x9350);
   Ram(0x79b,0x91f8); Ram(0x7bb,0x9999);
@@ -76,6 +83,8 @@ int main(void) {
   memcpy(saved,ram,sizeof(ram));
   SmWorldRoomState(room,Read,NULL,ram); SmWorldKnown(&world,ram,0,23,1,true,true); SmWorldItemCollected(ram,item);
   assert(!memcmp(saved,ram,sizeof(ram)));
+  Word(0x84d000,0xc7b1); /* another special-block setup is not a down-only floor */
+  assert(SmWorldLoad(&world,Read,NULL) && world.marker_count==5);
   Word(0x8f9203,0xffff); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"selector"));
   Fixture(); Byte(0xc0fffe,0x80); /* invalid absolute copy before any output */
   assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"compressed level"));

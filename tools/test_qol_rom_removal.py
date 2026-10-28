@@ -71,7 +71,7 @@ def read_rows(path):
                 for r in csv.DictReader(f)]
 
 
-def run_case(case, *, build, rom, out, interp_targets=None):
+def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None):
     exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
     config = (SOURCE / "config.ini").read_text(encoding="utf8")
     config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
@@ -82,12 +82,17 @@ def run_case(case, *, build, rom, out, interp_targets=None):
     shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
     (profile / "mods/preloaded/state.toml").write_text(state(features), encoding="utf8")
     env = dict(os.environ)
-    for key in ("SM_RUN_FRAMES", "SNESRECOMP_LLE_INTERP_TARGET_FILE", "SM_CAPTURE_PATH", "SM_CAPTURE_FRAME"):
+    for key in ("SM_RUN_FRAMES", "SNESRECOMP_LLE_INTERP_TARGET_FILE", "SM_CAPTURE_PATH", "SM_CAPTURE_FRAME",
+                "SNESRECOMP_SCREENSHOT", "SNESRECOMP_SCREENSHOT_FRAME", "SNESRECOMP_SCREENSHOT_DIR",
+                "SNESRECOMP_SCREENSHOT_FROM", "SNESRECOMP_SCREENSHOT_TO"):
         env.pop(key, None)
     env.update(SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy", SNESRECOMP_NO_LAUNCHER="1",
                SM_REPLAY_RECORD="0", SM_STATE_TRACE=str(profile / "state.csv"),
                SM_WRAM_PROBE=str(profile / "wram.csv"), SM_WRAM_PROBE_ADDRS=fields)
     if interp_targets: env["SNESRECOMP_LLE_INTERP_TARGET_FILE"] = str(interp_targets.resolve())
+    if screenshot_frame is not None:
+        env["SNESRECOMP_SCREENSHOT"] = str(profile / "presented.ppm")
+        env["SNESRECOMP_SCREENSHOT_FRAME"] = str(screenshot_frame)
     executable = build / exe_name
     command = [str(executable), "--config", str(profile / "config.ini")]
     if script is None: env["SM_RUN_FRAMES"] = "3200"
@@ -109,6 +114,10 @@ def run_case(case, *, build, rom, out, interp_targets=None):
         report = json.loads(report_path.read_text())
         info["execution_share"] = report.get("execution_share")
         info["tier2_coverage"] = report.get("tier2_coverage")
+    if screenshot_frame is not None:
+        screenshot = profile / "presented.ppm"
+        assert screenshot.is_file(), f"{tag}: requested presented frame was not captured"
+        info["presented_sha256"] = hashlib.sha256(screenshot.read_bytes()).hexdigest()
     (profile / "identity.json").write_text(json.dumps(info, indent=2))
     print(tag + " completed", flush=True)
     return tag, info

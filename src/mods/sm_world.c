@@ -86,6 +86,15 @@ static size_t Unpack(Reader r, uint32_t p, uint8_t *dst, size_t cap) {
   }
   return 0;
 }
+static bool Drop(SmWorld *w,uint16_t room,uint16_t state,uint16_t plm,unsigned bts,unsigned x,unsigned y) {
+  for (unsigned i=0; i<w->marker_count; ++i) {
+    const SmWorldMarker *m=&w->markers[i];
+    if (m->kind==SM_MAP_DROP && m->room==room && m->state==state && m->x/16==x/16 && m->y/16==y/16) return true;
+  }
+  if (w->marker_count==SM_WORLD_MARKERS) return Fail(w,"drop marker capacity",room);
+  w->markers[w->marker_count++]=(SmWorldMarker){room,state,plm,(uint16_t)bts,(uint8_t)x,(uint8_t)y,SM_MAP_DROP,0,3};
+  return true;
+}
 static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) {
   uint8_t data[65536];
   uint32_t source=L(r,0x8f0000u+state);
@@ -102,8 +111,18 @@ static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) 
   }
   for (unsigned i=0; i<blocks; ++i) {
     unsigned tile=data[2+2*i] | data[3+2*i]<<8;
+    unsigned bts=data[2+bytes+i];
+    if ((tile&0xf000)==0xb000) {
+      /* Resolve the same BTS -> PLM -> setup-function path as stock vertical
+       * collision. Only CE37 is a down-only crumble; other special blocks
+       * (speed blocks, stations, area scripts) must not become false arrows. */
+      uint32_t table=(bts&0x80) ? 0x940000u|W(r,0x9492e9+2*room->area) : 0x949139;
+      uint16_t plm=W(r,table+2*(bts&0x7f));
+      if (plm>=0x8000 && W(r,0x840000u|plm)==0xce37 &&
+          !Drop(w,room->header,state,plm,bts,i%(room->width*16),i/(room->width*16))) return false;
+    }
     if ((tile&0xf000) != 0x9000) continue;
-    unsigned index=data[2+bytes+i]&0x7f;
+    unsigned index=bts&0x7f;
     if (index >= room->door_count) return Fail(w,"level door index outside list",room->header);
     SmWorldDoor *d=&w->doors[room->first_door+index];
     if (d->block_x<0) { d->block_x=(int16_t)(i%(room->width*16)); d->block_y=(int16_t)(i/(room->width*16)); }
@@ -154,7 +173,7 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
       if (target && !Header(r,target)) break;
       if (w->door_count==SM_WORLD_DOORS) return Fail(w,"door capacity",ptr);
       w->doors[w->door_count++]=(SmWorldDoor){ptr,room->header,target,(uint16_t)j,-1,-1,
-        B(r,da+3),B(r,da+2),B(r,da+4),B(r,da+5),false};
+        B(r,da+3),B(r,da+2),B(r,da+4),B(r,da+5),B(r,da+6),B(r,da+7),false};
       ++room->door_count;
       if (target && !SmWorldFindRoom(w,target)) {
         if (w->room_count==SM_WORLD_ROOMS) return Fail(w,"room capacity",target);
@@ -188,6 +207,15 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
     for (unsigned i=0; i<2048; ++i) w->tiles[area][i]=W(r,tiles+2*i);
     for (unsigned i=0; i<256; ++i) w->station_map[area][i]=B(r,bits+i);
   }
+  for (unsigned n=0; n<w->room_count; ++n) {
+    const SmWorldRoom *room=&w->rooms[n];
+    for (unsigned y=room->y; y<room->y+room->height && y<32; ++y)
+      for (unsigned x=room->x; x<room->x+room->width && x<64; ++x) {
+        unsigned i=(x&31)+y*32+(x>=32?1024:0);
+        if (!w->room_at[room->area][i] && (w->tiles[room->area][i]&1023)!=31)
+          w->room_at[room->area][i]=(uint16_t)(n+1);
+      }
+  }
   return true;
 }
 uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read, void *context, const uint8_t *ram) {
@@ -214,6 +242,43 @@ uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read, void *conte
 static int Index(int x, int y) { return x<0 || x>=64 || y<0 || y>=32 ? -1 : (x&31)+y*32+(x>=32?1024:0); }
 uint16_t SmWorldTile(const SmWorld *w, unsigned area, int x, int y) {
   int i=Index(x,y); return area<SM_WORLD_AREAS && i>=0 ? w->tiles[area][i] : 31;
+}
+const SmWorldRoom *SmWorldCellRoom(const SmWorld *w, unsigned area, int x, int y) {
+  int i=Index(x,y); if (area>=SM_WORLD_AREAS || i<0) return NULL;
+  unsigned n=w->room_at[area][i]; return n && n<=w->room_count ? &w->rooms[n-1] : NULL;
+}
+unsigned SmWorldLayout(const SmWorld *w, int16_t xy[SM_WORLD_ROOMS][2]) {
+  bool placed[SM_WORLD_ROOMS]={false}; unsigned queue[SM_WORLD_ROOMS], head=0, count=0, conflicts=0;
+  for (unsigned i=0; i<w->room_count; ++i) { xy[i][0]=w->rooms[i].x; xy[i][1]=w->rooms[i].y; }
+  if (!w->room_count) return 0;
+  placed[0]=true; queue[count++]=0;
+  while (head<count) {
+    unsigned from=queue[head++]; const SmWorldRoom *room=&w->rooms[from];
+    for (unsigned i=0; i<room->door_count; ++i) {
+      const SmWorldDoor *door=&w->doors[room->first_door+i];
+      const SmWorldRoom *other=SmWorldFindRoom(w,door->destination);
+      if (!other) continue;
+      int x=door->block_x, y=door->block_y;
+      if (x<0) {
+        const SmWorldDoor *reverse=NULL; unsigned matches=0;
+        for (unsigned j=0; j<other->door_count; ++j) {
+          const SmWorldDoor *d=&w->doors[other->first_door+j];
+          if (d->destination==room->header) { reverse=d; ++matches; }
+        }
+        if (matches!=1) continue;
+        x=reverse->arrival_x; y=reverse->arrival_y;
+      }
+      static const int dx[]={1,-1,0,0},dy[]={0,0,1,-1};
+      unsigned direction=door->direction&3;
+      int ax=(door->flags&0x80) ? door->arrival_screen_x : door->arrival_x/16;
+      int ay=(door->flags&0x80) ? door->arrival_screen_y : door->arrival_y/16;
+      int gx=xy[from][0]+x/16+dx[direction]-ax, gy=xy[from][1]+y/16+dy[direction]-ay;
+      unsigned to=(unsigned)(other-w->rooms);
+      if (!placed[to]) { xy[to][0]=(int16_t)gx; xy[to][1]=(int16_t)gy; placed[to]=true; queue[count++]=to; }
+      else if (xy[to][0]!=gx || xy[to][1]!=gy) ++conflicts;
+    }
+  }
+  return conflicts;
 }
 bool SmWorldExplored(const uint8_t *ram, unsigned area, int x, int y) {
   int i=Index(x,y); if (!ram || area>=SM_WORLD_AREAS || i<0) return false;

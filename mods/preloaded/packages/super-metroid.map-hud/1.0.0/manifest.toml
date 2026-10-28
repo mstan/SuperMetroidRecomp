@@ -3,7 +3,7 @@ id = "super-metroid.map-hud"
 version = "1.0.0"
 name = "Super Metroid Map and HUD"
 author = "SuperMetroidRecomp contributors"
-description = "Extra information on screen. These only draw on top of the picture; the game itself is unchanged. Each is a separate switch."
+description = "Map views and HUD readouts with individual switches. The maps use the game's own rooms, doors and discovery data."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -100,3 +100,62 @@ label = "Shown"
 [[plugin]]
 feature = "reveal-map"
 id = "super-metroid.map-hud.reveal-map"
+
+[[feature]]
+id = "pause-map"
+name = "Clear pause map"
+description = "Door weapon colours and symbols, one-way arrows, station labels and uncollected-item rings on a dense grid. D-pad scrolls; L/R keep the normal pause tabs. Inspired by Zero Mission and Falcon Zero's complete Zebes map."
+group = "Map"
+default_enabled = false
+
+[[plugin]]
+feature = "pause-map"
+id = "super-metroid.map-hud.pause-map"
+
+[[feature]]
+id = "world-map"
+name = "Zoomable Zebes map"
+description = "Press X on the pause map to see all of Zebes. L/R zoom, D-pad pans, Y centres Samus, and X/B returns. Undiscovered places stay hidden unless Reveal map is enabled."
+group = "Map"
+default_enabled = false
+
+[[plugin]]
+feature = "world-map"
+id = "super-metroid.map-hud.world-map"
+
+[[feature]]
+id = "minimap"
+name = "Map over gameplay"
+description = "Select+Start toggles a map over the game. Choose a live background or pause it while the map is open. Netplay always keeps the background live."
+group = "Map"
+default_enabled = false
+
+[[option]]
+feature = "minimap"
+id = "background"
+label = "Background"
+type = "choice"
+default = "live"
+[[option.choice]]
+value = "live"
+label = "Keep playing"
+[[option.choice]]
+value = "paused"
+label = "Pause while open (offline)"
+
+[[option]]
+feature = "minimap"
+id = "size"
+label = "Map size"
+type = "choice"
+default = "small"
+[[option.choice]]
+value = "small"
+label = "Compact"
+[[option.choice]]
+value = "large"
+label = "Wide"
+
+[[plugin]]
+feature = "minimap"
+id = "super-metroid.map-hud.minimap"
