@@ -51,6 +51,22 @@ label = "Strong (2 pixels)"
 feature = "shinespark-steering"
 id = "super-metroid.movement.shinespark-steering"
 
+[[option]]
+feature = "shinespark-steering"
+id = "down-to-morph"
+label = "Down cancels into morph ball"
+description = "Press Down during a shinespark to stop and fall as a morph ball. Requires the Morph Ball. Disable this to keep Down available for steering. Inspired by Ascent (Benox50)."
+type = "boolean"
+default = false
+
+[[option]]
+feature = "shinespark-steering"
+id = "jump-to-cancel"
+label = "Jump cancels the shinespark"
+description = "Press jump again during a shinespark to stop and fall normally. Inspired by Ascent (Benox50)."
+type = "boolean"
+default = false
+
 [[feature]]
 id = "landing-momentum"
 name = "Keep momentum on landing"
@@ -118,6 +134,14 @@ default = true
 [[plugin]]
 feature = "quick-morph"
 id = "super-metroid.movement.quick-morph"
+
+[[option]]
+feature = "quick-morph"
+id = "air-morph"
+label = "L + Down in the air"
+description = "Hold the physical L shoulder and press Down while jumping or falling to morph. Works with shoulder remapping. Inspired by Ancient Chozo (Grime)."
+type = "boolean"
+default = false
 
 [[feature]]
 id = "space-jump"

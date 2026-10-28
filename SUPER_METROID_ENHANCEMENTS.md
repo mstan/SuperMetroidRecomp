@@ -226,18 +226,17 @@ measured headlessly; the owner hasn't playtested any feature yet.
 | Bead | Feature | Hook sites / evidence |
 |---|---|---|
 | .9 | Respin | `$91:81A9`, `$91:FC99`. Fall pose 29 → spin pose 19, with y and y-speed identical to stock. |
-| .10 | Shinespark steering (strength 0.5/1/2 px) | Hook `$91:FADB` supplies dispatcher `$D0D7` in a register; D0E6/D0EC/D0EF/D0F2 supply the movers. Horizontal, vertical and diagonal scenarios observe steering movement; no table repoint. |
+| .10 | Shinespark steering (strength 0.5/1/2 px), optional Down morph / Jump cancel | Steering uses `$91:FADB` and D0E6/D0EC/D0EF/D0F2. Optional spark exits use D0AB/D0D7/D106 and native transition C2. Three directions, feature-off/item guards and tier parity pass; see `docs/validation/SM_MOVEMENT_EXTRAS_20261028.md`. |
 | .11 | Keep momentum on landing (option: keep blue boost) | `$91:F030`, `$90:A3D0`. +40 px after 22 frames. |
 | .12 | Speed booster in morph ball (option: hold run) | `$90:9771`. 441 vs 235 px over 80 frames. It can't turn blue by itself. |
-| .13 | Quick morph (hold frames, default 12; item cancel + Down) | `$91:81A9`; counter in WRAM `$0B28` (unused by the game). |
+| .13 | Quick morph (hold frames, default 12; item cancel + Down; optional L+Down air morph) | `$91:81A9`; counter `$0B28`. Air gesture is recorded ordinary input and works with shoulder remapping/custom item cancel. Actual jumping/spinning/descending/left-facing and tier checks pass. |
 | .14 | Space jump timing (falling/anytime) | `$90:A488`. |
 | .15 | Instant bomb / no bomb jump (Down held) | `$90:BFFE`, `$A0:984B`. |
 | .16 | Store shinespark | `$91:F7B0`, `$91:DB08`, `$90:D036`; flag in `$0B3A`. |
 | .17 | Heavy physics (Redux Heavy Physics v3) | Converted to 15 consumer hooks plus `mod_operand` `$90:910F`. All 69 old runs accounted for, including 67 typed demo records. Launch speed 4 → 6; air gravity `$1C00` → `$3400`; shorter airtime. See 6.1 for raw traces. |
 
-Skipped extras:
-- Ascent's spark down-to-morph and jump-to-cancel.
-- Ancient Chozo's L + Down morph in the air.
+All three formerly skipped extras are implemented as separate options (default
+off). Their automated checks pass; owner controller/feel review is pending.
 
 The WRAM addresses `$0B28`, `$0B3A`, `$0B4E`, `$0B50` and `$0B52` have no
 definition in the decomp, so the plugin uses them as spare memory.
@@ -487,10 +486,8 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 5. **Pacing:**
    - quit to file select implemented and automatically qualified; owner review pending;
    - elevator and boss-door headless checks.
-6. **Movement extras:**
-   - spark down-to-morph;
-   - spark jump-to-cancel;
-   - L + Down air morph.
+6. **Movement extras implemented:** spark down-to-morph, jump-to-cancel and
+   L+Down air morph pass 20 normal/interpreted game cases. Owner feel review pending.
 7. **Tier-parity runs** for all hooked features; Linux build; netplay effective-set check.
 8. **Automated playtest pass** over every feature. Then write the owner a
    short, focused checklist of what automation cannot judge (feel, visuals).

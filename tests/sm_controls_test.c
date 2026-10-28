@@ -12,6 +12,9 @@
 
 static const char *g_options[4][2];
 static SNESModInputTransform g_transform;
+bool SmQuickMorphAirInput(uint16_t *buttons,const SnesModInputContext *ctx) {
+  (void)buttons; (void)ctx; return false;
+}
 int snes_mod_register_activation_plugin(const char *id, SNESModActivationCallback cb) {
   (void)id; (void)cb; return 1;
 }

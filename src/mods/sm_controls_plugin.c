@@ -30,6 +30,7 @@
 #include "mod_runtime.h"
 #include "sm_mod_overlay.h"
 #include "sm_mod_support.h"
+#include "sm_movement_plugins.h"
 #include "snes_overlay_draw.h"
 
 #define PACKAGE "super-metroid.controls"
@@ -86,6 +87,7 @@ static bool g_missile_toggle, g_missile_enabled = true;
 
 static uint16_t SmZeroMissionControls(uint16_t buttons, const SnesModInputContext *ctx) {
   if (!ctx->wram || !InGameplay(ctx->wram)) return buttons;
+  if (SmQuickMorphAirInput(&buttons,ctx)) return buttons;
   const uint8_t *wram = ctx->wram;
   Seat *seat = &g_zm_seats[ctx->player & 1];
   bool aim = (buttons & g_aim_shoulder) != 0;

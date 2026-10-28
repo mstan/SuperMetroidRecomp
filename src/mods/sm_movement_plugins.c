@@ -66,6 +66,8 @@
 #include "mod_hook.h"
 #include "mod_runtime.h"
 #include "sm_mod_support.h"
+#include "sm_movement_plugins.h"
+#include "snes_overlay_draw.h"
 
 #define PACKAGE "super-metroid.movement"
 
@@ -113,14 +115,38 @@ static bool FacingHeld(const CpuState *cpu) {
 /* Options of the enabled features; all false/zero when disabled. */
 static struct {
   bool respin;
-  bool steering; uint32_t steer_step;
+  bool steering, spark_morph, spark_cancel; uint32_t steer_step;
   bool momentum, keep_boost;
   bool speed_ball, speed_ball_hold_run;
-  bool quick_morph; unsigned hold_frames; bool cancel_morph;
+  bool quick_morph; unsigned hold_frames; bool cancel_morph, air_morph;
   bool space_jump, space_jump_anytime;
   bool bomb_control, bomb_instant;
   bool store_spark;
 } g;
+
+static bool AirMovement(uint8_t type) {
+  return type==2 || type==3 || type==6 || type==0x14 || type==0x17 || type==0x18;
+}
+static uint16_t HostPad(uint16_t guest) {
+  uint16_t host=0;
+  for (unsigned i=0;i<12;i++) if (guest&(1u<<(15-i))) host|=(uint16_t)(1u<<i);
+  return host;
+}
+static uint16_t InputWord(const uint8_t *ram,uint16_t a) {
+  return (uint16_t)(ram[a]|ram[a+1]<<8);
+}
+bool SmQuickMorphAirInput(uint16_t *buttons,const SnesModInputContext *ctx) {
+  if (!g.quick_morph || !g.air_morph || ctx->player || !ctx->wram ||
+      (*buttons&(SNES_PAD_L|SNES_PAD_DOWN))!=(SNES_PAD_L|SNES_PAD_DOWN)) return false;
+  const uint8_t *ram=ctx->wram;
+  if (InputWord(ram,0x998)!=8 || !(InputWord(ram,kEquipped)&kItemMorph) || !AirMovement(ram[kMoveType])) return false;
+  *buttons=(uint16_t)((*buttons&~(SNES_PAD_L|SNES_PAD_DOWN)) |
+                     HostPad(InputWord(ram,kCfgItemCancel)|InputWord(ram,kCfgDown)));
+  return true;
+}
+static uint16_t QuickMorphInput(uint16_t buttons,const SnesModInputContext *ctx) {
+  SmQuickMorphAirInput(&buttons,ctx); return buttons;
+}
 
 /* ── respin + quick-morph: Samus_LookupTransitionTable ($91:81A9) ──────── */
 
@@ -150,6 +176,8 @@ uint32 SmMoveTransitionHook(CpuState *cpu, uint32 pc24) {
     if (has_morph && g.cancel_morph && grounded && Held(cpu, kCfgItemCancel) &&
         Pressed(cpu, kCfgDown))
       new_pose = FacingLeft(cpu) ? 0x38 : 0x37;
+    if (has_morph && g.air_morph && AirMovement(type) && Held(cpu,kCfgItemCancel) && Pressed(cpu,kCfgDown))
+      new_pose=FacingLeft(cpu)?0x38:0x37;
     if (new_pose) SetW(cpu, kMorphHold, 0);
   }
   if (!new_pose && g.respin && RespinNow(cpu) && !IsJumpTakeoff(pose))
@@ -261,6 +289,36 @@ static int SparkKind(const CpuState *cpu) {
     case 0xCD: case 0xCE: return kSparkDiag;
     default: return kSparkNone;
   }
+}
+
+/* The native crash finish queues SFX3 $10 to stop the looping spark sound.
+ * Use the same Max6 queue rules without running its crash/echo animation. */
+static void StopSparkSound(CpuState *cpu) {
+  uint8_t *r=cpu->ram; r[0x655]=6;
+  uint8_t read=r[0x645],write=r[0x648];
+  if (((write-read)&15)>=6 || W(cpu,0x5f5) || W(cpu,0x998)>=0x28 || (W(cpu,0x592)&0x8000)) return;
+  uint8_t next=(uint8_t)((write+1)&15);
+  if (next==read) { if (0x10<r[0x676+write]) r[0x676+write]=0x10; }
+  else { r[0x676+write]=0x10; r[0x648]=next; r[0x676+next]=0; }
+}
+uint32 SmMoveSparkCancelHook(CpuState *cpu,uint32 pc24) {
+  if (!g.steering || SparkKind(cpu)==kSparkNone) return 0;
+  bool morph=g.spark_morph && (W(cpu,kEquipped)&kItemMorph) && Pressed(cpu,kCfgDown);
+  if (!morph && !(g.spark_cancel && Pressed(cpu,kCfgJump))) return 0;
+  /* C2 commits the requested pose, aligns it and restores normal movement
+   * and input. C1 deliberately skips committing the pose (knockback path). */
+  uint16_t pose=morph ? ((W(cpu,kEquipped)&2)?0x7d:0x31) : 0x29;
+  SetW(cpu,0xa2c,(uint16_t)(pose+(FacingLeft(cpu)?1:0)));
+  SetW(cpu,0xa32,2); SetW(cpu,0xa5c,0xeb52);
+  SetW(cpu,kYSpeed,0); SetW(cpu,kYSubSpeed,0); SetW(cpu,kYDir,2);
+  SetW(cpu,kExtraRun,0); SetW(cpu,kExtraRunSub,0);
+  SetW(cpu,0xb46,0); SetW(cpu,0xb48,0); SetW(cpu,kSpeedBoost,0);
+  SetW(cpu,0xa68,1); SetW(cpu,0xa6e,0); SetW(cpu,0xa48,0);
+  SetW(cpu,kSteerFlag,0); SetW(cpu,kStoredSpark,0);
+  SetW(cpu,kExtraY,0); SetW(cpu,kExtraYSub,0); SetW(cpu,kYAccum,0); SetW(cpu,kYAccumSub,0);
+  memset(cpu->ram+0xaae,0,0x1a); StopSparkSound(cpu);
+  uint16_t entry=(uint16_t)pc24;
+  return At(pc24,entry==0xd0ab?0xd0d6:entry==0xd0d7?0xd105:0xd131);
 }
 /* -1 up/left, +1 down/right, 0 none (both or neither held). */
 static int SteerAxis(const CpuState *cpu, uint16_t neg, uint16_t pos) {
@@ -375,9 +433,12 @@ static void SmShinesparkSteeringActivate(void) {
   const char *strength = SmModOption(&strength_value, PACKAGE, "shinespark-steering",
                                      "strength", "normal");
   g.steering = true;
+  g.spark_morph=SmModOptionBool(PACKAGE,"shinespark-steering","down-to-morph",false);
+  g.spark_cancel=SmModOptionBool(PACKAGE,"shinespark-steering","jump-to-cancel",false);
   g.steer_step = !strcmp(strength, "weak") ? 0x8000u : !strcmp(strength, "strong") ? 0x20000u : 0x10000u;
   fprintf(stderr, "[mods] shinespark steering %s\n", strength);
   ARM("shinespark-steering", 0x91FADB, 0x90D0E6, 0x90D0EC, 0x90D0EF, 0x90D0F2);
+  if (g.spark_morph || g.spark_cancel) ARM("shinespark-extras",0x90D0AB,0x90D0D7,0x90D106);
 }
 
 static void SmLandingMomentumActivate(void) {
@@ -396,6 +457,11 @@ static void SmQuickMorphActivate(void) {
   g.quick_morph = true;
   g.hold_frames = (unsigned)IntOption("quick-morph", "hold-frames", 12, 0, 60);
   g.cancel_morph = SmModOptionBool(PACKAGE, "quick-morph", "item-cancel", true);
+  g.air_morph=SmModOptionBool(PACKAGE,"quick-morph","air-morph",false);
+  /* The shoulder plugin consumes the raw chord itself when enabled, so the
+   * physical L gesture also works if item cancel was rebound to a shoulder. */
+  if (g.air_morph && !snes_mod_runtime_feature_enabled_c("super-metroid.controls","zero-mission"))
+    snes_mod_register_input_transform(QuickMorphInput);
   fprintf(stderr, "[mods] quick morph: hold %u frames, item cancel %s\n",
           g.hold_frames, g.cancel_morph ? "on" : "off");
   ARM("quick-morph", 0x9181A9);
