@@ -15,7 +15,7 @@
  * shinespark-steering: the D-pad nudges a shinespark across its path (up/down
  *   for a horizontal spark, left/right for a vertical one, up/down for a
  *   diagonal one). Every spark runs Samus_MoveHandler_Shinespark_Diag
- *   ($90:D0D7; the handler table at $91:FAFC is pointed at it), whose hooks
+ *   ($90:D0D7; a hook selects it at $91:FADB), whose hooks
  *   run only the movers the spark's pose needs, so an unsteered spark moves
  *   exactly as the stock vertical/horizontal handler would. A nudge goes
  *   through the stock collision-checked movers.
@@ -53,9 +53,9 @@
  *
  * heavy-physics: Project Base / GBA Style heavy physics as shipped in Super
  *   Metroid Redux (Heavy Physics v3): stronger gravity, higher terminal speed
- *   (`live_operand` $90:910F), stronger jumps, faster air control, the bomb
+ *   (`mod_operand` $90:910F), stronger jumps, faster air control, the bomb
  *   timer retimed for bomb jumps and the intro/title demos re-timed. All
- *   data and immediates, applied as guarded ROM patches.
+ *   implemented by sm_heavy_physics_plugin.c through hooks and mod_operand.
  */
 
 #include <stdbool.h>
@@ -360,21 +360,24 @@ static void SmRespinActivate(void) {
   ARM("respin", 0x9181A9, 0x91FC99);
 }
 
+/* Select the diagonal dispatcher when the stock handler pointer is stored.
+ * The existing movers below preserve straight sparks without a nudge. */
+uint32 SmMoveSparkHandlerHook(CpuState *cpu, uint32 pc24) {
+  (void)pc24;
+  cpu->A = 0xD0D7;
+  cpu->_flag_N = 1;
+  cpu->_flag_Z = 0;
+  return 0;
+}
+
 static void SmShinesparkSteeringActivate(void) {
   SmModValue strength_value;
   const char *strength = SmModOption(&strength_value, PACKAGE, "shinespark-steering",
                                      "strength", "normal");
   g.steering = true;
   g.steer_step = !strcmp(strength, "weak") ? 0x8000u : !strcmp(strength, "strong") ? 0x20000u : 0x10000u;
-  /* kSamusFunc_F468_Shinespark: horizontal, horizontal, vertical, vertical
-   * -> the diagonal handler (the diagonal entries already are). */
-  static const uint8_t stock[8] = {0x06, 0xD1, 0x06, 0xD1, 0xAB, 0xD0, 0xAB, 0xD0};
-  static const uint8_t diag[8] = {0xD7, 0xD0, 0xD7, 0xD0, 0xD7, 0xD0, 0xD7, 0xD0};
-  bool table = SmModRomPatch("shinespark-steering", 0x91FAFC, stock, diag, sizeof(diag));
-  fprintf(stderr, "[mods] shinespark steering %s: handler table %s\n", strength,
-          table ? "ok" : "refused");
-  if (table) ARM("shinespark-steering", 0x90D0E6, 0x90D0EC, 0x90D0EF, 0x90D0F2);
-  else g.steering = false;
+  fprintf(stderr, "[mods] shinespark steering %s\n", strength);
+  ARM("shinespark-steering", 0x91FADB, 0x90D0E6, 0x90D0EC, 0x90D0EF, 0x90D0F2);
 }
 
 static void SmLandingMomentumActivate(void) {
@@ -421,129 +424,6 @@ static void SmStoreShinesparkActivate(void) {
   ARM("store-shinespark", 0x91F7B0, 0x91DB08, 0x90D036);
 }
 
-/* Heavy Physics v3 (Super Metroid Redux, from Project Base / GBA Style):
- * every changed run of bytes against the stock ROM. */
-typedef struct { uint32_t addr; uint8_t size; uint8_t stock[10]; uint8_t value[10]; } DataPatch;
-static const DataPatch kHeavyPhysics[] = {
-  /* Samus_MoveY_WithSpeedCalc: CMP #$0005 terminal fall speed -> 7 */
-  {0x909110, 1, {0x05}, {0x07}},
-  /* kSamusPhys_AnimDelayInWater 3 -> 2 */
-  {0x909E93, 1, {0x03}, {0x02}},
-  /* gravity in air $1C00 -> $3400 (Samus_DetermineAccel_Y) */
-  {0x909EA2, 1, {0x1C}, {0x34}},
-  /* jump / hi-jump / wall jump / hi-jump wall jump / bomb jump speeds in air */
-  {0x909EB9, 1, {0x04}, {0x06}},
-  {0x909EC5, 1, {0x06}, {0x09}},
-  {0x909ED1, 1, {0x04}, {0x07}},
-  {0x909EDD, 1, {0x05}, {0x08}},
-  {0x909EF5, 1, {0x02}, {0x03}},
-  /* airborne max X speeds (normal/spin jump, falling, morph falling, spring
-   * ball in air/falling, wall jump) */
-  {0x909F71, 1, {0x01}, {0x02}},
-  {0x909F7D, 1, {0x01}, {0x02}},
-  {0x909FA1, 1, {0x01}, {0x02}},
-  {0x909FB9, 1, {0x01}, {0x02}},
-  {0x90A031, 1, {0x01}, {0x03}},
-  {0x90A03D, 1, {0x01}, {0x02}},
-  {0x90A049, 1, {0x01}, {0x03}},
-  /* bomb timer $3C -> $32 so bomb jumps stay consistent ("Bombs fix") */
-  {0x90BF9B, 1, {0x3C}, {0x32}},
-  /* intro (Mother Brain) demo: left input timer */
-  {0x9186D0, 1, {0x07}, {0x03}},
-  /* title screen demo inputs */
-  {0x918AF8, 1, {0x28}, {0x08}},
-  {0x918C29, 5, {0x00, 0x14, 0x00, 0x00, 0x01}, {0x02, 0x02, 0x00, 0x00, 0x02}},
-  {0x918C30, 10, {0x01, 0x00, 0x40, 0x01, 0x40, 0x00, 0x03, 0x00, 0x40, 0x01},
-                 {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}},
-  {0x918C98, 1, {0x14}, {0x08}},
-  {0x918CF8, 1, {0x3A}, {0x20}},
-  {0x918ECC, 1, {0x06}, {0x03}},
-  {0x918EF0, 1, {0x14}, {0x0C}},
-  {0x918F26, 1, {0x0A}, {0x02}},
-  {0x918F6A, 1, {0x66}, {0x58}},
-  {0x919020, 1, {0x30}, {0x20}},
-  {0x919044, 1, {0x91}, {0x60}},
-  {0x91905C, 1, {0x36}, {0x18}},
-  {0x919068, 1, {0x90}, {0x50}},
-  {0x91908C, 7, {0x0E, 0x00, 0x80, 0x01, 0x00, 0x00, 0x0F}, {0x04, 0x00, 0x80, 0x01, 0x00, 0x00, 0x08}},
-  {0x9190B0, 1, {0x0C}, {0x08}},
-  {0x9190D1, 7, {0x01, 0x00, 0x01, 0x0F, 0x00, 0x80, 0x01}, {0x02, 0x00, 0x02, 0x0F, 0x00, 0x80, 0x02}},
-  {0x919112, 7, {0x80, 0x02, 0x80, 0x00, 0x04, 0x00, 0x80}, {0x00, 0x02, 0x00, 0x00, 0x04, 0x00, 0x00}},
-  {0x919125, 7, {0x82, 0x00, 0x80, 0x24, 0x00, 0x00, 0x82}, {0x02, 0x00, 0x00, 0x24, 0x00, 0x00, 0x02}},
-  {0x9191A8, 1, {0x06}, {0x02}},
-  {0x9191CC, 1, {0x06}, {0x02}},
-  {0x9191F0, 7, {0x08, 0x00, 0x80, 0x01, 0x00, 0x00, 0x1C}, {0x02, 0x00, 0x80, 0x01, 0x00, 0x00, 0x18}},
-  {0x91920E, 1, {0x0B}, {0x06}},
-  {0x919244, 1, {0x08}, {0x04}},
-  {0x91925C, 1, {0x06}, {0x04}},
-  {0x9192A4, 7, {0x07, 0x00, 0x80, 0x00, 0x00, 0x00, 0x11}, {0x06, 0x00, 0x80, 0x00, 0x00, 0x00, 0x10}},
-  {0x9192C8, 7, {0x0B, 0x00, 0x80, 0x00, 0x00, 0x00, 0x1E}, {0x04, 0x00, 0x80, 0x00, 0x00, 0x00, 0x0B}},
-  {0x9192EC, 7, {0x05, 0x00, 0x80, 0x00, 0x00, 0x00, 0x0D}, {0x06, 0x00, 0x80, 0x00, 0x00, 0x00, 0x10}},
-  {0x919496, 7, {0x13, 0x00, 0x80, 0x02, 0x00, 0x00, 0x13}, {0x0C, 0x00, 0x80, 0x02, 0x00, 0x00, 0x0D}},
-  {0x9194BA, 7, {0x15, 0x00, 0x80, 0x02, 0x00, 0x00, 0x25}, {0x04, 0x00, 0x80, 0x02, 0x00, 0x00, 0x20}},
-  {0x9194CC, 7, {0x0E, 0x00, 0x80, 0x02, 0x00, 0x00, 0x21}, {0x04, 0x00, 0x80, 0x02, 0x00, 0x00, 0x12}},
-  {0x9194DE, 1, {0x09}, {0x02}},
-  {0x91953A, 1, {0x2B}, {0x1B}},
-  {0x919578, 7, {0x16, 0x00, 0x80, 0x01, 0x00, 0x00, 0x41}, {0x12, 0x00, 0x80, 0x01, 0x00, 0x00, 0x28}},
-  {0x9196A2, 1, {0x15}, {0x10}},
-  {0x9197A6, 1, {0x12}, {0x10}},
-  {0x9197CA, 1, {0x16}, {0x15}},
-  {0x91982A, 1, {0x0A}, {0x08}},
-  {0x919878, 1, {0x20}, {0x25}},
-  {0x919916, 1, {0x1D}, {0x18}},
-  {0x91994C, 1, {0x2B}, {0x24}},
-  {0x91999A, 1, {0x10}, {0x06}},
-  {0x919A40, 1, {0x14}, {0x11}},
-  {0x919A52, 1, {0x06}, {0x03}},
-  {0x919B0E, 1, {0x0B}, {0x06}},
-  {0x919B4A, 1, {0x20}, {0x16}},
-  {0x919B5C, 1, {0x25}, {0x1B}},
-  {0x919B6E, 1, {0x26}, {0x1C}},
-  {0x919B80, 1, {0x26}, {0x1C}},
-  {0x919B92, 1, {0x27}, {0x1D}},
-  {0x919BA4, 1, {0x28}, {0x1E}},
-  {0x919D26, 1, {0x23}, {0x14}},
-  {0x919D80, 1, {0x14}, {0x0D}},
-};
-
-/* The guarded-patch registry holds 64 patches of up to 256 bytes, shared by
- * every enabled mod, so nearby runs are applied as one patch per window.
- * Each run's bytes are still guarded against their stock values; the bytes
- * between runs are expected and kept as they are. Returns the patches
- * applied and sets *windows to the number attempted. */
-enum { kWindowMax = 256 };
-static size_t ApplyDataPatches(const char *name, const DataPatch *p, size_t n,
-                               size_t *windows) {
-  size_t applied = 0;
-  *windows = 0;
-  for (size_t i = 0; i < n;) {
-    uint32_t start = p[i].addr;
-    size_t j = i;
-    while (j + 1 < n && (p[j + 1].addr >> 16) == (start >> 16) &&
-           p[j + 1].addr + p[j + 1].size - start <= kWindowMax)
-      ++j;
-    size_t size = p[j].addr + p[j].size - start;
-    uint8_t stock[kWindowMax], value[kWindowMax];
-    for (size_t k = 0; k < size; ++k)
-      stock[k] = value[k] = (uint8_t)SmModRomWord(start + (uint32_t)k);
-    for (size_t r = i; r <= j; ++r) {
-      memcpy(stock + (p[r].addr - start), p[r].stock, p[r].size);
-      memcpy(value + (p[r].addr - start), p[r].value, p[r].size);
-    }
-    applied += SmModRomPatch(name, start, stock, value, size);
-    ++*windows;
-    i = j + 1;
-  }
-  return applied;
-}
-
-static void SmHeavyPhysicsActivate(void) {
-  size_t windows;
-  size_t applied = ApplyDataPatches("heavy-physics", kHeavyPhysics,
-                                    sizeof(kHeavyPhysics) / sizeof(kHeavyPhysics[0]), &windows);
-  fprintf(stderr, "[mods] heavy physics: %zu/%zu patches\n", applied, windows);
-}
-
 static void SmMovementReset(void) { memset(&g, 0, sizeof(g)); }
 
 SNES_MOD_CONSTRUCTOR(sm_register_movement_plugins) {
@@ -557,7 +437,6 @@ SNES_MOD_CONSTRUCTOR(sm_register_movement_plugins) {
     {"super-metroid.movement.space-jump", SmSpaceJumpActivate},
     {"super-metroid.movement.bomb-control", SmBombControlActivate},
     {"super-metroid.movement.store-shinespark", SmStoreShinesparkActivate},
-    {"super-metroid.movement.heavy-physics", SmHeavyPhysicsActivate},
   };
   for (size_t i = 0; i < sizeof(kPlugins) / sizeof(kPlugins[0]); ++i)
     snes_mod_register_activation_plugin(kPlugins[i].id, kPlugins[i].activate);

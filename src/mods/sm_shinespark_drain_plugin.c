@@ -6,7 +6,7 @@
  *     LDA $09C2 ; CMP #$001E ; BMI rts ; DEC $09C2 ; BPL rts ; STZ $09C2 ; rts: RTS
  * so health drains one unit per frame while it is at least 30.
  *   - "off": the CMP threshold becomes #$7FFF, so BMI always skips the DEC
- *     (`live_operand` in recomp/bank10.cfg).
+ *     (`mod_operand` in recomp/bank10.cfg).
  *   - "half": a hook on each DEC continues at the RTS on odd game-time frames
  *     ($09DA), halving the drain (`mod_hook` in recomp/bank10.cfg).
  * The spark still ends on a collision; Samus_EndSuperJump keeps its own stock
@@ -42,7 +42,7 @@ static void SmShinesparkDrainActivate(void) {
       applied += snes_mod_hook_arm(kDecrementSites[i], true);
   } else {
     for (size_t i = 0; i < kSites; ++i)
-      applied += SmModPatchImm16("shinespark-drain", kCompareSites[i], 0x001E, 0x7FFF);
+      applied += snes_mod_operand_set(kCompareSites[i], 0x7FFF);
   }
   fprintf(stderr, "[mods] shinespark drain %s: %zu/%d sites\n", drain, applied, kSites);
 }

@@ -80,26 +80,32 @@ uint32 SmModMissileStationUsableAEC5(CpuState *cpu, uint32 pc24) {
   return ContinuePast(cpu, pc24, 0xAEC7);
 }
 
-static const uint32_t kMissileStationHooks[] = {0x848CD2, 0x84B2EE, 0x84B321, 0x84AEC5};
+static const uint32_t kMissileStationHooks[] = {
+  0x848CD2, 0x84B2EE, 0x84B321, 0x84AEC5, 0x858311
+};
 
-/* Message $16's tilemap row: " MISSILE RELOAD " -> "  AMMO RELOAD   ". */
-static const uint8_t kMissileMessageStock[32] = {
-  0x3c,0x4e,0x3c,0xec,0x3c,0xe8,0x3c,0xf2,0x3c,0xf2,0x3c,0xe8,0x3c,0xeb,0x3c,0xe4,
-  0x3c,0x4e,0x3c,0xf1,0x3c,0xe4,0x3c,0xeb,0x3c,0xee,0x3c,0xe0,0x3c,0xe3,0x3c,0x4e,
-};
-static const uint8_t kMissileMessageAmmo[32] = {
-  0x3c,0x4e,0x3c,0x4e,0x3c,0xe0,0x3c,0xec,0x3c,0xec,0x3c,0xee,0x3c,0x4e,0x3c,0xf1,
-  0x3c,0xe4,0x3c,0xeb,0x3c,0xee,0x3c,0xe0,0x3c,0xe3,0x3c,0x4e,0x3c,0x4e,0x3c,0x4e,
-};
+/* Message $16's tilemap row, including the surrounding spaces. */
+uint32 SmModAmmoStationMessage(CpuState *cpu, uint32 pc24) {
+  (void)pc24;
+  /* Replace letters as WriteMessageTilemap copies them into WRAM, before
+   * the normal DMA. The source row starts on an odd cartridge address. */
+  static const char text[] = "   AMMO RELOAD   ";
+  uint16_t source = (uint16_t)(Word(cpu, cpu->D) + cpu->Y);
+  if (Word(cpu, 0x1C1F) == 0x16 && source >= 0x930B && source < 0x932D &&
+      !((source - 0x930B) & 1)) {
+    unsigned char c = (unsigned char)text[(source - 0x930B) / 2];
+    cpu->A = (uint16_t)(0x3C00 | (c == ' ' ? 0x4E : 0xE0 + c - 'A'));
+    cpu->_flag_N = 0;
+    cpu->_flag_Z = 0;
+  }
+  return 0;
+}
 
 static void SmMissileStationActivate(void) {
   size_t armed = 0, count = sizeof(kMissileStationHooks) / sizeof(kMissileStationHooks[0]);
   for (size_t i = 0; i < count; ++i)
     armed += snes_mod_hook_arm(kMissileStationHooks[i], true);
-  bool text = SmModRomPatch("missile-station", 0x85930C, kMissileMessageStock,
-                            kMissileMessageAmmo, sizeof(kMissileMessageAmmo));
-  fprintf(stderr, "[mods] missile stations reload all ammo: %zu/%zu hooks, text %s\n",
-          armed, count, text ? "ok" : "refused");
+  fprintf(stderr, "[mods] missile stations reload all ammo: %zu/%zu hooks\n", armed, count);
 }
 
 /* ── save stations ───────────────────────────────────────────────────── */

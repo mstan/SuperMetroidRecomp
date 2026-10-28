@@ -5,7 +5,7 @@
  * subpixels #$8000 then pixels #$0001 with carry. Scaling both immediates
  * scales the ride; arrival still clamps to the destination height, so a
  * faster step stops exactly where stock does. Inspired by Super Metroid Redux
- * (doubled elevator speed). The sites are `live_operand` in recomp/bank23.cfg.
+ * (doubled elevator speed). The sites are `mod_operand` in recomp/bank23.cfg.
  */
 
 #include <stdio.h>
@@ -31,9 +31,8 @@ static void SmElevatorActivate(void) {
   uint32_t step = !strcmp(speed, "3x") ? 0x48000 : 0x30000;
   size_t applied = 0, count = sizeof(kSites) / sizeof(kSites[0]);
   for (size_t i = 0; i < count; ++i) {
-    uint16_t stock = kSites[i].subpixel ? 0x8000 : 0x0001;
     uint16_t value = kSites[i].subpixel ? (uint16_t)step : (uint16_t)(step >> 16);
-    applied += SmModPatchImm16("elevators", kSites[i].addr, stock, value);
+    applied += snes_mod_operand_set(kSites[i].addr, value);
   }
   fprintf(stderr, "[mods] elevators %s: %zu/%zu sites\n", speed, applied, count);
 }

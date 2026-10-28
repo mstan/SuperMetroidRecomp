@@ -1,6 +1,6 @@
 # Super Metroid enhancements: per-feature opt-in mods
 
-Handoff document, 2026-10-27 (updated at handoff: combat agent stopped, all agents idle). It records the plan, the owner's rulings, the
+Working handoff, updated 2026-10-28. Codex is working solo on the feature burndown; the old combat agent remains stopped. It records the plan, the owner's rulings, the
 current state of every branch, the work in flight and what is left, so another
 agent (Codex or Claude) can resume without the original conversation.
 
@@ -10,7 +10,7 @@ Owner follow-up at Codex takeover (2026-10-27): the original wishlist and
 exact Falcon Zero image are retained in
 [`docs/SM_QOL_TESTER_REQUEST.md`](docs/SM_QOL_TESTER_REQUEST.md) and
 [`docs/reference/metroid3_map.gif`](docs/reference/metroid3_map.gif).
-The tester has not yet clarified auto charge or falling aim-down controls.
+Auto charge is defined: charge automatically while idle, tap to release a charged shot, then fire normal successive shots until another charge is ready. The owner deferred falling aim-down clarification until the final handoff.
 
 **Controlling scope after owner clarification:** preserve modern F-Zero/SMW
 semantic content loaders, BS content, MSU/music, vehicles and native multiplayer.
@@ -22,7 +22,7 @@ donor-resource decoders that the modern loaders still require.
 
 The owner requested validation of the current F-Zero and both SMW branches,
 then a check-in before returning to Super Metroid. That preservation regression
-gate is complete. Super Metroid implementation has **not** resumed.
+gate is complete. The owner then started the Super Metroid QoL goal; implementation resumed on 2026-10-28.
 
 All checkouts below are under `G:/Temp/Codex/sm-qol-20261027/`:
 
@@ -45,8 +45,8 @@ The earlier broad F-Zero withdrawal `5f03229` was reverted by `ffd825e`.
 Do not integrate that old stock-only candidate. Earlier `253c635`/`e4d8762`/
 `4a27a84` results are superseded by the per-pin candidates above. The shared
 donor-helper correction is also committed as `ca9bc269` on the inherited
-`feat/sm-qol-mod-hooks` branch, without changing its uncommitted operand WIP
-or staged test rename.
+`feat/sm-qol-mod-hooks` branch; the later operand work is committed as
+`a4f3674f` (6.1).
 
 Windows validation:
 
@@ -76,10 +76,14 @@ Original modern worktrees, delivered builds, owner saves and settings are
 untouched. No code push, main merge, release, Linux/MSVC build or human
 controller/visual qualification was performed.
 
-**Super Metroid conversion remains open.** Finish and test the inherited
-`mod_operand` runtime/emission work and convert SM's ROM-writing helpers before
-bumping its engine pin. Auto charge and falling aim-down still await tester
-definitions. Resume only after the requested owner checkpoint.
+**Super Metroid conversion checkpoint (2026-10-28).** The engine operand
+runtime is committed as `a4f3674f`; the SM integration branch pins it and UI
+`e4d8762`. All 34 immediate sites use `mod_operand`. Cartridge writes and the
+64-hook title registry are removed; table behavior is supplied by declared
+runtime hooks. Full regeneration is deterministic, the Windows build and
+20 CTests pass, and disabled-mod stock behavior matches the original trace.
+Converted-feature runtime evidence and remaining qualification are in 6.1.
+Auto charge is defined; falling aim-down is deferred to the final review.
 
 A tester sent a Super Metroid quality-of-life wishlist plus three favourite
 ROM hacks: **Ancient Chozo 1.1.5**, **Super Metroid Redux** and **Ascent
@@ -107,10 +111,10 @@ engine mod packages.
 | standing | Work on worktrees and branches. Commit only on feature branches; never push or merge to main without the owner. |
 | standing | Track work in Beads at `F:\Software\beads\issues` (see section 7). |
 | standing | Never run unscoped recursive searches over `F:\Projects`, `F:\Software` or whole drives. Use `git grep` inside one repo. |
-| standing | Keep bulk output off C:. Scratch goes in `F:\claude-tmp\smqol\...`. |
+| 2026-10-28 storage policy | Use bounded task scratch, check free space/I/O, and clean disposable outputs. Current scratch/evidence is `G:/Temp/Codex/sm-qol-20261027`; C: is allowed under the current global instructions. |
 | standing | Never `taskkill /IM SuperMetroidSNESRecomp.exe`, which kills other agents' runs. Kill by PID only. |
 | standing | "Most complete option" always: general mechanisms over one-off patches, regenerate all banks, run all tests. |
-| open | Two tester items are still undefined: **auto charge** (`.33.20`) and **falling aim-down fix** (`.33.26`). Ask the tester; do not guess. |
+| open | **Auto charge** (`.33.20`) is now defined as idle charging plus tap-to-release. **Falling aim-down** (`.33.26`) is explicitly deferred; ask at final handoff and do not guess. |
 
 ## 3. Repositories, worktrees, branches
 
@@ -118,15 +122,15 @@ All local; **nothing is pushed**.
 
 | Path | Repo | Branch | Base | Purpose |
 |---|---|---|---|---|
-| `F:\Projects\snesrecomp\_wt-sm-qol-engine` | snesrecomp engine | `feat/sm-qol-mod-hooks` | origin/main `5ac4b98` | Engine mechanisms. **Uncommitted, unbuilt `mod_operand` work in progress (19 changed or new files)** (section 6.1). |
-| `F:\Projects\snesrecomp\_wt-sm-qol-mods` | SuperMetroidRecomp | `feat/qol-feature-mods` | origin/main `e617b65` | **Integration branch.** Head `edb3f8e`. Builds: `build-base` (stock), `build-mods`. |
+| `F:\Projects\snesrecomp\_wt-sm-qol-engine` | snesrecomp engine | `feat/sm-qol-mod-hooks` | origin/main `5ac4b98` | Engine mechanisms. `a4f3674f`: declared mod-owned operands, both execution tiers, full engine gates passed (6.1). |
+| `F:\Projects\snesrecomp\_wt-sm-qol-mods` | SuperMetroidRecomp | `feat/qol-feature-mods` | origin/main `e617b65` | **Integration branch.** The inherited handoff checkpoint is `8a9ab42`; current conversion is recorded in 6.1. Candidate build/output: `G:/Temp/Codex/sm-qol-20261027/sm-{build,gen}`. Original `build-base` retained as a stock control. |
 | `F:\Projects\snesrecomp\_wt-sm-qol-pacing` | SuperMetroidRecomp | `feat/qol-pacing` | | Merged (`6740f29`). Can be removed. |
 | `F:\Projects\snesrecomp\_wt-sm-qol-movement` | SuperMetroidRecomp | `feat/qol-movement` | | Fast-forwarded into the integration branch (`edb3f8e`). Can be removed. |
 | `F:\Projects\snesrecomp\_wt-sm-qol-combat` | SuperMetroidRecomp | `feat/qol-combat` | `edb3f8e` | Combat + balance-fixes. **Stopped at handoff**: `6e80b43` (combat, done) + `74a1abd` (WIP balance-fixes). Not merged. Build dir `build-combat`. See 6.2. |
 
-The SM `snesrecomp` submodule is pinned to engine commit `47f010b`. That
+The SM `snesrecomp` submodule is pinned to engine commit `a4f3674f`. That
 commit exists only in the local engine repo, `F:\Projects\snesrecomp\snesrecomp`,
-which shares its object store with the engine worktree.
+which shares its object store with the engine worktree. `recomp-ui` is pinned to `e4d8762`, and `framework_pins.txt` matches the gitlinks.
 
 - **New worktree submodule init:**
   ```
@@ -180,13 +184,13 @@ Engine policy (`snesrecomp/docs/MOD_PACKAGES.md`, `MOD_AUTHORING.md`):
 | Mechanism | Where | Use |
 |---|---|---|
 | `mod_hook <pc16> <Fn>` / `mod_hook_target <hook> <target>` | cfg directives; runtime `runner/src/mod_hook.{h,c}`; doc `docs/MOD_HOOK.md` | Mutating hook before a guest instruction, in both tiers (compiled AOT and interpreter). Armed and disarmed at run time with `snes_mod_hook_arm(pc24, bool)`. Signature: `uint32 Fn(CpuState*, uint32 pc24)`. Return 0 to continue, or a declared target to redirect there. The callback may change A/X/Y/D/DB/`_flag_*`/memory, but never M/X/E/S/PB. |
-| `mod_operand <pc16>` (**replacing `live_operand`, in progress**) | cfg directive; runtime `runner/src/mod_operand.{h,c}` | Mod-owned value for one declared immediate (LDA/LDX/LDY/ADC/SBC/AND/ORA/EOR/CMP/CPX/CPY/BIT). Set with `snes_mod_operand_set(pc24, value)` and clear with `snes_mod_operand_clear(_all)`. AOT emits `snes_mod_operand(pc24, stock)`; the interpreter substitutes the operand on fetch. **The ROM image is never written.** |
+| `mod_operand <pc16>` (**replaces rejected `live_operand`**) | cfg directive; runtime `runner/src/mod_operand.{h,c}` | Mod-owned value for one declared immediate (LDA/LDX/LDY/ADC/SBC/AND/ORA/EOR/CMP/CPX/CPY/BIT). Set with `snes_mod_operand_set(pc24, value)` and clear with `snes_mod_operand_clear(_all)`. AOT emits `snes_mod_operand(pc24, stock)`; the interpreter substitutes the operand on fetch. **The ROM image is never written.** |
 | Input transforms | `snes_mod_register_input_transform` (`runner/src/mod_runtime.*`) | Gameplay pad remaps applied before the netplay exchange, replay recording and run-ahead. Plugins also get right-stick axes and triggers through `SnesModInputContext`. |
 | Overlays | `src/mods/sm_mod_overlay.{h,c}` (SM); composed in `src/main.c` `SmDrawFrame` | Host-drawn, presentation-only layers: HUD readouts, laser sight, weapon ring. |
 | Provider compose | engine `runner/src/mod_provider_compose.{h,c}` | SM's built-in Mods (widescreen, FPS) and the package catalog shown on one Mods page. |
 | `SmModOption(SmModValue *out, pkg, feature, option, fallback)` | `src/mods/sm_mod_support.{h,c}` | Reads a feature option into a caller-owned buffer. A shared static buffer broke plugins that read two options. |
-| `SmModArmHooks` | `src/mods/sm_mod_support.c` | Arms a list of hooks; a reset callback disarms them. The limit is 64 across all mods. |
-| `SmModRomPatch` / `SmModPatchImm16` / `SmModRomWord` | `src/mods/sm_mod_support.c` | **Forbidden. Being removed** (section 6.1). |
+| `SmModArmHooks` | `src/mods/sm_mod_support.c` | Arms a list of hooks; a reset callback disarms them. The generated declarations own the flags; there is no separate title-specific capacity limit. |
+| `SmModReadRom16` | `src/mods/sm_mod_support.c` | Read-only cartridge access for stock PLM scripts. ROM-writing helpers have been deleted (6.1). |
 | SMREPLAY 3 | `src/sm_replay.c` | The replay header carries `MODS %08x`, a hash of the effective mod set. A reader rejects a mismatch. `tools/replay_diagnostic.py` understands format 3. |
 
 **Mod state.** The file is `<build>/mods/preloaded/state.toml`, holding
@@ -213,23 +217,23 @@ measured headlessly; the owner hasn't playtested any feature yet.
 |---|---|---|
 | .3 | Intro skip, Ceres skip, credits skip | Done. Gameplay starts at frame 2553 instead of 9225 (re-measured). Credits 12728 → 4998 frames. The ending pose is kept (owner ruling). |
 | .4 | Faster doors (2x/max) | Done. Left 106/60/54, down 98/56/38, up 97/55/49, right 136/90/84 frames for stock/2x/max. Max is close to 2x because larger scroll steps garbled tile rows and columns. Elevator and boss doors not yet run headlessly. |
-| .5 | Faster elevators (2x/3x) | Done. The Ceres ride is 308 frames shorter at 3x. Uses 8 `live_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`); **convert to `mod_operand`**. |
+| .5 | Faster elevators (2x/3x) | Done. The Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
 | .6 | Item pickup: short jingle, no freeze, skip message boxes | Done. Freeze goes 565 → 60 → 0 frames. |
-| .7 | Reduce screen shake (off/half) | Done. Uses ROM patches; **convert**. |
+| .7 | Reduce screen shake (off/half) | Converted to hooks at `$A0:86A5` / `$86:843C` plus operand `$A0:8705`; measured 3/2/0 px for stock/half/off, with unchanged timers. |
 | .8 | Return to title from the mission-complete screen | Done. **TODO:** "quit to file select" action from gameplay. |
 
 ### `super-metroid.movement`
 | Bead | Feature | Hook sites / evidence |
 |---|---|---|
 | .9 | Respin | `$91:81A9`, `$91:FC99`. Fall pose 29 → spin pose 19, with y and y-speed identical to stock. |
-| .10 | Shinespark steering (strength 0.5/1/2 px) | The handler table at `$91:FAFC` points every spark at `$90:D0D7`; hooks at D0E6/D0EC/D0EF/D0F2. **The table repoint is a ROM write; convert.** |
+| .10 | Shinespark steering (strength 0.5/1/2 px) | Hook `$91:FADB` supplies dispatcher `$D0D7` in a register; D0E6/D0EC/D0EF/D0F2 supply the movers. Horizontal, vertical and diagonal scenarios observe steering movement; no table repoint. |
 | .11 | Keep momentum on landing (option: keep blue boost) | `$91:F030`, `$90:A3D0`. +40 px after 22 frames. |
 | .12 | Speed booster in morph ball (option: hold run) | `$90:9771`. 441 vs 235 px over 80 frames. It can't turn blue by itself. |
 | .13 | Quick morph (hold frames, default 12; item cancel + Down) | `$91:81A9`; counter in WRAM `$0B28` (unused by the game). |
 | .14 | Space jump timing (falling/anytime) | `$90:A488`. |
 | .15 | Instant bomb / no bomb jump (Down held) | `$90:BFFE`, `$A0:984B`. |
 | .16 | Store shinespark | `$91:F7B0`, `$91:DB08`, `$90:D036`; flag in `$0B3A`. |
-| .17 | Heavy physics (Redux Heavy Physics v3) | **69 changed data runs in 18 guarded ROM patches, plus terminal speed through `live_operand` `$90:910F`. All of it must be converted** (section 6.1). Re-measured: jump airtime 92 → 70 frames, launch y-speed 4 → 6. |
+| .17 | Heavy physics (Redux Heavy Physics v3) | Converted to 15 consumer hooks plus `mod_operand` `$90:910F`. All 69 old runs accounted for, including 67 typed demo records. Launch speed 4 → 6; air gravity `$1C00` → `$3400`; shorter airtime. See 6.1 for raw traces. |
 
 Skipped extras:
 - Ascent's spark down-to-morph and jump-to-cancel.
@@ -241,19 +245,19 @@ definition in the decomp, so the plugin uses them as spare memory.
 ### `super-metroid.combat`
 | Bead | Feature | Status |
 |---|---|---|
-| .22 | Shinespark health drain off/half | Done. "Off" raises `CMP #$001E` to `#$7FFF` at `$90:D0C9/D0F8/D124` (**convert to `mod_operand`**). "Half" hooks the DEC at `$90:D0CE/D0FD/D129`. |
+| .22 | Shinespark health drain off/half | Done. "Off" raises `CMP #$001E` to `#$7FFF` at `$90:D0C9/D0F8/D124` (`mod_operand`). "Half" hooks the DEC at `$90:D0CE/D0FD/D129`. |
 | .18 | Screw attack breaks shot blocks and frozen enemies | Done (`feat/qol-combat` 6e80b43). Stock stops at x $4BB at the shot-block wall; mod passes to $519, block breaks then respawns. Frozen enemy dies on contact. |
 | .19 | Charge-beam item magnet (Ancient Chozo tractor beam) | Done. Drop moves 2 px/frame toward Samus and is collected. |
 | .21 | Raise bomb limit (count option + "frames between bombs" option) | Done. Stock peaks at 4 because the 16-frame inter-bomb wait is the real cap; mod reaches 10 (or 6 at limit 6). |
 | .23 | Charge combos via Select (Redux) | Done. Select fires the combo, 1 PB spent. Headless test forced the charge because scripts release all buttons for a frame between inputs. |
-| .20 | Auto charge | **Blocked:** the tester must define it |
+| .20 | Auto charge | Defined by owner: charges as if Shoot were held while idle; one tap releases the charged shot, repeated taps are normal until it charges again. Implementation pending. |
 
 ### `super-metroid.controls`
 | Bead | Feature | Status |
 |---|---|---|
 | .24/.25 | Zero Mission/Fusion shoulder aim; missile hold/toggle/off | Done. Input transforms; uses the guest config words `$09B8`–`$09BE`. |
 | .27 | Right-stick radial weapon menu | Done. Input transform plus ring overlay. |
-| .26 | Falling aim-down fix | **Blocked:** the tester must define it |
+| .26 | Falling aim-down fix | Owner deferred definition until the end; ask at final playtest handoff. |
 
 ### `super-metroid.map-hud`
 | Bead | Feature | Status |
@@ -270,8 +274,8 @@ definition in the decomp, so the plugin uses them as spare memory.
 ### `super-metroid.balance-fixes`
 | Bead | Feature | Status |
 |---|---|---|
-| .39 | Wider X-ray (wide/widest, aim speed) | Done. Uses `live_operand` `$88:8791`, `$88:8799`, `$88:87F7/8819/884F/887A`; **convert**. |
-| .35 | Missile station refills supers and PBs | Done. Hooks `$84:8CD2`→8CDA, B2EE→B2F0, B321→B323, AEC5→AEC7. The "AMMO RELOAD" text patch at `$85:930C` is a ROM write; **convert**. |
+| .39 | Wider X-ray (wide/widest, aim speed) | Done. Uses `mod_operand` `$88:8791`, `$88:8799`, `$88:87F7/8819/884F/887A`. |
+| .35 | Missile station refills supers and PBs | Done. Hooks `$84:8CD2`→8CDA, B2EE→B2F0, B321→B323, AEC5→AEC7. Hook `$85:8311` supplies the complete AMMO RELOAD row while stock code copies it into WRAM. Runtime check refills 5/3/2 ammo versus stock 5/0/0 and validates the surrounding spaces. |
 | .36 | Save station refills everything | Done. Hook `$84:8CF1`. |
 | .37 | Leave Tourian before Mother Brain | **Partial** (WIP 74a1abd). The boss bit is set after the drain (f11954) but the grey door still doesn't open (Samus blocked at x $3BB). Next: check whether the grey-door hook at `$84:C794` fires (probe the PLM id, room argument and lock type after the room loads); if it does, check the door's per-frame check at `$84:BDF2`; then re-enter the rooms to test the music and enemy-list changes. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
@@ -281,90 +285,59 @@ Full-hack content packs (`.41`) are deferred indefinitely.
 
 ## 6. Work in flight
 
-### 6.1 Remove all ROM patching from SM (in progress; uncommitted in the engine worktree)
+### 6.1 ROM-write removal checkpoint (2026-10-28)
 
-**Engine side** (`_wt-sm-qol-engine`, uncommitted, unbuilt, untested):
+**Engine complete**, commit `a4f3674f` on `feat/sm-qol-mod-hooks`, following
+portable test-plumbing commit `77a03539`. The dynamic operand registry is sized
+from declarations and keyed by physical cartridge offset. Generated
+`mod_operands_v2.c` registers and deduplicates sites, including mirrors. Both
+parsers reject `live_operand`; invalid/non-immediate sites are refused.
+Compiled code and interpreter fetches use mod-owned values without ROM writes.
+The optional interpreter word-bus path is covered too. No directive leaves
+unrelated generated banks unchanged.
 
-Done so far:
-- Renamed `live_operand` to `mod_operand` throughout the Python emitter
-  (`recompiler/v2/*`), the Rust analyzer (`recompiler-rs/src/{cfg,decoder,hirom_cfg}.rs`, `bin/analyze.rs`)
-  and the tests (`tests/v2/test_live_operand.py` → `tests/v2/test_mod_operand.py`,
-  `tests/v2/test_program_emit.py`).
-- Both cfg parsers now **reject `live_operand`** with a message pointing to `mod_operand`.
-- New IR op `ModOperand(pc24, stock, width, out)` (`recompiler/v2/ir.py`),
-  lowered to `snes_mod_operand(0xPC24u, stock)` (`codegen.py`), and produced by
-  `_mod_operand` in `emit_function.py`. The emitted code no longer reads the operand from the ROM.
-- `runner/src/cpu_state.h` declares `g_snes_mod_operand_active`,
-  `snes_mod_operand_lookup` and the inline `snes_mod_operand`.
-- New `runner/src/mod_operand.{h,c}`:
-  - Sites are keyed by the ROM offset of the opcode byte, through
-    `cart_getRomPtr`, so every bank alias shares one value.
-  - A declared-site registry (`snes_mod_operand_register_sites`).
-  - `set/clear/clear_all/get/active_count`.
-- `runner/src/snes/interp816.{c,h}`:
-  - `interp816_set_operand_override(fn)`.
-  - `interp816_noteImm`, called from `interp816_adrImm` and from `BIT #imm`
-    (case `0x89`), records the override for the current instruction.
-  - `interp816_read` returns the overridden operand bytes.
-  - The override is cleared at each opcode fetch.
+Engine gates: 615 Python v2 tests; Rust 112 library + 7 binary tests; full
+ROM-free C gates on Windows and Ubuntu/WSL, all successful. The POSIX account
+secret fixture is qualified on Linux and skipped on MinGW. Optional firmware
+fixtures remain optional. Tests cover all 12 supported opcodes, both widths,
+aliases, clear/reset, immutable ROM and 1,100 active operand sites. Details:
+`snesrecomp/docs/validation/MOD_OPERAND_20261028.md`.
 
-Remaining:
-1. `recompiler/v2/program_emit.py`: when any bank declares `mod_operand`,
-   emit `mod_operands_v2.c`, modelled on `MOD_HOOK_SOURCE`/`emit_mod_hook_table`.
-   - Contents: a `static const uint32 k_sites[]` holding the ROM offset
-     (`rom_offset(bank, pc16)`) of each site, and a static
-     `SNES_PROGRAM_MODULE_CONSTRUCTOR` that calls `snes_mod_operand_register_sites`.
-   - Add the file to `planned`.
-   - Only static symbols are needed, so no namespacing.
-   - Programs without the directive must generate byte-identical output.
-2. `runner/runner.cmake`: compile `runner/src/mod_operand.c` (always, like `mod_hook.c`).
-3. Update `tests/v2/test_mod_operand.py`. It used to assert ROM reads and must now assert:
-   - the AOT path reads `snes_mod_operand`;
-   - the interpreter honours `snes_mod_operand_set`;
-   - the ROM bytes are unchanged;
-   - widths M/X 0 and 1 work;
-   - banks `$03`/`$83` aliases share one value;
-   - an undeclared site is refused.
+**SM implementation converted** on `feat/qol-feature-mods`:
 
-   Also add Rust tests for the `live_operand` rejection and rebuild the
-   analyzer (`cargo build --release` in `recompiler-rs`; check how
-   `tools/v2_emit.py` locates the binary).
-4. Docs:
-   - Write `docs/MOD_OPERAND.md`.
-   - In `docs/ENTRY_HOOK.md` ("Observers alongside live ROM patches"), replace the ROM-patching example.
-   - Fix `docs/LLE_FIRST_ANALYSIS.md` (the run-time-immediates section).
-   - Fix the `docs/MOD_HOOK.md` table row.
-   - Update `docs/MOD_AUTHORING.md` / `MOD_PACKAGES.md` to state ROM patching is forbidden.
-5. Run the full engine test suite (`tests/run_c_tests.sh` under PowerShell,
-   pytest with `C:\Users\Matthew\.pyenv\pyenv-win\versions\3.10.9\python.exe -m pytest tests/v2`),
-   then commit on `feat/sm-qol-mod-hooks`.
-6. Standalone engine removal and donor-resource correction are committed as
-   `253c635` + `ca9bc269` on this branch. Guarded cartridge-ROM writes and the
-   generic variant patcher are removed; reviewed donor imports and RAM writes
-   remain. Modern consumer validation is recorded at the checkpoint above.
+- All 34 cfg immediate sites/callers use `mod_operand`.
+- Screen shake: mod-owned room/projectile offsets at `$A0:86A5` / `$86:843C`;
+  the original timing/guards remain. Off also uses operand `$A0:8705`.
+- Station text: `$85:8311` changes the loaded tile before the stock WRAM store
+  and DMA. Its odd-address source span includes all letters/trailing spaces.
+- Steering: `$91:FADB` selects the diagonal dispatcher in A, preserving the
+  stock table. Existing movers handle the original directions and nudges.
+- Heavy physics: 15 consumer hooks and the terminal-speed operand. The 69
+  historical byte runs are accounted for as typed physics values and 67 timed
+  demo-input records. All 25 stock demo objects were traversed to establish
+  record boundaries; there is no generic ROM-address overlay.
+- ROM write/guarded-patch helpers are deleted. The renamed `SmModReadRom16`
+  only reads stock PLM data. Reset clears operands and the declaration-sized
+  hook table, removing the old 64-hook cap.
+- Engine/UI gitlinks and `framework_pins.txt` agree. Plugin sources/headers
+  now contribute to replay/snapshot/build identity.
 
-**SM side** (integration branch, after the engine pin is bumped):
-- Convert all 34 `live_operand` lines in `recomp/bank{00,02,08,10,20,23}.cfg` to
-  `mod_operand`, and their `SmModPatchImm16` callers to `snes_mod_operand_set`.
-  The callers are:
-  - elevator, X-ray, shinespark drain;
-  - the pacing plugins: door, item_pickup, screen_shake;
-  - movement (heavy-physics terminal speed).
-- Convert every `SmModRomPatch` **data/table** write into `mod_hook`s at the
-  instruction(s) that read the table, substituting the value in the callback, as
-  a content loader adapter would:
-  - heavy physics: 69 data runs. For each run, find the reader instructions in
-    the decomp and hook them;
-  - the shinespark-steering handler-table repoint at `$91:FAFC` (hook the
-    dispatch instead);
-  - the missile-station text at `$85:930C` (hook the message-box draw);
-  - screen-shake tables;
-  - door scroll steps;
-  - any others: `git grep SmModRomPatch` in `src/mods`.
-- Then delete `SmModRomPatch`, `SmModPatchImm16` and `SmModRomWord` from
-  `src/mods/sm_mod_support.{h,c}`. `SmModRomWord` is a read and is allowed if
-  still useful.
-- Afterwards, re-run every feature's scenario and the invariance hash (section 8).
+Full supported regeneration with `--strict-idempotent` produces identical
+output twice; Windows build and 20 CTests pass. The 3,200-frame trace with
+everything disabled matches the original build exactly:
+`66976992eb0baea5b7c6696cd6f8e0def597797cb8880497204a58ac93cfc947`.
+
+Runtime regression tool: `tools/test_qol_rom_removal.py` uses fresh disposable
+profiles, muted/dummy video/audio and actual stock routines. It checks the
+disabled trace, jump physics, three quake types and unchanged timers, station
+refill/full text row, and all three steering directions. Raw evidence is under
+`G:/Temp/Codex/sm-qol-20261027/rom-removal-runtime-v2/`; supporting conversion
+audit, first probes and all-current-feature activation logs are adjacent.
+
+**Still owed:** tier-parity qualification for every feature, the full feature
+burndown, Linux game build, netplay mismatch check and owner playtesting.
+The engine's isolated compiled/interpreter operand tests already pass; that
+does not replace game-level parity checks. No main merge, code push or release.
 
 ### 6.2 Combat + balance-fixes branch (stopped at handoff)
 
@@ -380,11 +353,12 @@ Before merging into `feat/qol-feature-mods`:
    - the stock-invariance hash;
    - `ctest`;
    - `regen --strict-idempotent`.
-3. **Hook-table capacity (decision needed):**
-   - `kMaxHooks` in `src/mods/sm_mod_support.c` is 64.
-   - Combat/balance arm 48, movement 16 and pacing about 21, so roughly 85 with everything enabled; the excess are refused.
-   - Fix generally: size it from the declared hook count (`snes_mod_hook_count()`) or make it dynamic, and add a test with all features enabled.
-4. Spot-check the agent's claims against the decomp, re-run one measurement, then merge, union-resolving `CMakeLists.txt`, the cfgs and the manifests.
+3. **Hook-table capacity resolved on the integration branch:** the local
+   64-entry list is deleted. Preserve the declaration-sized flags when
+   integrating combat, and repeat all-feature activation with the combined set.
+4. Spot-check the agent's claims against the decomp, re-run measurements, then
+   integrate into this feature branch, resolving cfg/source/manifest changes
+   while preserving `mod_operand` and the removal of ROM-writing helpers.
 
 Human playtest checklist from the agent (things automation couldn't judge):
 - screw attack still selectable in the pause menu;
@@ -428,8 +402,7 @@ The `bd` shim isn't on PATH for Python.
     (see section 5); `.33.41` content packs (deferred).
 - **Engine (snesrecomp meta):**
   - `beads-8wg.2.156` mod_hook;
-  - `beads-8wg.2.157` guarded ROM writes. **Now obsolete under the ROM-patching
-    ruling:** retarget it to `mod_operand` + ROM-patching removal and record the ruling;
+  - `beads-8wg.2.157` mod-owned operands and ROM-write removal (engine mechanism committed; game validation recorded in 6.1);
   - `beads-8wg.2.158` input transforms.
 - Every feature bead's notes hold the measurements. Features stay
   `in_progress` until the owner signs off; don't close them.
@@ -454,23 +427,21 @@ Add `--strict-idempotent` to check that output is byte-identical.
 cmake --build build-mods -j 12
 cd build-mods; ctest
 ```
-Currently 19/19 pass.
+Currently 20/20 pass, including controls with Release assertions enabled and
+the new data-consumer overflow/text-boundary regression checks.
 
-**Stock invariance.** With no features enabled, the 3200-frame attract trace
-must keep its hash:
+**Stock invariance and converted consumers.** Use the isolated runner:
 ```
-copy _scen\state_none.toml -> <build>\mods\preloaded\state.toml
-delete <build>\saves            # a first run without save.srm changes the trace
-SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy SNESRECOMP_NO_LAUNCHER=1
-SM_REPLAY_RECORD=0 SNESRECOMP_TURBO=1 SM_RUN_FRAMES=3200 SM_STATE_TRACE=<file>
-<build>\SuperMetroidSNESRecomp.exe "<rom>"
-SHA256(<file>) == 66976992EB0BAEA5B7C6696CD6F8E0DEF597797CB8880497204A58AC93CFC947
+python tools/test_qol_rom_removal.py --build <candidate> --rom <owned-rom> --out <new-evidence-directory> --baseline <original-build>
 ```
-With all features on, the hash differs. That's expected, because the attract
-demos replay real gameplay that the mods change.
+It preserves all existing build saves/settings and retains its raw results.
+The disabled 3,200-frame attract trace must be
+`66976992EB0BAEA5B7C6696CD6F8E0DEF597797CB8880497204A58AC93CFC947`.
+Do not delete a build's saves to establish an initial condition. A new task
+profile and `--config <profile>/config.ini` isolate all writable paths.
 
 **Scripted scenarios:**
-- **Runner:** `_scen\run_scen.ps1 -Build <dir> -Script <txt> -Tag <t> -StateToml <toml>`.
+- **Legacy runner:** `_scen/run_scen.ps1` deletes build saves and must not be used unchanged. Use the isolated tool above or a fresh-profile runner.
 - **Commands:** `wait N`, `press <buttons> N`, `poke <hexaddr> <hexword>`,
   `until16 <addr> == <val> <timeout>`, `quit`.
 - **Reaching gameplay:** a new game needs about 27 rounds of `press a 8` /
@@ -496,10 +467,9 @@ demos replay real gameplay that the mods change.
 
 ## 9. Burndown (remaining tasks, in order)
 
-1. **Finish `mod_operand` in the engine** (6.1 steps 1–5); commit; bump the SM pin.
-2. **Convert every SM ROM write** to `mod_operand` / `mod_hook`; delete the
-   ROM-patch helpers; re-verify every feature and the invariance hash.
-3. **Finish `feat/qol-combat`** (Tourian door, validate bug fixes, hook-table capacity, invariance/ctest/idempotent) and merge (6.2).
+1. **Engine operand mechanism implemented/committed and SM writes converted** (6.1). Complete the remaining game-level qualification with the final feature set.
+2. Preserve the ROM-write removal while integrating further features.
+3. **Finish `feat/qol-combat`** (Tourian door, validate bug fixes, hook-table capacity, invariance/ctest/idempotent) and integrate into this feature branch (6.2). No main merge is authorized.
 4. **Map work:** world model (.2) → Zero Mission pause map (.28) → zoomable
    world map (.29) → minimap (.30).
 5. **Pacing:**
@@ -512,10 +482,8 @@ demos replay real gameplay that the mods change.
 7. **Tier-parity runs** for all hooked features; Linux build; netplay effective-set check.
 8. **Automated playtest pass** over every feature. Then write the owner a
    short, focused checklist of what automation cannot judge (feel, visuals).
-9. **Cross-repo ROM-patching removal** (6.3): beads, then per-repo replacement.
-10. **Waiting on the tester:**
-    - .20 auto charge;
-    - .26 falling aim-down fix.
+9. **Cross-repo removal preservation gate complete** (6.3); keep the validated modern loaders/music/multiplayer candidates intact.
+10. **At final handoff only:** ask the owner to define .26 falling aim-down. Auto charge .20 is already defined and needs implementation.
 11. **Owner-gated:** push and merge of the engine and SM branches.
 
 ## 10. Traps already hit
@@ -534,9 +502,7 @@ demos replay real gameplay that the mods change.
 - Merging `bank04.cfg` by union duplicated the function entries. Rebuild it as
   ours plus the other branch's appended block.
 - Pytest needs the pyenv Python; mingw's Python lacks pytest.
-- The guarded-patch registry and the `SmModArmHooks` table each hold 64
-  entries across all enabled mods. With all features enabled, about 85 hooks
-  are needed (6.2).
+- The old title hook list capped activation at 64. It is deleted; use generated declarations and never reintroduce a separate fixed title limit.
 - Headless `--script` releases every button for one frame between inputs, so
   held-charge or held-button tests need a poke or a forced state.
 - `PowerShell Remove-Item` on a variable path can be blocked as a "system

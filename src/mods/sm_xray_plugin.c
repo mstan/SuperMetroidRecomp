@@ -5,7 +5,7 @@
  * clamps it to 10 (LDA #$000A at $88:8799). MoveXrayUp/MoveXrayDown step the
  * aim angle by one per frame (SBC/ADC #$0001). Super Metroid Redux widens the
  * clamp to 26 and doubles the step; the width is an option here. The sites
- * are `live_operand` in recomp/bank08.cfg.
+ * are `mod_operand` in recomp/bank08.cfg.
  */
 
 #include <stdio.h>
@@ -26,12 +26,12 @@ static void SmXrayActivate(void) {
   uint16_t clamp = !strcmp(width, "widest") ? 26 : 18;
   uint16_t step = !strcmp(speed, "1x") ? 1 : 2;
   size_t applied = 0, count = 2;
-  applied += SmModPatchImm16("xray", 0x888791, 0x000B, (uint16_t)(clamp + 1));
-  applied += SmModPatchImm16("xray", 0x888799, 0x000A, clamp);
+  applied += snes_mod_operand_set(0x888791, (uint16_t)(clamp + 1));
+  applied += snes_mod_operand_set(0x888799, clamp);
   if (step != 1) {
     count += sizeof(kStepSites) / sizeof(kStepSites[0]);
     for (size_t i = 0; i < sizeof(kStepSites) / sizeof(kStepSites[0]); ++i)
-      applied += SmModPatchImm16("xray", kStepSites[i], 0x0001, step);
+      applied += snes_mod_operand_set(kStepSites[i], step);
   }
   fprintf(stderr, "[mods] xray width=%u step=%u: %zu/%zu sites\n",
           (unsigned)clamp, (unsigned)step, applied, count);

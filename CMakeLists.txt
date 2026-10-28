@@ -211,6 +211,11 @@ if(BUILD_TESTING AND NOT ANDROID)
     target_include_directories(sm_controls_test PRIVATE src/mods
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_controls COMMAND sm_controls_test)
+    add_executable(sm_qol_data_test tests/sm_qol_data_test.c
+        src/mods/sm_screen_shake_plugin.c src/mods/sm_station_plugins.c)
+    target_include_directories(sm_qol_data_test PRIVATE src/mods
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_qol_data_consumers COMMAND sm_qol_data_test)
     add_executable(sm_render_capture tools/sm_render_capture.c src/sm_renderer.c src/sm_video.c src/sm_mode7.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
     target_include_directories(sm_render_capture PRIVATE src
@@ -219,7 +224,8 @@ if(BUILD_TESTING AND NOT ANDROID)
     # Assertions are the test oracle, including Release configurations.
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
-            sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test)
+            sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test
+            sm_controls_test sm_qol_data_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()
@@ -291,6 +297,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_screen_shake_plugin.c
     src/mods/sm_return_to_title_plugin.c
     src/mods/sm_movement_plugins.c
+    src/mods/sm_heavy_physics_plugin.c
 )
 
 if(ANDROID)
@@ -347,7 +354,8 @@ find_package(Git REQUIRED)
 execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     OUTPUT_VARIABLE SM_REPLAY_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-file(GLOB SM_REPLAY_ID_INPUTS CONFIGURE_DEPENDS src/*.c src/*.h recomp/*.cfg profiles/*.json)
+file(GLOB SM_REPLAY_ID_INPUTS CONFIGURE_DEPENDS
+    src/*.c src/*.h src/mods/*.c src/mods/*.h recomp/*.cfg profiles/*.json)
 list(APPEND SM_REPLAY_ID_INPUTS ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
     ${CMAKE_CURRENT_SOURCE_DIR}/framework_pins.txt ${CMAKE_CURRENT_SOURCE_DIR}/VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SM_REPLAY_ID_INPUTS})

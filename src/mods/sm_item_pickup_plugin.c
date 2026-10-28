@@ -116,13 +116,13 @@ static bool MinorBefore(const CpuState *cpu, const Minor *m) {
 /* Inside the collect instruction: max already raised by the PLM argument
  * at bank $84:Y; the first expansion of a kind leaves max == argument. */
 static bool MinorAfter(const CpuState *cpu, const Minor *m) {
-  return !m->max_addr || RAM16(cpu, m->max_addr) != SmModRomWord(0x840000u | cpu->Y);
+  return !m->max_addr || RAM16(cpu, m->max_addr) != SmModReadRom16(0x840000u | cpu->Y);
 }
 
 /* $84:8BDD PlmInstr_ClearMusicQueueAndQueueTrack. Y -> track byte; the next
  * PLM instruction follows it. */
 uint32 SmItemFanfareHook(CpuState *cpu, uint32 pc24) {
-  uint16_t next = SmModRomWord(0x840000u | (uint16_t)(cpu->Y + 1));
+  uint16_t next = SmModReadRom16(0x840000u | (uint16_t)(cpu->Y + 1));
   for (int k = 0; k < kKinds; ++k)
     if (kMinor[k].instr == next && MinorBefore(cpu, &kMinor[k]))
       return (pc24 & 0xFF0000u) | 0x8C05u;

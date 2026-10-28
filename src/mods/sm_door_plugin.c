@@ -9,7 +9,7 @@
  * Up skipping map updates while it covers the 16 px row FixDoorsMovingUp
  * already drew (CPX #$05). The step is raised and every count shrinks with
  * it, so the scroll ends at the identical position. These sites are
- * `live_operand` in recomp/bank00.cfg.
+ * `mod_operand` in recomp/bank00.cfg.
  *
  * Step limit. UpdateBgGraphicsWhenScrolling uploads one block row/column
  * per call, and the setup leaves the "previous block" one behind the
@@ -31,7 +31,7 @@
  *
  * Fades. AdvancePaletteFadeForAllPalettes_0xc ($82:D961), used only by
  * DoorTransitionFunction_FadeOutScreen and DoorTransition_FadeInScreenAndFinish,
- * fades in 12 + 3 frames (LDA #$000C); 2x uses 5, max uses 2 (`live_operand`
+ * fades in 12 + 3 frames (LDA #$000C); 2x uses 5, max uses 2 (`mod_operand`
  * in recomp/bank02.cfg).
  */
 
@@ -115,8 +115,7 @@ static void SmDoorActivate(void) {
   g_step_up = 8;
   size_t applied = 0, count = sizeof(kSites) / sizeof(kSites[0]);
   for (size_t i = 0; i < count; ++i)
-    applied += SmModPatchImm16("doors", kSites[i].addr, kSites[i].stock,
-                               max ? kSites[i].max : kSites[i].x2);
+    applied += snes_mod_operand_set(kSites[i].addr, max ? kSites[i].max : kSites[i].x2);
   static const uint32_t kHooks[] = {0x82DE64, 0x82E3E5};
   size_t hooks = SmModArmHooks("doors", kHooks, 2);
   fprintf(stderr, "[mods] doors %s: %zu/%zu sites, %zu/2 hooks\n",
