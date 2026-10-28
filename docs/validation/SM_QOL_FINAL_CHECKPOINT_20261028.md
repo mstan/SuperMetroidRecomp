@@ -47,6 +47,7 @@ is explicitly stated.
 | Extra movement, 20 cases | Spark Down morph / Jump cancel in all three directions; L+Down air morph with shoulder remapping and custom item cancel; item/option-off controls | [Movement details](SM_MOVEMENT_EXTRAS_20261028.md) |
 | Real Zebes elevator trips | Down/up stock 651/641 frames, 2x 407/370, 3x 326/280; same final heights/SRAM | `pacing-routes-qualified-{aot,interp}/results.json`; `tools/test_qol_pacing_routes.py` |
 | Real Tourian grey gates | Stock 121/106 frames, 2x 75/60, max 69/54; natural baby drain and shots | Same pacing evidence |
+| Native reserve pickup, five option cases | Real orb shot and collection; grant at tick16 in all cases. Freeze425 stock/short-sound,79 message-skip,0 no-freeze/combined. Short sound keeps room track3 and queues SFX2:`02`; control uses fanfare track2. SRAM unchanged. All sampled data/full WRAM match alternate execution, with increased interpreter work | `pickup-real-native/`, `pickup-real-interp/`, `pickup-real-validated.json`; `tools/test_qol_item_pickup.py` |
 | Auto charge / Tourian exit | Owner-defined idle charge and tap release; rapid normal shots then charged again. Real drain, gates, exit and re-entry pass | [Combat details](SM_COMBAT_20261028.md) |
 | Quit to file select | Native fade/reset/file-select, SRAM preservation, current-build save/load and run-ahead | [Quit details](SM_QUIT_20261028.md) |
 
@@ -116,6 +117,14 @@ the supplied Falcon Zero six-region reference. Owner readability judgment is
 pending. See [map coverage limits](SM_MAPS_20261028.md).
 
 ## Remaining acceptance
+
+The inherited feature notes are not proof of the whole runtime/tier requirement.
+The current audit still needs explicit current-build cinematic skip/ending-return
+comparisons, isolated shinespark-drain/Select-combo checks, native save-station
+refill and wider/faster X-ray checks. Existing historical measurements and
+implementation remain recorded; these game-level gates are not declared complete.
+The new reserve pickup suite covers a real minor-item collector and the existing
+three pacing options; it does not establish every major pickup's behavior.
 
 Prepared playtest executable SHA-256 is
 `aa0bfec57896ab44337351b4ce0bc82c6ff4f944ff46157a2f2b90222948b419`;
