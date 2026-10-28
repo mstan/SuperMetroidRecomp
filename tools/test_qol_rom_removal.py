@@ -99,7 +99,7 @@ def run_case(case, *, build, rom, out, interp_targets=None):
         result = subprocess.run(command, cwd=profile, env=env, stdout=stdout, stderr=stderr, timeout=300)
     log = (profile / "stderr.log").read_text(errors="replace")
     assert result.returncode == 0, f"{tag}: process exit {result.returncode}"
-    assert not re.search(r"TIMEOUT|\bFAILED\b|refused|step.cap|scheduler bail|abort|hook table full|registry full|no mod_hook", log, re.I), f"{tag}: inspect stderr"
+    assert not re.search(r"TIMEOUT|\bFAILED\b|refused|step.cap|\[interp_cap\]|\[brk\]|LLE loop bailed|scheduler bail|abort|hook table full|registry full|no mod_hook", log, re.I), f"{tag}: inspect stderr"
     info = {"exit": result.returncode, "command": command, "features": features,
             "interp_targets": str(interp_targets) if interp_targets else None,
             "exe_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),

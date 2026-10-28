@@ -100,7 +100,7 @@ id = "bug-fixes"
 name = "Vanilla bug fixes"
 description = "Fixes for bugs in the original game, each with its own switch. From Super Metroid Redux's vanillabugfixes.asm, compiled by Nodever2 with fixes by PJBoy, Benox50 and amoeba, and HAM's suit pickup fix."
 group = "Balance"
-default_enabled = false
+default_enabled = true
 
 [[option]]
 feature = "bug-fixes"
@@ -207,7 +207,7 @@ id = "reserve-tanks"
 name = "Reserve tank fixes"
 description = "Fixes and improvements for reserve tanks, each with its own switch. Nodever2's Reserve Tank Bugfixes with Benox50's pause crash fix, as in Super Metroid Redux."
 group = "Balance"
-default_enabled = false
+default_enabled = true
 
 [[option]]
 feature = "reserve-tanks"
@@ -223,7 +223,7 @@ id = "come-full"
 label = "Tanks come full"
 description = "A new reserve tank is collected full."
 type = "boolean"
-default = true
+default = false
 
 [[option]]
 feature = "reserve-tanks"
@@ -255,7 +255,7 @@ id = "manual-control"
 label = "Manual refill control"
 description = "Press A to stop a manual refill; moving off the reserve button stops it instead of resuming later."
 type = "boolean"
-default = true
+default = false
 
 [[plugin]]
 feature = "reserve-tanks"

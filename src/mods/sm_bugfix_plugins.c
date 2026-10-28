@@ -306,14 +306,14 @@ static void SmReserveTanksActivate(void) {
   static const Fix kManual = {"manual-control", {0x82AF52, 0x82AC52}};
   if (SmModOptionBool(PACKAGE, "reserve-tanks", "pause-crash", true))
     ArmFix("reserve-tanks", &kPause);
-  if (SmModOptionBool(PACKAGE, "reserve-tanks", "come-full", true))
+  if (SmModOptionBool(PACKAGE, "reserve-tanks", "come-full", false))
     ArmFix("reserve-tanks", &kFull);
   g.reserve_keep = SmModOptionBool(PACKAGE, "reserve-tanks", "keep-leftover", true);
   if (g.reserve_keep) ArmFix("reserve-tanks", &kKeep);
   g.reserve_heat = SmModOptionBool(PACKAGE, "reserve-tanks", "no-heat-damage", true);
   g.reserve_iframes = SmModOptionBool(PACKAGE, "reserve-tanks", "keep-iframes", true);
   if (g.reserve_heat || g.reserve_iframes) ArmFix("reserve-tanks", &kAutoEntry);
-  g.reserve_manual = SmModOptionBool(PACKAGE, "reserve-tanks", "manual-control", true);
+  g.reserve_manual = SmModOptionBool(PACKAGE, "reserve-tanks", "manual-control", false);
   if (g.reserve_manual) ArmFix("reserve-tanks", &kManual);
   fprintf(stderr, "[mods] reserve tank fixes: keep %d heat %d iframes %d manual %d\n",
           g.reserve_keep, g.reserve_heat, g.reserve_iframes, g.reserve_manual);

@@ -279,7 +279,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .36 | Save station refills everything | Done. Hook `$84:8CF1`. |
 | .37 | Leave Tourian before Mother Brain | Automated traversal passes: natural baby drain, recovery, both grey gates to DC65/DC19; re-entry selects DCDD, music 1E/5, nine corpse population entries. Stock stays locked. Complete selector interpreted path matches; a narrower mixed-path engine boundary failure remains tracked separately. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
-| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | **Built, untested** (WIP 74a1abd). 12 vanilla fixes + 6 reserve-tank fixes, one option each. The ship-save fix can't be done with hooks. The source's "known bugs" list has no fixes to port. Next: run `F:\claude-tmp\smqol\cb\scen\{reserve_auto,sbjump,iframes}.txt` stock vs mod. |
+| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have native boundary regressions. Actual jump/contact/refill stock-vs-mod checks pass both tiers; reserves retain 201 energy and immunity, screw contact retains 92 iframes. 21 CTests pass. Correctness fixes default on; elective full tanks/manual-control default off. Other defect game contexts and owner review remain. See `docs/validation/SM_COMBAT_20261028.md`. Ship-save was not implemented by the inherited work. |
 
 Full-hack content packs (`.41`) are deferred indefinitely.
 
