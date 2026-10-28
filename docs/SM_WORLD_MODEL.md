@@ -21,9 +21,9 @@ The current room's actual state pointer takes precedence over predicting its
 conditional state. Arrival-door conditions in other rooms remain unknown.
 
 On the owned stock ROM, the first complete audit reads **255 Zebes rooms,
-595 door-list entries, 310 room states and 408 state-specific markers**.
+595 door-list entries, 310 room states and 414 state-specific markers**.
 The markers contain **100 unique items**, 108 item entries including state
-variants, 170 coloured caps, 19 saves, five maps, seven energy stations,
+variants, 176 coloured caps (including six eye/guard entries), 19 saves, five maps, seven energy stations,
 four ammo stations, 11 shootable gates and 84 crumble-floor markers. Crumble
 arrows resolve the native BTS/PLM setup and only mark down-only floors, not
 other special blocks. All 310 level streams decode with
@@ -54,6 +54,9 @@ The synthetic `sm_world_model` test checks graph/state/marker decoding,
 LoROM-crossing compression, malformed data rejection, page/bit ordering,
 live/saved exploration, item collection and unchanged guest memory.
 It passes GCC with `-Wall -Wextra -Werror` on Windows and Ubuntu/WSL.
-Current raw stock audit: `G:/Temp/Codex/sm-qol-20261027/world-model-physical-doors.json`;
+Eye PLMs `$DB48/$DB56` use orange guard markers with an eye detail, rather
+than defaulting to a normal blue door. Their body pieces do not create duplicate caps.
+
+Current raw stock audit: `G:/Temp/Codex/sm-qol-20261027/world-model-eye-guards.json`;
 per-state source evidence is in `unknown-doors-audit.txt` beside it.
 Map-view qualification: [SM_MAPS_20261028.md](validation/SM_MAPS_20261028.md).

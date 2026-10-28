@@ -13,7 +13,7 @@ typedef enum SmWorldMarkerKind {
   SM_MAP_CAP, SM_MAP_GATE, SM_MAP_DROP
 } SmWorldMarkerKind;
 typedef enum SmWorldCap {
-  SM_CAP_BLUE, SM_CAP_MISSILE, SM_CAP_SUPER, SM_CAP_POWER_BOMB, SM_CAP_GREY
+  SM_CAP_BLUE, SM_CAP_MISSILE, SM_CAP_SUPER, SM_CAP_POWER_BOMB, SM_CAP_GREY, SM_CAP_EYE
 } SmWorldCap;
 typedef struct SmWorldRoom {
   uint16_t header, default_state, first_door, door_count;

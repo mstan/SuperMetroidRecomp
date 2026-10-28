@@ -72,8 +72,8 @@ void SmMapPlayerPoint(const SmWorld *world,const int16_t layout[SM_WORLD_ROOMS][
   *x16=x*16+W(ram,0xaf6)/16; *y16=y*16+W(ram,0xafa)/16;
 }
 static uint32_t CapColor(unsigned cap) {
-  static const uint32_t colors[]={0xff61d5ff,0xffff65b8,0xff7dff50,0xffffe64c,0xffd5d8de};
-  return cap<5 ? colors[cap] : colors[0];
+  static const uint32_t colors[]={0xff61d5ff,0xffff65b8,0xff7dff50,0xffffe64c,0xffd5d8de,0xffffa14f};
+  return cap<sizeof(colors)/sizeof(colors[0]) ? colors[cap] : colors[0];
 }
 static void Connectors(Canvas c,const SmWorld *world,const int16_t layout[SM_WORLD_ROOMS][2],const uint8_t *ram) {
   for (unsigned i=0; i<world->door_count; ++i) {
@@ -128,6 +128,7 @@ static void Doors(Canvas c,const SmWorld *world,const int16_t layout[SM_WORLD_RO
       if (cap==SM_CAP_SUPER) { Rect(c,x-1,y-1,1,1,0xffffffff); Rect(c,x+1,y+1,1,1,0xffffffff); }
       else if (cap==SM_CAP_POWER_BOMB) Ring(c,x,y,2,CapColor(cap));
       else if (cap==SM_CAP_MISSILE) Rect(c,x,y,1,1,0xffffffff);
+      else if (cap==SM_CAP_EYE) { Ring(c,x,y,1,0xffffffff); Rect(c,x,y,1,1,CapColor(cap)); }
     }
     if (!door->reciprocal && !elevator && s>=6)
       Arrow(c,x,y,direction==0?1:direction==1?-1:0,direction==2?1:direction==3?-1:0,0xffffffff);

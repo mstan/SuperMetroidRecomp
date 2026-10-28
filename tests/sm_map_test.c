@@ -98,6 +98,14 @@ int main(void) {
   test_ram[0x7f7+7]=0x80;
   SmMapViewDraw(known,128,80,&world,layout,Read,NULL,test_ram,v);
   assert(memcmp(hidden,known,sizeof(hidden)));
+  world.door_count=world.rooms[0].door_count=1;
+  world.doors[0]=(SmWorldDoor){.source=0x91f8,.destination=0x91f8,.block_x=0,.block_y=0,.direction=4};
+  world.markers[0]=(SmWorldMarker){0x91f8,0x920a,0xdb56,0,1,0,SM_MAP_CAP,SM_CAP_EYE,0};
+  SmMapViewDraw(known,128,80,&world,layout,Read,NULL,test_ram,v);
+  bool guard_color=false;
+  for (unsigned i=0; i<sizeof(known)/sizeof(*known); ++i) if (known[i]==0xffffa14f) guard_color=true;
+  assert(guard_color);
+  world.door_count=world.rooms[0].door_count=0;
   /* Open the optional pause over a cached gameplay picture, close with the
    * same chord, and ensure a netplay session can never freeze gameplay. */
   Put(0x998,8); previous=0; mini_open=false;

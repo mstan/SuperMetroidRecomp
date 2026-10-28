@@ -138,7 +138,9 @@ static bool Marker(SmWorld *w, uint16_t room, uint16_t state, uint16_t plm,
   else if (plm==0xb6d3) kind=SM_MAP_MAP;
   else if (plm==0xb6df) kind=SM_MAP_ENERGY;
   else if (plm==0xb6eb) kind=SM_MAP_AMMO;
-  else if (plm>=0xc842 && plm<=0xc8b4 && (plm-0xc842)%6==0) {
+  else if (plm==0xdb48 || plm==0xdb56) {
+    kind=SM_MAP_CAP; detail=SM_CAP_EYE; direction=plm==0xdb48;
+  } else if (plm>=0xc842 && plm<=0xc8b4 && (plm-0xc842)%6==0) {
     static const uint8_t colors[]={SM_CAP_GREY,SM_CAP_POWER_BOMB,SM_CAP_SUPER,SM_CAP_MISSILE,SM_CAP_BLUE};
     unsigned n=(plm-0xc842)/6; kind=SM_MAP_CAP; detail=colors[n/4]; direction=n%4;
   } else if ((plm==0xc836 || plm==0xc83a) && argument<16 && !(argument&1)) {

@@ -83,6 +83,17 @@ int main(void) {
   memcpy(saved,ram,sizeof(ram));
   SmWorldRoomState(room,Read,NULL,ram); SmWorldKnown(&world,ram,0,23,1,true,true); SmWorldItemCollected(ram,item);
   assert(!memcmp(saved,ram,sizeof(ram)));
+  /* Native eye/guard doors need their own marker, rather than a blue cap. */
+  Word(0x8f928c,0xdb48); Byte(0x8f928e,6); Byte(0x8f928f,6);
+  Word(0x8f9292,0xdb56); Byte(0x8f9294,8); Byte(0x8f9295,6);
+  assert(SmWorldLoad(&world,Read,NULL));
+  unsigned eyes=0;
+  for (unsigned i=0; i<world.marker_count; ++i) if (world.markers[i].kind==SM_MAP_CAP) {
+    assert(world.markers[i].detail==SM_CAP_EYE);
+    assert(world.markers[i].direction==(world.markers[i].plm==0xdb48)); ++eyes;
+  }
+  assert(eyes==4);
+  Fixture();
   Word(0x84d000,0xc7b1); /* another special-block setup is not a down-only floor */
   assert(SmWorldLoad(&world,Read,NULL) && world.marker_count==5);
   /* An arrival/reverse header without a source block cannot make a passage
