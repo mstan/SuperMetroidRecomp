@@ -119,8 +119,9 @@ pending. See [map coverage limits](SM_MAPS_20261028.md).
 ## Remaining acceptance
 
 The inherited feature notes are not proof of the whole runtime/tier requirement.
-The current audit still needs explicit current-build cinematic skip/ending-return
-comparisons, isolated shinespark-drain/Select-combo checks, native save-station
+Current cinematic skip/ending-return comparisons pass; see
+[cinematic evidence](SM_CINEMATICS_20261028.md). The audit still needs
+isolated shinespark-drain/Select-combo checks, native save-station
 refill and wider/faster X-ray checks. Existing historical measurements and
 implementation remain recorded; these game-level gates are not declared complete.
 The new reserve pickup suite covers a real minor-item collector and the existing

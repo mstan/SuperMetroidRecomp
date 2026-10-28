@@ -243,12 +243,12 @@ measured headlessly; the owner hasn't playtested any feature yet.
 ### `super-metroid.pacing` (`mods/preloaded/packages/super-metroid.pacing/1.0.0`)
 | Bead | Feature | Status / evidence |
 |---|---|---|
-| .3 | Intro skip, Ceres skip, credits skip | Done. Gameplay starts at frame 2553 instead of 9225 (re-measured). Credits 12728 → 4998 frames. The ending pose is kept (owner ruling). |
+| .3 | Intro skip, Ceres skip, credits skip | Current runtime gates pass: matched English intro gameplay9304→3452; Japanese stock/mod WRAM identical; Ceres skip starts on Zebes1882 vs Ceres9274. Staff roll8306→1 after Start, with native pose/final sequence retained. Normal/alternate full WRAM matches. See `docs/validation/SM_CINEMATICS_20261028.md`. |
 | .4 | Faster doors (2x/max) | Done. Left 106/60/54, down 98/56/38, up 97/55/49, right 136/90/84 frames for stock/2x/max. Real Tourian grey gates also pass: 121/106 stock, 75/60 at 2x, 69/54 at max. Full WRAM/observed-frame tier equality. |
 | .5 | Faster elevators (2x/3x) | Done. Real Zebes down/up trips: stock651/641, 2x407/370, 3x326/280 frames; same heights/SRAM and tier equality. Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
 | .6 | Item pickup: short jingle, no freeze, skip message boxes | Real reserve room/orb shot + collection: freeze425 stock/short-sound,79 message-skip,0 no-freeze/combined; same acquisition tick16 and unchanged SRAM. Room music3 + short SFX02 instead of fanfare2. Five normal/alternate cases match all sampled data/full WRAM. Short sounds currently cover energy/reserve and repeat ammo only; major/first-ammo sounds and native suit transformations await owner scope choices. |
 | .7 | Reduce screen shake (off/half) | Converted to hooks at `$A0:86A5` / `$86:843C` plus operand `$A0:8705`; measured 3/2/0 px for stock/half/off, with unchanged timers. |
-| .8 | Ending return; quit to file select during gameplay | Both implemented independently. New pause Options action passes actual native transition, SRAM preservation, fade-save/late-load, two-frame run-ahead and interpreted file-select checks. See `docs/validation/SM_QUIT_20261028.md`; owner review pending. |
+| .8 | Ending return; quit to file select during gameplay | Both implemented independently. Native ending: Start during pose is ignored; final-screen Start returns to title only when enabled, SRAM unchanged, normal/alternate full WRAM matches. Pause Options quit passes native transition, SRAM, fade-save/late-load, run-ahead2 and interpreted file-select checks. See cinematic and quit validation docs; owner review pending. |
 
 ### `super-metroid.movement`
 | Bead | Feature | Hook sites / evidence |
@@ -506,11 +506,12 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 
 ## 9. Burndown (remaining tasks, in order)
 
-Current acceptance audit: close the remaining current-build cinematic skip/
-ending-return, isolated drain/Select-combo, native save-station refill and
+Current acceptance audit: close the remaining isolated drain/Select-combo,
+native save-station refill and
 wide/faster X-ray runtime/tier gates. Historical Done text does not replace those
 checks. Native reserve pickup pacing, nonzero ghost placement and Speed Booster
-sound-call state now have new actual-game comparisons. This is still an active
+sound-call state now have new actual-game comparisons. Current intro, Ceres,
+credits/pose and ending-return comparisons also pass. This is still an active
 burndown; prepared owner review does not declare the full wishlist complete.
 
 1. **Owner review:** use `tools/sm_qol_playtest.py` and the prepared native-paused
