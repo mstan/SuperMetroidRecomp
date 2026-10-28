@@ -15,7 +15,8 @@
  *   - the door-transition pacing rule: those frames may repay wall-time debt
  *     so the guest-driven audio queue stays fed while Samus has no control;
  *   - the presentation Mods page (sm_mods.c);
- *   - SM_AUDIO_PROBE, a per-frame audio/doorway measurement.
+ *   - SM_AUDIO_PROBE, a per-frame audio/doorway measurement, and
+ *     SM_WRAM_PROBE, a per-frame log of chosen WRAM values.
  */
 
 #include <stdio.h>
@@ -258,10 +259,60 @@ static void SmCloseAudioProbe(void) {
   if (g_audio_probe) fclose(g_audio_probe);
   g_audio_probe = NULL;
 }
+/* SM_WRAM_PROBE=<csv> with SM_WRAM_PROBE_ADDRS=<hex addr>[:<1|2>],...: the
+ * listed WRAM bytes/words after every guest frame, from the first frame on,
+ * for gameplay measurements (Samus pose, speeds, timers). Read-only. */
+enum { kWramProbeMax = 32 };
+static FILE *g_wram_probe;
+static unsigned g_wram_probe_addr[kWramProbeMax], g_wram_probe_width[kWramProbeMax];
+static int g_wram_probe_count;
+static void SmCloseWramProbe(void) {
+  if (g_wram_probe) fclose(g_wram_probe);
+  g_wram_probe = NULL;
+}
+static void SmOpenWramProbe(void) {
+  const char *path = getenv("SM_WRAM_PROBE");
+  const char *spec = getenv("SM_WRAM_PROBE_ADDRS");
+  if (!path || !spec) return;
+  while (*spec && g_wram_probe_count < kWramProbeMax) {
+    char *end;
+    unsigned long addr = strtoul(spec, &end, 16), width = 1;
+    if (end == spec || addr + 1 >= 0x20000) break;
+    if (*end == ':') width = strtoul(end + 1, &end, 10) == 2 ? 2 : 1;
+    g_wram_probe_addr[g_wram_probe_count] = (unsigned)addr;
+    g_wram_probe_width[g_wram_probe_count++] = (unsigned)width;
+    spec = *end == ',' ? end + 1 : end;
+    if (*end != ',') break;
+  }
+  g_wram_probe = fopen(path, "w");
+  if (!g_wram_probe) return;
+  setvbuf(g_wram_probe, NULL, _IOFBF, 1024 * 1024);
+  fprintf(g_wram_probe, "frame");
+  for (int i = 0; i < g_wram_probe_count; ++i)
+    fprintf(g_wram_probe, ",%04x", g_wram_probe_addr[i]);
+  fprintf(g_wram_probe, "\n");
+  atexit(SmCloseWramProbe);
+}
+static void SmWriteWramProbe(void) {
+  fprintf(g_wram_probe, "%d", snes_frame_counter);
+  for (int i = 0; i < g_wram_probe_count; ++i) {
+    unsigned a = g_wram_probe_addr[i];
+    unsigned v = g_ram[a] | (g_wram_probe_width[i] == 2 ? g_ram[a + 1] << 8 : 0);
+    fprintf(g_wram_probe, g_wram_probe_width[i] == 2 ? ",%04x" : ",%02x", v);
+  }
+  fprintf(g_wram_probe, "\n");
+}
+
 static void SmAfterRunFrame(const SnesDesktopHostFrameStats *st) {
   if (SmReplayPlaying() && (SmReplayFinished() || SmReplayFailed())) {
     SDL_Event quit = {0}; quit.type = SDL_QUIT; SDL_PushEvent(&quit);
   }
+  static int wram_probe_checked;
+  if (!wram_probe_checked) {
+    wram_probe_checked = 1;
+    SmOpenWramProbe();
+  }
+  if (g_wram_probe) SmWriteWramProbe();
   static int probe_checked;
   if (!probe_checked) {
     probe_checked = 1;
