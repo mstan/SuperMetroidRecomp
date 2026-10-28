@@ -290,6 +290,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_item_pickup_plugin.c
     src/mods/sm_screen_shake_plugin.c
     src/mods/sm_return_to_title_plugin.c
+    src/mods/sm_movement_plugins.c
 )
 
 if(ANDROID)

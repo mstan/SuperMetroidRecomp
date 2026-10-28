@@ -69,6 +69,7 @@ REQUIRED_MOD_MANIFESTS=(
   "preloaded/packages/super-metroid.balance-fixes/1.0.0/manifest.toml"
   "preloaded/packages/super-metroid.controls/1.0.0/manifest.toml"
   "preloaded/packages/super-metroid.map-hud/1.0.0/manifest.toml"
+  "preloaded/packages/super-metroid.movement/1.0.0/manifest.toml"
 )
 PROD_CMAKE_FLAGS=( -DSNESRECOMP_ENABLE_TRACE=OFF )
 DEBUG_CMAKE_FLAGS=( -DSNESRECOMP_ENABLE_TRACE=ON )
