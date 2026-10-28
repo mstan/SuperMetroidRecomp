@@ -3,7 +3,7 @@ id = "super-metroid.balance-fixes"
 version = "1.0.0"
 name = "Super Metroid Balance and Fixes"
 author = "SuperMetroidRecomp contributors"
-description = "Quality-of-life balance changes and fixes. Each feature is a separate switch. Ideas from Super Metroid Redux (ShadowOne333) and the Metroid Construction community, reimplemented for the stock game."
+description = "Quality-of-life balance changes and fixes. Each feature is a separate switch. Ideas from Super Metroid Redux (ShadowOne333), Ancient Chozo (Grime) and the Metroid Construction community, reimplemented for the stock game."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -72,3 +72,191 @@ id = "super-metroid.balance-fixes.save-station"
 [[plugin]]
 feature = "xray"
 id = "super-metroid.balance-fixes.xray"
+
+[[feature]]
+id = "tourian-exit"
+name = "Leave Tourian before Mother Brain"
+description = "Once the baby metroid has let go of Samus, the doors back through Tourian open, so she can return to Crateria. The baby metroid room then stays empty and plays the Tourian theme. From Super Metroid Redux's Fixed Tourian Unlocked Doors (ShadowOne333, with Smiley and PJBoy)."
+group = "Balance"
+default_enabled = false
+
+[[plugin]]
+feature = "tourian-exit"
+id = "super-metroid.balance-fixes.tourian-exit"
+
+[[feature]]
+id = "power-bomb-reveal"
+name = "Power bombs reveal hidden blocks"
+description = "A power bomb shows hidden super missile blocks like a bomb does, as in Zero Mission and Fusion. From Super Metroid Redux (PBRevealTiles) and Ancient Chozo (Grime)."
+group = "Balance"
+default_enabled = false
+
+[[plugin]]
+feature = "power-bomb-reveal"
+id = "super-metroid.balance-fixes.power-bomb-reveal"
+
+[[feature]]
+id = "bug-fixes"
+name = "Vanilla bug fixes"
+description = "Fixes for bugs in the original game, each with its own switch. From Super Metroid Redux's vanillabugfixes.asm, compiled by Nodever2 with fixes by PJBoy, Benox50 and amoeba, and HAM's suit pickup fix."
+group = "Balance"
+default_enabled = false
+
+[[option]]
+feature = "bug-fixes"
+id = "screw-attack-menu"
+label = "Screw attack in the menu"
+description = "Screw attack can be selected in the equipment screen without Spring Ball or a boots item (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "xray-respawning-plm"
+label = "X-ray on respawning items"
+description = "The X-ray scope no longer crashes the game over a respawning item; the item shows (amoeba)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "bomb-block-screw"
+label = "Wall-jump screw attack breaks bomb blocks"
+description = "Bomb blocks break on any screw attack, speed booster or shinespark contact, including a screw attack wall jump (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "eye-door-projectile"
+label = "Eye door crash"
+description = "Killing an eye door on the frame it fires no longer corrupts its projectile and crashes later (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "speed-booster-sound"
+label = "Speed booster sound"
+description = "A full sound queue no longer takes the blue speed boost away (Nodever2)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "speed-booster-jump"
+label = "Speed booster jump height"
+description = "Jumping with the Speed Booster adds run speed to the jump correctly (Nodever2)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "wall-jump-screw"
+label = "Screw attack wall jump"
+description = "A wall jump with screw attack protects Samus for the whole jump, and a full charge gives the pseudo screw attack (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "blue-suit-palette"
+label = "Blue suit palette"
+description = "Going from screw attack straight into a speed boost no longer flashes garbage colours (Nodever2)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "screw-iframes"
+label = "Screw attack invincibility"
+description = "Hitting an enemy with screw attack no longer ends Samus' invincibility frames (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "ws-ghost-position"
+label = "Wrecked Ship ghosts"
+description = "The Atomic ghosts of the Wrecked Ship track Samus' real position (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "sprite-objects"
+label = "Sprite object clearing"
+description = "Clearing sprite objects clears the first one too (PJBoy)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "bug-fixes"
+id = "suit-pickup-palette"
+label = "Suit pickup colours"
+description = "Varia and Gravity change Samus' colours at the right moment of the pickup sequence, not before it (HAM)."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "bug-fixes"
+id = "super-metroid.balance-fixes.bug-fixes"
+
+[[feature]]
+id = "reserve-tanks"
+name = "Reserve tank fixes"
+description = "Fixes and improvements for reserve tanks, each with its own switch. Nodever2's Reserve Tank Bugfixes with Benox50's pause crash fix, as in Super Metroid Redux."
+group = "Balance"
+default_enabled = false
+
+[[option]]
+feature = "reserve-tanks"
+id = "pause-crash"
+label = "Pause crash"
+description = "Pausing on the frame automatic reserves start no longer crashes the game (Benox50)."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "reserve-tanks"
+id = "come-full"
+label = "Tanks come full"
+description = "A new reserve tank is collected full."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "reserve-tanks"
+id = "keep-leftover"
+label = "Keep leftover energy"
+description = "Reserves stop once Samus is full and keep what is left, automatic or manual."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "reserve-tanks"
+id = "no-heat-damage"
+label = "No heat damage while refilling"
+description = "Heat does no damage while automatic reserves refill Samus."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "reserve-tanks"
+id = "keep-iframes"
+label = "Keep invincibility while refilling"
+description = "Automatic reserves no longer run Samus' invincibility frames down, so she is not hit again right away."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "reserve-tanks"
+id = "manual-control"
+label = "Manual refill control"
+description = "Press A to stop a manual refill; moving off the reserve button stops it instead of resuming later."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "reserve-tanks"
+id = "super-metroid.balance-fixes.reserve-tanks"

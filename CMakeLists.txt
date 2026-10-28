@@ -299,6 +299,8 @@ set(SM_HOST_SOURCES
     src/mods/sm_movement_plugins.c
     src/mods/sm_heavy_physics_plugin.c
     src/mods/sm_combat_plugins.c
+    src/mods/sm_balance_plugins.c
+    src/mods/sm_bugfix_plugins.c
 )
 
 if(ANDROID)
