@@ -1,9 +1,9 @@
 /* Private captured Mode-1 row. Room/camera policy remains in this title;
  * the shared planner owns screen/window decisions over immutable inputs. */
-#include "snes/raster_plan.h"
+#include "snes/raster_register_plan.h"
 #include <assert.h>
 
-static void native_background_range(const Ppu *p, const SmRasterLine *line,
+static void native_background_range(const SnesRenderRegisters *p, const SmRasterLine *line,
     const SmBackgroundLine *background, unsigned layer, int y, int extra,
     unsigned begin, unsigned end, uint16_t *pixels) {
   int sample_y = y + 1;
@@ -16,14 +16,14 @@ static void native_background_range(const Ppu *p, const SmRasterLine *line,
   }
 }
 
-static void native_compose_range(const Ppu *p, const SmRasterLine *line,
+static void native_compose_range(const SnesRenderRegisters *p, const SmRasterLine *line,
     SmViewport view,
     const uint16_t backgrounds[3][SM_MAX_WIDTH], const uint16_t *objects,
     const uint8_t brightness[32], const SnesRenderWindowPlan *windows,
     int first, int end, uint32_t *out) {
   if (end <= first) return;
   SnesRenderComposePlan plan;
-  bool planned = SnesRenderPlanCompose(&plan, p, windows, first, (unsigned)(end - first), NULL, 0);
+  bool planned = SnesRenderRegistersPlanCompose(&plan, p, windows, first, (unsigned)(end - first), NULL, 0);
   assert(planned);
   if (!planned) return;
   unsigned offset = (unsigned)(first + view.extra);
@@ -53,7 +53,7 @@ static void native_compose_range(const Ppu *p, const SmRasterLine *line,
   }
 }
 
-static void native_render_mode1_row(const Ppu *p, const SmRasterLine *line,
+static void native_render_mode1_row(const SnesRenderRegisters *p, const SmRasterLine *line,
     const SmBackgroundLine background_lines[3], const uint16_t center[3][256],
     const bool center_valid[3], const uint16_t *objects, int y, SmViewport view,
     int matte_x, int matte_y, const uint8_t brightness[32],

@@ -14,7 +14,8 @@ static unsigned next_random(void) {
   return random_state;
 }
 static uint8_t test_ram[0x20000];
-static Ppu test_ppu;
+static SnesRenderRegisters test_registers;
+static uint16_t test_vram[0x8000];
 static uint16_t test_objects[SM_MAX_WIDTH], center_pixels[3][256];
 static uint32_t expected[SM_MAX_WIDTH], actual[SM_MAX_WIDTH];
 static void put_word(unsigned address, unsigned value) {
@@ -25,8 +26,8 @@ static void put_word(unsigned address, unsigned value) {
 int main(void) {
   const int widths[] = {256, 342, 682, SM_MAX_WIDTH};
   for (unsigned iteration = 0; iteration < 512; ++iteration) {
-    memset(&test_ppu, 0, sizeof(test_ppu));
-    Ppu *p = &test_ppu;
+    memset(&test_registers, 0, sizeof(test_registers));
+    SnesRenderRegisters *p = &test_registers;
     for (unsigned i = 0; i < sizeof(test_ram); ++i) test_ram[i] = (uint8_t)next_random();
     put_word(0x7a5, 64); put_word(0x7a7, 32); put_word(0x998, 8);
     put_word(0x911, (next_random() & 1023) - 96);
@@ -53,9 +54,9 @@ int main(void) {
       p->screenEnabled[i] = next_random() & 0x17;
       p->screenWindowed[i] = next_random() & 0x17;
     }
-    for (unsigned i = 0; i < 0x8000; ++i) p->vram[i] = (uint16_t)next_random();
+    for (unsigned i = 0; i < 0x8000; ++i) test_vram[i] = (uint16_t)next_random();
     SmRasterLine line = {0};
-    line.vram = p->vram;
+    line.vram = test_vram;
     for (unsigned i = 0; i < 256; ++i) line.palette[i] = next_random() & 0x7fff;
     int width = widths[iteration % 4];
     SmViewport view = {width, (width - 256) / 2, 0, true};
@@ -78,21 +79,21 @@ int main(void) {
       backgrounds[layer] = background_line(p, test_ram, layer, object);
       if ((enabled & (1u << layer)) &&
           !((p->mosaic & (1u << layer)) && (p->mosaic >> 4)))
-        center_valid[layer] = SnesRenderMode1TileRow(p, line.vram, layer, 0, y + 1,
+        center_valid[layer] = SnesRenderRegistersMode1TileRow(p, line.vram, layer, 0, y + 1,
                                                    256, center_pixels[layer]);
     }
     int wl[] = {p->window1left == 0 ? -view.extra : p->window1left,
                 p->window2left == 0 ? -view.extra : p->window2left};
     int wr[] = {p->window1right == 255 ? 255 + view.extra : p->window1right,
                 p->window2right == 255 ? 255 + view.extra : p->window2right};
-    SnesRenderWindowPlan native = SnesRenderWindows(p, wl[0], wr[0], wl[1], wr[1]);
+    SnesRenderWindowPlan native = SnesRenderRegistersWindows(p, wl[0], wr[0], wl[1], wr[1]);
     SmWideWindow wide = {(iteration & 1) != 0, (int)(next_random() % 768) - 256,
                          (int)(next_random() % 768) - 256, (iteration & 2) != 0};
     if (wide.valid) {
       unsigned which = !wide.first;
       wl[which] = wide.left; wr[which] = wide.right;
     }
-    SnesRenderWindowPlan margin = SnesRenderWindows(p, wl[0], wr[0], wl[1], wr[1]);
+    SnesRenderWindowPlan margin = SnesRenderRegistersWindows(p, wl[0], wr[0], wl[1], wr[1]);
     uint8_t brightness[32];
     for (unsigned c = 0; c < 32; ++c)
       brightness[c] = (uint8_t)(((c << 3) | (c >> 2)) * (p->inidisp & 15) / 15);

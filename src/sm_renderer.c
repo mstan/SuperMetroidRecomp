@@ -9,7 +9,7 @@
 #define SM_NATIVE_CENTER_REUSE 0
 #endif
 #if SM_NATIVE_RASTER
-#include "snes/raster_jobs.h"
+#include "snes/raster_register_jobs.h"
 #include "snes/raster_image.h"
 #endif
 #include "raster_snapshot.h"
@@ -97,7 +97,7 @@ static bool materialize_stock(const SmSourceFrame *f) {
       read_stock_line, f);
 }
 #endif
-static Ppu scanout;
+static SnesRenderRegisters scanout;
 static const uint8_t *renderer_rom;
 static size_t renderer_rom_size;
 static bool captured_mode7;
@@ -549,7 +549,7 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
   const char *rotation_prefix = getenv("SM_CAPTURE_ROTATION_PREFIX");
   if (rotation_prefix && !captured_rotation && continuous_frames(previous, f) &&
       room_state(read16(f->ram, 0x998)) && (read16(f->ram, 0x93f) & 0x8000)) {
-    Ppu now, before;
+    SnesRenderRegisters now, before;
     memcpy(&now, f->lines[100].registers, PPU_SAVESTATE_REGS_SIZE);
     memcpy(&before, previous->lines[100].registers, PPU_SAVESTATE_REGS_SIZE);
     if ((now.bgmode & 7) == 7 && (before.bgmode & 7) == 7 && now.inidisp == 15 && before.inidisp == 15 &&
@@ -574,7 +574,7 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
       room_state(read16(f->ram, 0x998)) &&
       read16(f->object_ram, 0xd32) != 0xc4f0 &&
       read16(f->object_ram, 0xcfe) >= grapple_min && read16(f->object_ram, 0xcfe) < 128) {
-    Ppu raster;
+    SnesRenderRegisters raster;
     memcpy(&raster, f->lines[64].registers, PPU_SAVESTATE_REGS_SIZE);
     if (raster.inidisp == 15 && (raster.screenEnabled[0] & 16)) {
       char path[1024];
@@ -590,7 +590,7 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
   }
   const char *rooms_prefix = getenv("SM_CAPTURE_ROOMS_PREFIX");
   if (rooms_prefix && captured_room_count < 128) {
-    Ppu raster;
+    SnesRenderRegisters raster;
     memcpy(&raster, f->lines[64].registers, PPU_SAVESTATE_REGS_SIZE);
     unsigned mode = raster.bgmode & 7;
     unsigned key = read16(f->ram, 0x79b) | (mode << 16);
@@ -683,7 +683,7 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
   const char *mosaic_path = getenv("SM_CAPTURE_MOSAIC");
   if (mosaic_path && !captured_mosaic && room_state(read16(f->ram, 0x998))) {
     for (unsigned y = 32; y < 224; ++y) {
-      Ppu raster;
+      SnesRenderRegisters raster;
       memcpy(&raster, f->lines[y].registers, PPU_SAVESTATE_REGS_SIZE);
       if ((raster.bgmode & 7) == 1 && !(raster.inidisp & 128) &&
           (raster.inidisp & 15) && raster.mosaic > 15 &&
@@ -884,7 +884,7 @@ static int background_scroll_delta(int difference, unsigned sc, unsigned size, b
   return ((difference + period / 2) & (period - 1)) - period / 2;
 }
 
-static SmBackgroundLine background_line(const Ppu *p, const uint8_t *room, unsigned layer,
+static SmBackgroundLine background_line(const SnesRenderRegisters *p, const uint8_t *room, unsigned layer,
                                         SmBg2Object object) {
   static const unsigned low[] = {8, 7, 1}, high[] = {12, 11, 3};
   SmBackgroundLine b = {0};
@@ -1087,7 +1087,7 @@ static bool xray_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
         (native >> 8) != (unsigned)(r > 255 ? 255 : r)) return false;
   }
   for (unsigned row = 0; row < 224; ++row) {
-    Ppu raster;
+    SnesRenderRegisters raster;
     memcpy(&raster, f->lines[row].registers, PPU_SAVESTATE_REGS_SIZE);
     unsigned native = read16(f->ram, 0x9800 + (row + 1) * 2);
     if (raster.window2left != (native & 255) || raster.window2right != (native >> 8)) continue;
@@ -1148,7 +1148,7 @@ static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   }
   bool extended = false;
   for (unsigned row = 0; row < 224; ++row) {
-    Ppu raster;
+    SnesRenderRegisters raster;
     memcpy(&raster, f->lines[row].registers, PPU_SAVESTATE_REGS_SIZE);
     unsigned native = read16(ram, 0x9100 + (row + 1) * 2);
     if (raster.window1left != (native & 255) || raster.window1right != (native >> 8)) continue;
@@ -1211,7 +1211,7 @@ static void power_bomb_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
       else if (target >= 0xc406 && target < 0xc4c6 && target_right == target + 256)
         width = widths[target - 0xc406];
       else continue;
-      Ppu raster;
+      SnesRenderRegisters raster;
       memcpy(&raster, f->lines[y].registers, PPU_SAVESTATE_REGS_SIZE);
       if (raster.window2left != f->ram[target] || raster.window2right != f->ram[target_right]) continue;
       rows[y] = (SmWideWindow){true, width < 0 ? 1 : center - width,
@@ -1221,7 +1221,7 @@ static void power_bomb_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   }
 }
 
-static bool in_window(const Ppu *p, int layer, int x, int extra, const SmWideWindow *wide) {
+static bool in_window(const SnesRenderRegisters *p, int layer, int x, int extra, const SmWideWindow *wide) {
   unsigned flags = (p->windowsel >> (layer * 4)) & 15;
   bool enabled1 = (flags & 2) != 0, enabled2 = (flags & 8) != 0;
   int l1 = p->window1left == 0 ? -extra : p->window1left;
@@ -1342,7 +1342,7 @@ static int moving_effect_slot(const SmSourceFrame *f, const SmSourceFrame *old) 
     if (!sprite_object_motion(f, old, slot, &now, &before) ||
         (now.x == before.x && now.y == before.y) || now.y < 32 || now.y >= 216) continue;
     const SmRasterLine *line = &f->lines[now.y];
-    Ppu p;
+    SnesRenderRegisters p;
     memcpy(&p, line->registers, PPU_SAVESTATE_REGS_SIZE);
     if ((p.inidisp & 0x8f) != 15 || !(p.screenEnabled[0] & 16)) continue;
     for (unsigned obj = 0; obj < 128; ++obj) {
@@ -1495,7 +1495,7 @@ static bool has_edge_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
   memset(enemy_matches, 0, sizeof(enemy_matches));
   memset(object_matches, 0, sizeof(object_matches));
   const SmRasterLine *line = &f->lines[100];
-  Ppu p;
+  SnesRenderRegisters p;
   memcpy(&p, line->registers, PPU_SAVESTATE_REGS_SIZE);
   if (!(p.screenEnabled[0] & 16) || (p.inidisp & 128) || !(p.inidisp & 15)) return false;
   static const int sizes[8][2] = {{8,16},{8,32},{8,64},{16,32},
@@ -1516,7 +1516,7 @@ static bool has_edge_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
   }
   return false;
 }
-static void sprites(const Ppu *p, const SmRasterLine *line, int y,
+static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int y,
                     SmViewport viewport, uint16_t *pixels,
                     const SmSourceFrame *f, const SmSourceFrame *previous, double alpha,
                     bool reuse_center) {
@@ -1608,7 +1608,7 @@ static bool window_condition(unsigned mode, bool inside) {
 /* $A0:944A and $81:8AB8, interpreted only as rendering data. Do not call the
  * guest routines: WriteEnemyOams decrements shake timers and extended tilemap
  * handlers write guest RAM. Invisible/deleted enemies remain invisible. */
-static void enemy_map(const SmRasterLine *line, const Ppu *p,
+static void enemy_map(const SmRasterLine *line, const SnesRenderRegisters *p,
                       unsigned bank, unsigned map, int origin_x, int origin_y,
                       unsigned palette, unsigned base_tile, int y,
                       SmViewport viewport, uint16_t *pixels) {
@@ -1651,7 +1651,7 @@ static void enemy_map(const SmRasterLine *line, const Ppu *p,
 }
 
 static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
-                    const Ppu *p, int y, SmViewport viewport, uint16_t *pixels,
+                    const SnesRenderRegisters *p, int y, SmViewport viewport, uint16_t *pixels,
                     unsigned phase, const SmSourceFrame *previous, double alpha) {
   if (!viewport.extra || !renderer_rom) return;
   for (int slot = 31; slot >= 0; --slot) {
@@ -1694,7 +1694,7 @@ static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
 }
 
 static void enemy_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
-                              const Ppu *p, int y, SmViewport viewport,
+                              const SnesRenderRegisters *p, int y, SmViewport viewport,
                               uint16_t *pixels, bool low_priority,
                               const SmSourceFrame *previous, double alpha) {
   int shake_x = 0, shake_y = 0;
@@ -1729,7 +1729,7 @@ static void enemy_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
 }
 
 static void player_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
-                               const Ppu *p, int y, SmViewport viewport,
+                               const SnesRenderRegisters *p, int y, SmViewport viewport,
                                uint16_t *pixels, bool explosions,
                                const SmSourceFrame *previous, double alpha) {
   for (unsigned slot = 0; slot < (explosions ? 10u : 5u); ++slot) {
@@ -1754,7 +1754,7 @@ static void player_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
 }
 
 static void sprite_objects(const SmSourceFrame *f, const SmRasterLine *line,
-                           const Ppu *p, int y, SmViewport viewport, uint16_t *pixels,
+                           const SnesRenderRegisters *p, int y, SmViewport viewport, uint16_t *pixels,
                            const SmSourceFrame *previous, double alpha) {
   /* $B4:BD32: pickup/effect spritemaps. Read the current instruction's map
    * operand only; never advance instruction timers from presentation. */
@@ -1828,7 +1828,7 @@ unsigned SmRendererGrapplePieces(const uint8_t ram[0x20000], SmGrapplePiece piec
   return count;
 }
 
-static void grapple_pixels(const SmRasterLine *line, const Ppu *p, int y,
+static void grapple_pixels(const SmRasterLine *line, const SnesRenderRegisters *p, int y,
                             SmViewport viewport, uint16_t *pixels,
                             const SmGrapplePiece *pieces, const bool *recover_native, unsigned count) {
   for (unsigned i = count; i-- > 0;) {
@@ -1853,7 +1853,7 @@ static void grapple_pixels(const SmRasterLine *line, const Ppu *p, int y,
   }
 }
 
-static uint32_t colour(const Ppu *p, const uint16_t *palette, const uint8_t *brightness, uint16_t main,
+static uint32_t colour(const SnesRenderRegisters *p, const uint16_t *palette, const uint8_t *brightness, uint16_t main,
                        uint16_t sub, bool inside) {
   unsigned rgb = main & SM_PIXEL_OPAQUE_BLACK ? 0 : palette[main & 255];
   unsigned layer = (main >> 8) & 7;
@@ -2059,12 +2059,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
                  scanout.window2left == 0 ? -viewport.extra : scanout.window2left};
     int wr[2] = {scanout.window1right == 255 ? 255 + viewport.extra : scanout.window1right,
                  scanout.window2right == 255 ? 255 + viewport.extra : scanout.window2right};
-    SnesRenderWindowPlan native_windows = SnesRenderWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
+    SnesRenderWindowPlan native_windows = SnesRenderRegistersWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
     if (wide_windows[y].valid) {
       unsigned which = !wide_windows[y].first;
       wl[which] = wide_windows[y].left; wr[which] = wide_windows[y].right;
     }
-    SnesRenderWindowPlan margin_windows = SnesRenderWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
+    SnesRenderWindowPlan margin_windows = SnesRenderRegistersWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
 #endif
     int mode7_y = y + 1;
     int mode7_size = (scanout.mosaic >> 4) + 1;
@@ -2073,7 +2073,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (scanout.mosaic & 1) mode7_y -= mode7_y % mode7_size;
     SmMode7Line transform = SmMode7Transform(scanout.m7matrix, scanout.m7sel, mode7_y);
     if (mode == 7 && previous && alpha < 1) {
-      Ppu old;
+      SnesRenderRegisters old;
       memcpy(&old, previous->lines[y].registers, PPU_SAVESTATE_REGS_SIZE);
       if ((old.bgmode & 7) == 7 && old.mosaic == scanout.mosaic)
         transform = SmMode7Interpolate(
@@ -2084,7 +2084,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     /* Interpolate raster scroll registers, not the final composed image.
      * Layout/mode changes and large jumps snap to the current frame. */
     if (previous && alpha < 1) {
-      Ppu old;
+      SnesRenderRegisters old;
       memcpy(&old, previous->lines[y].registers, PPU_SAVESTATE_REGS_SIZE);
       line_bg2.parked |= old.hScroll[1] == 256;
       if (old.bgmode == scanout.bgmode && old.bgTileAdr == scanout.bgTileAdr &&
@@ -2148,7 +2148,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (mode == 1 && !reuse_center) for (unsigned layer = 0; layer < 3; ++layer) {
       if (!(enabled & (1u << layer)) ||
           ((scanout.mosaic & (1u << layer)) && (scanout.mosaic >> 4))) continue;
-      native_layer[layer] = SnesRenderMode1TileRow(&scanout, l->vram, layer,
+      native_layer[layer] = SnesRenderRegistersMode1TileRow(&scanout, l->vram, layer,
           0, y + 1, 256, native_backgrounds[layer]);
     }
 #endif
