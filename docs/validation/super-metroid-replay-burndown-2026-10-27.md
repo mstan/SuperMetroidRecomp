@@ -8,7 +8,7 @@ Starting game commit: `e617b6573ea090e3bcab2690f4193ce5c2fa4869` (0.3.17).
 
 ## Burndown chart
 
-**4 / 7 unique clip reports fixed and validated in the candidate; 3 remain unconfirmed/not reproduced. The owner says the rest seemingly pass; only the corrected eye-cone stripe needs a targeted recheck.**
+**4 / 7 unique clip reports fixed and validated in the candidate; 3 remain unconfirmed/not reproduced. The owner confirms the light is fixed and earlier said the rest seemingly pass. Owner review is complete; no more routine rechecks.**
 
 ```mermaid
 xychart-beta
@@ -26,6 +26,7 @@ xychart-beta
 | Three owner-confirmed margin bugs fixed, 2026-10-28 | 7 | 4 | 0 | 3 |
 | Owner finds residual eye stripe, 2026-10-28 | 7 | 3 | 0 | 4 |
 | Residual stripe fixed; other checks accepted with owner caveat, 2026-10-28 | 7 | 4 | 0 | 3 |
+| Owner confirms light fixed; review complete, 2026-10-28 | 7 | 4 | 0 | 3 |
 
 Append actual milestones to this table and update the chart. Do not invent dates or predicted completion. The seven rows are evidence-backed intake items, **not seven confirmed independent defects**. Split multiple defects from one clip into linked subitems when demonstrated; preserve the original seven-row accounting. A shared fix may resolve multiple rows only after each row's symptom is checked.
 
@@ -36,7 +37,7 @@ Names below are exact files in `E:\Downloads`. Scene descriptions and inspection
 | ID | Work order | Clip | Length | Scene / observed candidate | Status | Next decisive check and closure target |
 | --- | ---: | --- | ---: | --- | --- | --- |
 | SM27-01 | 6 | [clip_1,793,140,731,658.mp4](E:/Downloads/clip_1,793,140,731,658.mp4) | 8.292 s | Plasma Spark `$D340` upper shaft: owner confirms a black left cutout when jumping and hugging the wall. | **Fixed; owner Pass recorded** | Explicit Pass saved in selector notes. Do not repeat this accepted check. |
-| SM27-02 | 7 | [clip_1,793,140,528,702.mp4](E:/Downloads/clip_1,793,140,528,702.mp4) | 10.724 s | Morph Ball eye `$9E9F`: owner confirms the cone becomes a band when it extends far into the margin; owner recheck finds a thin yellow stripe at the old 4:3 edge. | **Residual stripe fixed; targeted recheck ready** | Use the eye-only recheck launcher below; other accepted checks stay complete. |
+| SM27-02 | 7 | [clip_1,793,140,528,702.mp4](E:/Downloads/clip_1,793,140,528,702.mp4) | 10.724 s | Morph Ball eye `$9E9F`: owner confirms the cone becomes a band when it extends far into the margin; owner recheck finds a thin yellow stripe at the old 4:3 edge. | **Fixed; owner confirms light is fixed** | Owner review complete. Do not request another routine check. |
 | SM27-03 | 4 | [clip_1,793,140,650,331.mp4](E:/Downloads/clip_1,793,140,650,331.mp4) | 9.717 s | Cathedral `$A788`: owner confirms the lava surface bubbles remain within 4:3 while lava extends. | **Fixed; owner says rest seemingly pass** | Qualified owner acceptance retained; do not request another routine check. |
 | SM27-04 | 3 | [clip_1,793,140,682,203.mp4](E:/Downloads/clip_1,793,140,682,203.mp4) | 16.136 s | Wave Beam room `$ADDE` to Double Chamber `$ADAD`, then a speed-boosted lava run. Isolated-door frames alone do not establish a phantom-door defect. | **Unconfirmed; no further bug reported in qualified owner recheck** | Shoot the left blue door (S), walk left through it, hold Left + Run (Z) and Jump (X) across gaps, then return right. Inspect transitions/lava; a specific fault remains unconfirmed. |
 | SM27-05 | 1 | [clip_1,793,140,699,506.mp4](E:/Downloads/clip_1,793,140,699,506.mp4) | 17.250 s | Crocomire `$A98D`. Apparent terrain/liquid discontinuities remain a candidate; sampled original captures, adjacent interpolation and nearby dense replays did not reproduce a definite bad seam. | **Owner reviewed: nothing abnormal found** | Owner check complete. Preserve the original clip as not reproduced; do not request another routine check or claim a seam fix. |
@@ -60,7 +61,7 @@ The line is the native x255 boundary (screenshot x836-838), below the real cone.
 
 Validation: **18/18 tests pass**, including native/portable/full-copy paths and mirrored saturated tails at four widths. The focused regression assertion fails before the fix. [80 immutable scene/width comparisons](../../../evidence/owner-eye-line-20261028/comparison.json) change only those false border pixels; the other scenes and every 4:3 image are unchanged. A matched diagnostic camera/position setup reproduces an 87-pixel right stripe; [before/after](../../../evidence/owner-eye-line-20261028/before-after.png). Its ROM-generated enemy/HDMA runs normally, but diagnostic camera/position placement is not an exact replay of the owner's movement. The new built native game has [zero yellow pixels at the former stripe](../../../evidence/owner-eye-line-20261028/built-candidate-check.json). New guarded state load, input, current-build save/load, selector Play/Pause/frozen-frame and screenshots pass.
 
-Candidate binary SHA256: `2a034a88b576bf76ff6654591ef499389b5813953cbc52a8693b3272f0976f49`. The [eye-only review bundle](../../../human-review-eye-line/README.md) has one freshly prepared current-build state and **Launch eye recheck.lnk**, with normal window/audio on launch. Historical failure notes are preserved. After confirming the older selector/game had already closed, the eye-only selector was opened on SM27-02, paused in a normal window with normal WASAPI audio and input overrides released. Owner notes, native saves and settings remain preserved. Only this remaining eye check is presented for review.
+Candidate binary SHA256: `2a034a88b576bf76ff6654591ef499389b5813953cbc52a8693b3272f0976f49`. The [eye-only review bundle](../../../human-review-eye-line/README.md) has one freshly prepared current-build state and **Launch eye recheck.lnk**, with normal window/audio on launch. Historical failure notes are preserved. After confirming the older selector/game had already closed, the eye-only selector was opened on SM27-02, paused in a normal window with normal WASAPI audio and input overrides released. Owner notes, native saves and settings remain preserved. The owner subsequently confirmed **"sm light is fixed now"**; [acceptance recorded](../../../evidence/owner-eye-line-20261028/owner-acceptance.json). The targeted check is complete. No more routine rechecks or launches.
 
 ## Owner-confirmed fixes, 2026-10-28
 
@@ -164,7 +165,7 @@ On 2026-10-28 the owner authorized deferring reports when their bug cannot be de
 | ID | Concrete symptom / matched timestamp | Root cause / owning issue | Fix commit | Built validation and before/after evidence | Disposition |
 | --- | --- | --- | --- | --- | --- |
 | SM27-01 | Owner confirms black left cutout when jumping/hugging shaft wall | Full filler screen above a uniform authored wall; extend that wall vertically in margins | `9e547d7` | Same captured camera `(256,63)` removes6,880 black margin pixels at342; four widths, native pixels unchanged | Fixed; owner Pass recorded |
-| SM27-02 | Owner confirms extended cone becomes a band | Offscreen HDMA saturated edge runs were rejected | `9e547d7`, `2511720` | Same ROM-generated HDMA tail extends on194 lines instead of0; four widths and both-side regression fixtures | Residual stripe fixed; targeted recheck ready |
+| SM27-02 | Owner confirms extended cone becomes a band | Offscreen HDMA saturated edge runs were rejected | `9e547d7`, `2511720` | Same ROM-generated HDMA tail extends on194 lines instead of0; four widths and both-side regression fixtures | Fixed; owner confirms light is fixed |
 | SM27-03 | Owner confirms surface bubbles remain4:3 above wide lava | FX begins at `$5BE0`, one row before the old `$5C00` boundary | `9e547d7` | Same captured surface gains99 margin pixels at342; HUD/native pixels preserved | Fixed; qualified owner acceptance |
 | SM27-04 | Wave Beam to Double Chamber transition/run | Undetermined | None | Room identities established; isolated-door phases not demonstrated wrong | Qualified owner recheck reports no further bug; original fault remains unconfirmed |
 | SM27-05 | Candidate Crocomire seams; exact presentation pending | Undetermined | None | Two dense original segments and sampled immutable/interpolated captures; seam not reproduced | Owner reviewed and found nothing abnormal; not reproduced |
