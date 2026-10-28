@@ -149,7 +149,7 @@ def run_ui(root):
     style=ttk.Style();style.configure('Title.TLabel',font=('Segoe UI',15,'bold'))
     body=ttk.Frame(window,padding=16);body.pack(fill='both',expand=True)
     ttk.Label(body,text='Super Metroid replay review',style='Title.TLabel').pack(anchor='w')
-    ttk.Label(body,text='Six independent setups. Loading or restarting resets only this private test game.').pack(anchor='w',pady=(4,8))
+    ttk.Label(body,text='Independent setups. Loading or restarting resets only this private test game.').pack(anchor='w',pady=(4,8))
     listing=tk.Listbox(body,height=6,font=('Segoe UI',11),exportselection=False)
     listing.pack(fill='x')
     for case in game.manifest['scenarios']:listing.insert('end',case['id']+'   '+case['title'])
