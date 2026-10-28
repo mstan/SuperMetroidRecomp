@@ -43,4 +43,10 @@ longer jump. Neither failed run counts as passing evidence. The native movement
 test checks remapping/guest-read-only input, option and item guards, every spark
 entry/facing, sound-ring wrap and ABI preservation. Windows tests pass; native
 movement tests also pass Ubuntu GCC. Full regeneration is identical twice.
-Owner control/feel review remains pending. No merge, push or release.
+Owner control/feel review remains pending. The original movement toggles now
+also pass 15 actual-game normal/alternate cases, and real elevator/boss-door
+routes pass six more. All observed frames and full WRAM snapshots match;
+interpreter work increases in every case. Windows/Linux current title builds
+pass all 25 CTests. See [current qualification](SM_QOL_FINAL_CHECKPOINT_20261028.md)
+and `tools/test_qol_movement.py` / `tools/test_qol_pacing_routes.py`.
+No merge, push or release.

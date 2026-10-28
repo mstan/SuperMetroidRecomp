@@ -12,6 +12,20 @@ exact Falcon Zero image are retained in
 [`docs/reference/metroid3_map.gif`](docs/reference/metroid3_map.gif).
 Auto charge is defined: charge automatically while idle, tap to release a charged shot, then fire normal successive shots until another charge is ready. The owner deferred falling aim-down clarification until the final handoff.
 
+**Current checkpoint:** production source `82e17c6`, engine `e265a2be`, UI
+`7fdd3a87`, nested recomp-net `445eed76`. Windows and Linux pass all 25 title
+tests; the final all-off stock trace is unchanged and all 40 features activate.
+Actual Windows/Linux game peers accept matching complete settings and refuse a
+tail-option mismatch before frame zero. Combat, movement, pacing and corrected
+map comparisons pass the available execution-path checks. The map model now has
+414 markers, including eye doors; native scripted escape and physical one-way
+doors are audited. See the current measurements, exact coverage limits and
+remaining owner judgments in
+[`docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md`](docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md).
+Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
+Falling aim-down remains undefined; full hack packs remain deferred. No main
+merge, code push, release or delivery replacement is authorized.
+
 **Controlling scope after owner clarification:** preserve modern F-Zero/SMW
 semantic content loaders, BS content, MSU/music, vehicles and native multiplayer.
 Remove the historical generic playable-ROM patch workflow and the abandoned
@@ -76,7 +90,7 @@ Original modern worktrees, delivered builds, owner saves and settings are
 untouched. No code push, main merge, release, Linux/MSVC build or human
 controller/visual qualification was performed.
 
-**Super Metroid conversion checkpoint (2026-10-28).** The engine operand
+**Historical Super Metroid conversion checkpoint (2026-10-28).** The engine operand
 runtime is committed as `a4f3674f`; the SM integration branch pins it and UI
 `e4d8762`. All 34 immediate sites use `mod_operand`. Cartridge writes and the
 64-hook title registry are removed; table behavior is supplied by declared
@@ -126,7 +140,7 @@ All local; **nothing is pushed**.
 | `F:\Projects\snesrecomp\_wt-sm-qol-mods` | SuperMetroidRecomp | `feat/qol-feature-mods` | origin/main `e617b65` | **Integration branch.** The inherited handoff checkpoint is `8a9ab42`; current conversion is recorded in 6.1. Candidate build/output: `G:/Temp/Codex/sm-qol-20261027/sm-{build,gen}`. Original `build-base` retained as a stock control. |
 | `F:\Projects\snesrecomp\_wt-sm-qol-pacing` | SuperMetroidRecomp | `feat/qol-pacing` | | Merged (`6740f29`). Can be removed. |
 | `F:\Projects\snesrecomp\_wt-sm-qol-movement` | SuperMetroidRecomp | `feat/qol-movement` | | Fast-forwarded into the integration branch (`edb3f8e`). Can be removed. |
-| `F:\Projects\snesrecomp\_wt-sm-qol-combat` | SuperMetroidRecomp | `feat/qol-combat` | `edb3f8e` | Combat + balance-fixes. **Stopped at handoff**: `6e80b43` (combat, done) + `74a1abd` (WIP balance-fixes). Not merged. Build dir `build-combat`. See 6.2. |
+| `F:\Projects\snesrecomp\_wt-sm-qol-combat` | SuperMetroidRecomp | `feat/qol-combat` | `edb3f8e` | Historical stopped branch `6e80b43` + `74a1abd`; both were integrated locally as `bf3d0f8` / `cb79ac3`, then fixed and qualified. No main merge. See 6.2. |
 
 The SM `snesrecomp` submodule is pinned to engine commit `e265a2be` (operand
 implementation base `a4f3674f`, plus complete netplay mod-set publication). That
@@ -141,8 +155,8 @@ adoption and launch checks now carry it completely. Native 34-test net suite,
 module ABI, Windows UDP, real catalog/option/adoption and two-/three-seat
 latency/jitter/loss checks pass. Matching sets run; tail mismatches refuse at
 frame zero. See `snesrecomp/docs/validation/LARGE_MOD_SETS_20261028.md`.
-Final regeneration, network-enabled game build and actual game peers are
-pending at this pin checkpoint. Other games' validated removal-preservation
+Final deterministic regeneration, network-enabled Windows/Linux game builds
+and actual matching/mismatching game peers now pass. Other games' validated removal-preservation
 candidate pins are unchanged.
 
 - **New worktree submodule init:**
@@ -229,8 +243,8 @@ measured headlessly; the owner hasn't playtested any feature yet.
 | Bead | Feature | Status / evidence |
 |---|---|---|
 | .3 | Intro skip, Ceres skip, credits skip | Done. Gameplay starts at frame 2553 instead of 9225 (re-measured). Credits 12728 → 4998 frames. The ending pose is kept (owner ruling). |
-| .4 | Faster doors (2x/max) | Done. Left 106/60/54, down 98/56/38, up 97/55/49, right 136/90/84 frames for stock/2x/max. Max is close to 2x because larger scroll steps garbled tile rows and columns. Elevator and boss doors not yet run headlessly. |
-| .5 | Faster elevators (2x/3x) | Done. The Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
+| .4 | Faster doors (2x/max) | Done. Left 106/60/54, down 98/56/38, up 97/55/49, right 136/90/84 frames for stock/2x/max. Real Tourian grey gates also pass: 121/106 stock, 75/60 at 2x, 69/54 at max. Full WRAM/observed-frame tier equality. |
+| .5 | Faster elevators (2x/3x) | Done. Real Zebes down/up trips: stock651/641, 2x407/370, 3x326/280 frames; same heights/SRAM and tier equality. Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
 | .6 | Item pickup: short jingle, no freeze, skip message boxes | Done. Freeze goes 565 → 60 → 0 frames. |
 | .7 | Reduce screen shake (off/half) | Converted to hooks at `$A0:86A5` / `$86:843C` plus operand `$A0:8705`; measured 3/2/0 px for stock/half/off, with unchanged timers. |
 | .8 | Ending return; quit to file select during gameplay | Both implemented independently. New pause Options action passes actual native transition, SRAM preservation, fade-save/late-load, two-frame run-ahead and interpreted file-select checks. See `docs/validation/SM_QUIT_20261028.md`; owner review pending. |
@@ -278,7 +292,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .32 | Missile/super/PB totals (pause/always) | Done. Overlay. |
 | .33 | Laser sight (diagonal/always) | Done. Overlay; pose table `$91:B629` and muzzle offsets `$90:BA56`; the line stops at solid blocks. |
 | .34 | Reveal whole map (secrets option) | Done. Hooks `$80:85B1`, `$82:947F`, `$82:94EF`. |
-| .2 | SM world model (`src/mods/sm_world.c`): rooms, doors, cap colours, one-ways, items, explored bits from ROM/WRAM | Read-only model committed a040b9f and extended: 255 rooms, 310 states, all 100 items, native crumble direction and live/saved exploration. Windows/Linux tests pass. Nine scripted/unused door positions and full reference audit remain unverified. |
+| .2 | SM world model (`src/mods/sm_world.c`): rooms, doors, cap colours, one-ways, items, explored bits from ROM/WRAM | Read-only model: 255 rooms, 595 door records, 310 states, 414 markers, 176 caps, all 100 items. Native Mother Brain escape spawn verified; eight headers have no physical source in any level state. Physical reciprocity preserves sand one-way arrows; eye doors are orange. Windows/Linux tests and seven actual map comparisons pass. Falcon Zero overview inspected; owner readability judgment pending. |
 | .28 | Zero Mission-style pause map (Falcon Zero reference; Redux DCMap + ItemCircles) | Implemented; same-input guest trace/full WRAM stays stock-identical while composed image changes. Native scrolling/tabs retained. Owner review pending; see `docs/validation/SM_MAPS_20261028.md`. |
 | .29 | Zoomable whole-world map (Symphony of the Night style) from pause | Implemented. X opens; L/R zoom; D-pad pans; Y centres; X/B back. Seven map cases match observed fields, full WRAM and composed images across normal and interpreted surrounding gameplay; discovery/SRAM unchanged. Owner review pending. |
 | .30 | Minimap overlay (live / pauses game; the pausing variant is gameplay and off in netplay) | Implemented. Select+Start toggles; compact/wide options. Live clocks advance; paused clock/Samus/enemies stay still while interrupts advance; movement resumes on close. Native tests prevent freezing in netplay and close UI on restore. Main gameplay is intentionally LLE; coverage limit documented. |
@@ -291,7 +305,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .36 | Save station refills everything | Done. Hook `$84:8CF1`. |
 | .37 | Leave Tourian before Mother Brain | Automated traversal passes: natural baby drain, recovery, both grey gates to DC65/DC19; re-entry selects DCDD, music 1E/5, nine corpse population entries. Stock stays locked. Complete selector interpreted path matches; a narrower mixed-path engine boundary failure remains tracked separately. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
-| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have native boundary regressions. Actual jump/contact/refill stock-vs-mod checks pass both tiers; reserves retain 201 energy and immunity, screw contact retains 92 iframes. 21 CTests pass. Correctness fixes default on; elective full tanks/manual-control default off. Other defect game contexts and owner review remain. See `docs/validation/SM_COMBAT_20261028.md`. Ship-save was not implemented by the inherited work. |
+| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have boundary regressions. Actual jump/contact/refill, screw menu, manual reserves, X-ray, exact pause race, suit pickups, full new reserves, valid sprite clear, eye cleanup, native wall jump and bomb-block contexts are recorded in the final checkpoint with tier limits. Ghost slot-zero gameplay passes; nonzero-index coverage is boundary-only. Sound/palette owner judgment remains. Correctness fixes default on; elective full tanks/manual-control default off. 25 CTests pass. Ship-save was not implemented by the inherited work. |
 
 Full-hack content packs (`.41`) are deferred indefinitely.
 
@@ -359,8 +373,11 @@ regeneration, Windows build, 20 CTests, unchanged disabled stock trace and
 all 36 features activating together pass. Auto-charge and Tourian now have
 reproducible compiled/interpreted gameplay fixtures. Evidence and the remaining
 mixed selector-boundary caveat are in `docs/validation/SM_COMBAT_20261028.md`.
-Vanilla/reserve fixes and the other inherited combat claims still need their
-new combined-build qualification. The historical stopped-branch details follow.
+Converted combat, original/extra movement, real pacing routes and vanilla/reserve
+contexts now have combined-build qualification in the final checkpoint. Current
+Windows/Linux builds pass 25 CTests and all 40 features activate. The historical
+stopped-branch details follow; their old task/checklist text is superseded by
+the current checkpoint and prepared owner selector.
 
 `_wt-sm-qol-combat`, `feat/qol-combat`:
 - `6e80b43`: combat package (`src/mods/sm_combat_plugins.c`, cfg hooks, manifest). It was staged on its own and **never built in isolation**.
@@ -381,7 +398,7 @@ Historical handoff tasks (integration and combined gates above now complete):
    integrate into this feature branch, resolving cfg/source/manifest changes
    while preserving `mod_operand` and the removal of ROM-writing helpers.
 
-Human playtest checklist from the agent (things automation couldn't judge):
+Historical agent checklist (most mechanics below now exercised automatically):
 - screw attack still selectable in the pause menu;
 - X-ray over a respawning item;
 - eye-door crash;
@@ -427,10 +444,8 @@ The `bd` shim isn't on PATH for Python.
   - `beads-8wg.2.158` input transforms.
 - Every feature bead's notes hold the measurements. Features stay
   `in_progress` until the owner signs off; don't close them.
-- **TODO:**
-  - beads for each 6.3 removal;
-  - a bead for "quit to file select";
-  - a bead for the movement extras.
+- Quit to file select is tracked in `.33.8`; movement extras in `.33.10/.33.13`;
+  shared network capacity in `beads-3qv.1.20`. Do not create duplicates.
 
 ## 8. Build, run and verification recipes
 
@@ -448,7 +463,7 @@ Add `--strict-idempotent` to check that output is byte-identical.
 cmake --build build-mods -j 12
 cd build-mods; ctest
 ```
-Currently 20/20 pass, including controls with Release assertions enabled and
+Currently 25/25 pass on Windows and Linux, including controls with Release assertions enabled and
 the new data-consumer overflow/text-boundary regression checks.
 
 **Stock invariance and converted consumers.** Use the isolated runner:
@@ -484,29 +499,28 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
     map views now have qualified comparisons. Verify actual interpreter work
     increases: a routine may already be LLE-only. Each validation document
     records exact coverage and limits.
-- **Not yet done:**
-  - a Linux build (`tools/build-linux.sh`; `REQUIRED_MOD_MANIFESTS` lists each package);
-  - a netplay effective-set mismatch check.
+- **Completed:** Linux build/current-build gameplay checks and real
+  Windows/Linux netplay matching/mismatching effective-set checks. Exact
+  evidence and execution-path limits are in the final checkpoint.
 
 ## 9. Burndown (remaining tasks, in order)
 
-1. **Engine operand mechanism implemented/committed and SM writes converted** (6.1). Complete the remaining game-level qualification with the final feature set.
-2. Preserve the ROM-write removal while integrating further features.
-3. **Finish combat qualification**: Tourian traversal and auto-charge now pass both execution paths; validate vanilla/reserve fixes and the remaining inherited combat features. Integration/capacity/stock/CTest/idempotence gates pass (6.2). No main merge is authorized.
-4. **Map views implemented:** finish the reference/scripted-door audit and owner
-   review. Seven-case checks and the LLE-authoritative pause-boundary limit
-   are recorded in `docs/validation/SM_MAPS_20261028.md`.
-5. **Pacing:**
-   - quit to file select implemented and automatically qualified; owner review pending;
-   - elevator and boss-door headless checks.
-6. **Movement extras implemented:** spark down-to-morph, jump-to-cancel and
-   L+Down air morph pass 20 normal/interpreted game cases. Owner feel review pending.
-7. **Tier-parity runs** for all hooked features; Linux build; netplay effective-set check.
-8. **Automated playtest pass** over every feature. Then write the owner a
-   short, focused checklist of what automation cannot judge (feel, visuals).
-9. **Cross-repo removal preservation gate complete** (6.3); keep the validated modern loaders/music/multiplayer candidates intact.
-10. **At final handoff only:** ask the owner to define .26 falling aim-down. Auto charge .20 is implemented and automatically qualified.
-11. **Owner-gated:** push and merge of the engine and SM branches.
+1. **Owner review:** use `tools/sm_qol_playtest.py` and the prepared native-paused
+   setups for maps, controls, movement, auto charge/reserves and X-ray. Save
+   individual observations; retain failed/deferred caveats. Physical controller
+   feel, map readability, Speed Booster sound and palette judgment remain.
+2. **At this final handoff only:** ask the owner to define .26 falling aim-down.
+   Auto charge .20 is implemented and automatically qualified. Do not guess .26.
+3. Resolve concrete owner findings, then rerun affected checks. The narrowly mixed
+   selector continuation defect remains separately tracked in `beads-8wg.2.163`;
+   full-selector parity passes. Ghost nonzero-index is boundary coverage only.
+4. **Completed foundation:** ROM-write removal, integrated combat/bug fixes,
+   source/reference map audit, real elevator/boss-door checks, movement extras,
+   available-tier comparisons, Linux build and actual netplay mismatch refusal.
+   Preserve stock behavior/SRAM and the exact coverage limits in the final report.
+5. Keep the completed F-Zero/SMW preservation candidates intact. Full hack packs
+   remain deferred indefinitely. No unrelated removal or delivery work is needed.
+6. **Owner-gated:** code push, main merge and release. None has been performed.
 
 ## 10. Traps already hit
 
