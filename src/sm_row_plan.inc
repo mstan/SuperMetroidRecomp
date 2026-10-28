@@ -58,7 +58,7 @@ static void native_render_mode1_row(const Ppu *p, const SmRasterLine *line,
     const bool center_valid[3], const uint16_t *objects, int y, SmViewport view,
     int matte_x, int matte_y, const uint8_t brightness[32],
     const SnesRenderWindowPlan *native_windows, const SnesRenderWindowPlan *margin_windows,
-    uint32_t *out) {
+    const uint32_t *native_center, uint32_t *out) {
   uint16_t backgrounds[3][SM_MAX_WIDTH];
   int first[2] = {-view.extra, 256}, end[2] = {0, 256 + view.extra};
   /* The authored room matte owns the finished pixel, including COLDATA/OBJ.
@@ -76,11 +76,14 @@ static void native_render_mode1_row(const Ppu *p, const SmRasterLine *line,
     if (!(enabled & (1u << layer))) {
       memset(backgrounds[layer], 0, (size_t)view.width * sizeof(uint16_t));
     } else {
-      if (center_valid[layer])
-        memcpy(backgrounds[layer] + view.extra, center[layer], 256 * sizeof(uint16_t));
-      else
-        native_background_range(p, line, &background_lines[layer], layer, y, view.extra,
-            (unsigned)view.extra, (unsigned)view.extra + 256, backgrounds[layer]);
+      /* A finished center needs no decoded center samples. */
+      if (!native_center) {
+        if (center_valid[layer])
+          memcpy(backgrounds[layer] + view.extra, center[layer], 256 * sizeof(uint16_t));
+        else
+          native_background_range(p, line, &background_lines[layer], layer, y, view.extra,
+              (unsigned)view.extra, (unsigned)view.extra + 256, backgrounds[layer]);
+      }
       for (unsigned side = 0; side < 2; ++side)
         if (end[side] > first[side])
           native_background_range(p, line, &background_lines[layer], layer, y, view.extra,
@@ -89,8 +92,11 @@ static void native_render_mode1_row(const Ppu *p, const SmRasterLine *line,
   }
   native_compose_range(p, line, view, backgrounds, objects, brightness,
       margin_windows, first[0], end[0], out);
-  native_compose_range(p, line, view, backgrounds, objects, brightness,
-      native_windows, 0, 256, out);
+  if (native_center)
+    memcpy(out + view.extra, native_center, 256 * sizeof(*out));
+  else
+    native_compose_range(p, line, view, backgrounds, objects, brightness,
+        native_windows, 0, 256, out);
   native_compose_range(p, line, view, backgrounds, objects, brightness,
       margin_windows, first[1], end[1], out);
 }

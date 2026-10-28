@@ -131,12 +131,19 @@ int main(void) {
                              in_window(p, 5, x, view.extra, &wide));
     }
     native_render_mode1_row(p, &line, backgrounds, center_pixels, center_valid, test_objects,
-        y, view, matte_x, matte_y, brightness, &native, &margin, actual);
+        y, view, matte_x, matte_y, brightness, &native, &margin, NULL, actual);
     for (int x = 0; x < width; ++x) {
       if (expected[x] != actual[x]) fprintf(stderr, "iteration=%u width=%d x=%d expected=%06x actual=%06x\n",
                                           iteration, width, x, expected[x], actual[x]);
       assert(expected[x] == actual[x]);
     }
+    /* A finished center replaces only the center, even when predecoded
+     * center tiles are unusable. Margin windows/matte keep their oracle. */
+    memset(center_pixels, 0xa5, sizeof(center_pixels));
+    memset(actual, 0, sizeof(actual));
+    native_render_mode1_row(p, &line, backgrounds, center_pixels, center_valid, test_objects,
+        y, view, matte_x, matte_y, brightness, &native, &margin, expected + view.extra, actual);
+    for (int x = 0; x < width; ++x) assert(expected[x] == actual[x]);
   }
   puts("512 complete planned Metroid rows match independent scalar composition.");
   return 0;

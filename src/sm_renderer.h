@@ -52,6 +52,7 @@ typedef struct SmRendererStats {
   unsigned grapple_native_matches, grapple_margin_pixels;
   unsigned grapple_interpolated_pieces;
   unsigned grapple_flare_native_matches;
+  unsigned native_center_lines;
 } SmRendererStats;
 SmRendererStats SmRendererGetStats(void);
 typedef struct SmRasterStats {

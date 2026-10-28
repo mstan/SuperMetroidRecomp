@@ -5,6 +5,9 @@
 #ifndef SM_NATIVE_ROW_PLAN
 #define SM_NATIVE_ROW_PLAN 0
 #endif
+#ifndef SM_NATIVE_CENTER_REUSE
+#define SM_NATIVE_CENTER_REUSE 0
+#endif
 #if SM_NATIVE_RASTER
 #include "snes/raster_jobs.h"
 #include "snes/raster_image.h"
@@ -74,6 +77,12 @@ static unsigned current;
 #if SM_NATIVE_RASTER
 static SnesRasterImage stock_images[2];
 static bool native_capture;
+#if SM_NATIVE_CENTER_REUSE
+/* Live-provider provenance, excluded from disk captures and guest state.
+ * Loading arbitrary captured stock never grants permission to reuse it. */
+static const Ppu *native_center_source;
+static bool native_centers[2][224];
+#endif
 static bool read_stock_line(const void *context, unsigned y, SnesRasterImageLine *out) {
   const SmSourceFrame *f = context;
   if (y >= f->captured) return false;
@@ -162,6 +171,9 @@ bool SmRendererSaveCapture(const char *path) {
   return save_capture(&frames[current], path);
 }
 bool SmRendererLoadCapture(const char *path) {
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+  memset(native_centers[current ^ 1], 0, sizeof(native_centers[0]));
+#endif
 #if SM_NATIVE_RASTER
   SnesRasterImageReset(&stock_images[current ^ 1]);
 #endif
@@ -387,6 +399,10 @@ static bool has_samus_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
   return false;
 }
 void SmRendererReset(void) {
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+  native_center_source = NULL;
+  memset(native_centers, 0, sizeof(native_centers));
+#endif
 #if SM_NATIVE_RASTER
   SnesRasterImageReset(&stock_images[0]);
   SnesRasterImageReset(&stock_images[1]);
@@ -411,6 +427,10 @@ void SmRendererReset(void) {
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number) {
   hardware_raster.tracking=false;
   current ^= 1;
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+  native_center_source = NULL;
+  memset(native_centers[current], 0, sizeof(native_centers[0]));
+#endif
 #if SM_NATIVE_RASTER
   SnesRasterImageReset(&stock_images[current]);
 #endif
@@ -427,6 +447,9 @@ void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number) {
   object_state_latched = false;
 }
 void SmRendererBeginHardwareRaster(const Ppu *p) {
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+  native_center_source = p;
+#endif
 #if SM_NATIVE_RASTER
   native_capture = p && !frames[current].valid && !frames[current].captured;
   if (native_capture) SnesRasterImageBegin(&stock_images[current], p);
@@ -443,6 +466,9 @@ void SmRendererBeginHardwareRaster(const Ppu *p) {
 #endif
 }
 void SmRendererEndHardwareRaster(void) {
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+  native_center_source = NULL;
+#endif
   hardware_raster.tracking=false;
 #if SM_NATIVE_RASTER
   native_capture = false;
@@ -458,6 +484,9 @@ unsigned SmRendererNativeLines(void) {
 bool SmRendererClaimNativeLine(const Ppu *p, unsigned line) {
 #if SM_NATIVE_RASTER
   const SmSourceFrame *f = &frames[current];
+#if SM_NATIVE_CENTER_REUSE
+  if (line >= 1 && line <= 224 && native_centers[current][line - 1]) return false;
+#endif
   if (!native_capture || capture_failed[current] || line < 1 || line > 224 ||
       f->captured != line || !SnesRasterImageCanDefer(p) ||
       !room_state(read16(f->ram, 0x998)) || (p->bgmode & 7) != 1 || (p->mosaic >> 4)) return false;
@@ -473,6 +502,17 @@ void SmRendererCaptureLine(const Ppu *p, unsigned line) {
   if (!p || capture_failed[current] || line < 1 || line > 224) return;
   SmSourceFrame *f = &frames[current];
   if (line != f->captured + 1) return;
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+  /* The current compositor draws all OAM entries. A hardware-limited source
+   * is therefore not a compatible provider. Do not change guest/status flags
+   * to obtain one; retain the existing deferred/full-custom path instead. */
+  native_centers[current][line - 1] = native_capture && native_center_source == p &&
+      SnesRasterImageCanDefer(p) && room_state(read16(f->ram, 0x998)) &&
+      (p->renderFlags & (kPpuRenderFlags_NewRenderer | kPpuRenderFlags_NoSpriteLimits)) ==
+          (kPpuRenderFlags_NewRenderer | kPpuRenderFlags_NoSpriteLimits) &&
+      (g_snes_ppu_dbg_layer_mask & 31) == 31 && !(p->oamaddh & 0x80) &&
+      (p->bgmode & 7) == 1 && !(p->mosaic >> 4);
+#endif
   SmRasterLine *l = &f->lines[line - 1];
   memcpy(l->registers, p, sizeof(l->registers));
   memcpy(l->palette, p->cgram, sizeof(l->palette));
@@ -1478,7 +1518,8 @@ static bool has_edge_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
 }
 static void sprites(const Ppu *p, const SmRasterLine *line, int y,
                     SmViewport viewport, uint16_t *pixels,
-                    const SmSourceFrame *f, const SmSourceFrame *previous, double alpha) {
+                    const SmSourceFrame *f, const SmSourceFrame *previous, double alpha,
+                    bool reuse_center) {
   static const int sizes[8][2] = {{8,16},{8,32},{8,64},{16,32},
                                   {16,64},{32,64},{16,32},{16,32}};
   memset(pixels, 0, (size_t)viewport.width * sizeof(*pixels));
@@ -1547,6 +1588,7 @@ static void sprites(const Ppu *p, const SmRasterLine *line, int y,
     for (int col = 0; col < size; ++col) {
       int dest = x + col;
       if (dest < 0 || dest >= viewport.width) continue;
+      if (reuse_center && dest >= viewport.extra && dest < viewport.extra + 256) continue;
       int cx = attr & 0x4000 ? size - 1 - col : col;
       unsigned tile = (((((attr & 255) >> 4) + row / 8) & 15) << 4) |
                       (((attr & 15) + cx / 8) & 15);
@@ -2072,7 +2114,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       background_lines[1].world_x = ((int)read16(f->ram, 0x911) & ~15) + (scanout.hScroll[1] & 15);
       background_lines[1].world_y = ((int)read16(f->ram, 0x915) & ~15) + (scanout.vScroll[1] & 15);
     }
-    sprites(&scanout, l, y, viewport, objects, f, previous, alpha);
+    bool reuse_center = false;
+#if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
+    reuse_center = mode == 1 && alpha >= 1 && native_centers[current][y];
+    if (reuse_center) ++render_stats.native_center_lines;
+#endif
+    sprites(&scanout, l, y, viewport, objects, f, previous, alpha, reuse_center);
     if (viewport.extra && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
        * The native center continues to use captured OAM exclusively. */
@@ -2098,7 +2145,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
      * ordinary layer a tile at a time after raster-scroll interpolation. */
     uint16_t native_backgrounds[3][256];
     bool native_layer[3] = {false, false, false};
-    if (mode == 1) for (unsigned layer = 0; layer < 3; ++layer) {
+    if (mode == 1 && !reuse_center) for (unsigned layer = 0; layer < 3; ++layer) {
       if (!(enabled & (1u << layer)) ||
           ((scanout.mosaic & (1u << layer)) && (scanout.mosaic >> 4))) continue;
       native_layer[layer] = SnesRenderMode1TileRow(&scanout, l->vram, layer,
@@ -2113,7 +2160,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (mode == 1) {
       native_render_mode1_row(&scanout, l, background_lines, native_backgrounds,
           native_layer, objects, y, viewport, matte_x, matte_y, brightness,
-          &native_windows, &margin_windows, out + y * viewport.width);
+          &native_windows, &margin_windows, reuse_center ? f->stock + y * 256 : NULL,
+          out + y * viewport.width);
       continue;
     }
 #endif

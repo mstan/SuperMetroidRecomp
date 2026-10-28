@@ -91,6 +91,46 @@ static void raster_storage(void) {
   ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
 }
 
+static void native_center_provider(void) {
+#if defined(SM_NATIVE_CENTER_REUSE) && SM_NATIVE_CENTER_REUSE
+  for (unsigned scenario=0;scenario<7;++scenario) {
+    ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+    word(0x998,8); ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=1;
+    ppu.bgTileAdr=2; ppu.cgram[1]=31;
+    ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
+    g_snes_ppu_dbg_layer_mask=scenario==6?30:255;
+    for(unsigned row=0;row<8;++row)ppu.vram[0x2000+row]=0xff;
+    if(scenario==1)ppu.renderFlags=kPpuRenderFlags_NewRenderer;
+    if(scenario==3)ppu.oamaddh=0x80;
+    if(scenario==4)ppu.renderFlags=kPpuRenderFlags_NoSpriteLimits;
+    if(scenario==5)ppu.mosaic=0x20;
+    /* Constant opaque red is the independent original PPU result for this
+     * all-tile-zero / all-plane-zero-bit-set fixture. Untrusted or differently
+     * configured providers are deliberately poisoned to catch accidental use. */
+    for(unsigned pixel=0;pixel<256*224;++pixel)
+      stock[pixel]=scenario==0?0xff0000u:0x123456u;
+    BeginFixtureFrame(ram,100+scenario);
+    if(scenario!=2)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      SmRendererCaptureLine(&ppu,line);
+      if(scenario==0)assert(!SmRendererClaimNativeLine(&ppu,line));
+    }
+    SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    SmViewport view={342,43,16.0/9,true};
+    for(unsigned phase=0;phase<2;++phase) {
+      assert(SmRendererDraw(output,view,false,phase?0.5:1));
+      assert(SmRendererGetStats().native_center_lines==(!scenario&&!phase?224u:0u));
+      for(unsigned y=0;y<224;++y) for(unsigned x=0;x<256;++x)
+        assert(output[y*view.width+view.extra+x]==0xff0000u);
+    }
+  }
+  g_snes_ppu_dbg_layer_mask=255;
+  ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+#endif
+}
+
 static void pause_menu_fade(void) {
   /* State 16 still draws the equipment/map menu while it fades out. State
    * 17 restores gameplay graphics under forced blank; only 18 fades them in.
@@ -465,6 +505,7 @@ static void cannon_motion(void) {
 }
 
 int main(int argc, char **argv) {
+  native_center_provider();
   pause_menu_fade();
   hud_colour_math_margins();
   shared_hud_liquid_map();

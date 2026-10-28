@@ -194,6 +194,28 @@ static void SmPublishNativeField(uint8_t *field, unsigned number) {
   g_sm_composed_view = g_sm_viewport;
   g_sm_composed_hud = g_sm_video.hud_anchored;
   g_sm_composed_ready = true;
+#if defined(SM_NATIVE_CENTER_REUSE) && SM_NATIVE_CENTER_REUSE
+  /* One selected discrete frame proves which provider the built game used.
+   * Opt-in diagnostics do not enter the guest snapshot or match identity. */
+  static bool report_initialized;
+  static const char *report_path;
+  static unsigned report_frame;
+  if (!report_initialized) {
+    report_initialized = true;
+    report_path = getenv("SM_NATIVE_CENTER_REPORT");
+    const char *selected = getenv("SM_CAPTURE_FRAME");
+    report_frame = selected ? (unsigned)strtoul(selected, NULL, 10) : 0;
+  }
+  if (report_path && number == report_frame) {
+    SmRendererStats stats = SmRendererGetStats();
+    FILE *report = fopen(report_path, "w");
+    if (report) {
+      fprintf(report, "{\"frame\":%u,\"width\":%d,\"native_center_lines\":%u,\"custom_lines\":%u}\n",
+          number, g_sm_viewport.width, stats.native_center_lines, stats.custom_lines);
+      fclose(report);
+    }
+  }
+#endif
   for (unsigned y = 0; y < 224; ++y)
     memcpy((uint32_t *)field + y * 256,
         g_sm_output + y * g_sm_viewport.width + g_sm_viewport.extra, 256 * 4);
