@@ -12,70 +12,74 @@ exact Falcon Zero image are retained in
 [`docs/reference/metroid3_map.gif`](docs/reference/metroid3_map.gif).
 The tester has not yet clarified auto charge or falling aim-down controls.
 
-**Immediate priority:** remove ROM patchers now. A replacement is explicitly
-not required before removal ships, including for released F-Zero BS Deluxe.
-Do not retain the obsolete patch-then-recompile path under a deprecation
-warning. Pushes and main-branch merges remain owner-gated.
+**Controlling scope after owner clarification:** preserve modern F-Zero/SMW
+semantic content loaders, BS content, MSU/music, vehicles and native multiplayer.
+Remove the historical generic playable-ROM patch workflow and the abandoned
+SMW IPS/Luigi executable. Do not withdraw supported features or delete reviewed
+donor-resource decoders that the modern loaders still require.
 
-**Owner scope clarification after takeover:** preserve the modern F-Zero
-course loader, SMW semantic course/world loader, MSU/music features, BS
-content and the new native two-player mods. Remove the historical playable
-patched-ROM workflow and abandoned SMW IPS/Luigi co-op. Feature retirement is
-not the acceptance criterion. The current modern checkouts are:
+### Codex checkpoint: corrected candidates validated
 
-- F-Zero Forever: `_wt-fzero-track-packs`, `feat/fzero-local-2p`, `eaae4f4`.
-- SMW content packs: `_wt-content-variants-smw`, `feat/smw-custom-mods`, `a2d5d81`.
-- SMW native co-op: `_wt-smw-native-coop`, `feat/native-simultaneous-coop`, `d4b5865`.
+The owner requested validation of the current F-Zero and both SMW branches,
+then a check-in before returning to Super Metroid. That preservation regression
+gate is complete. Super Metroid implementation has **not** resumed.
 
-These checkouts have not been modified by the removal work. The removal
-commits below were based on older game checkouts. They are **not ready for
-integration** as a modern-game preservation result: F-Zero's modern source
-still references `cp_patch_apply`/`cp_pack_apply` in donor-resource paths, and
-has old BS/MSU adapters alongside its modern loader. Preserve supported
-content/music and native multiplayer while distinguishing semantic resource
-imports from applying a playable ROM-hack image. Reconcile these dependencies
-before carrying the shared deletion forward. Do not cherry-pick the broad
-F-Zero feature-withdrawal commit into the modern branch.
+All checkouts below are under `G:/Temp/Codex/sm-qol-20261027/`:
 
-### Codex takeover: immediate patcher-removal result
+| Current branch base | Corrected local candidate | Engine / UI | Checkout |
+|---|---|---|---|
+| F-Zero Forever `eaae4f4` | `78273b4`, `fix/preserve-fzero-loaders-20261027` | `0ff9416` / `a866b5b` | `fzero-modern` |
+| SMW content `a2d5d81` | `4ae1888`, `fix/legacy-patcher-content-20261027` | `90d54e3` / `3d8cdf6` | `smw-content` |
+| SMW native co-op `d4b5865` | `4115104`, `fix/legacy-patcher-native-20261027` | `be86f80` / `18e06fd` | `smw-coop` |
 
-The following legacy-checkout removals were Windows-qualified locally. The
-scope clarification above supersedes any implication that their stock-only
-tests qualify the current content-loader or multiplayer branches:
+The generic shared variant IPS/BPS applier, launcher patch picker/API/tool,
+localization ROM writer and obsolete SMW IPS executable/tools are removed.
+Guarded writes reject cartridge-ROM overlaps while retaining RAM use.
+`content_patch.c`, `cp_patch_apply` and `cp_pack_apply` remain for reviewed
+donor-resource extraction. Existing F-Zero game-owned BS module/data and
+legacy music compatibility adapters are preserved; this is **not** a claim
+that those adapters now perform no image assembly or that every IPS parser
+has been deleted. Their native loader/music/multiplayer paths remain working.
 
-| Repository | Commit | Branch / checkout |
-|---|---|---|
-| snesrecomp | `253c635` | `feat/sm-qol-mod-hooks`; clean qualification checkout `G:\Temp\Codex\sm-qol-20261027\engine` on `fix/rom-patcher-removal-20261027` |
-| recomp-ui | `e4d8762` | `fix/remove-rom-patching-20261027`, `G:\Temp\Codex\sm-qol-20261027\recomp-ui` |
-| FZeroRecomp | `5f03229` | same branch name, `G:\Temp\Codex\sm-qol-20261027\fzero` |
-| SuperMarioWorldRecomp | `4a27a84` | same branch name, `G:\Temp\Codex\sm-qol-20261027\smw` |
+The earlier broad F-Zero withdrawal `5f03229` was reverted by `ffd825e`.
+Do not integrate that old stock-only candidate. Earlier `253c635`/`e4d8762`/
+`4a27a84` results are superseded by the per-pin candidates above. The shared
+donor-helper correction is also committed as `ca9bc269` on the inherited
+`feat/sm-qol-mod-hooks` branch, without changing its uncommitted operand WIP
+or staged test rename.
 
-Both engine IPS/BPS implementations, variant-patch support, the localization
-ROM writer, recomp-ui's patch picker/cache/API/tool and MSU auto-patcher,
-F-Zero's BS Deluxe and MSU ROM-patching integrations, and SMW's abandoned
-co-op target and IPS tools are deleted. Old patch manifest/localization
-declarations reject with an error. Guarded writes reject cartridge-ROM
-overlaps and remain usable for RAM. F-Zero and SMW pin these engine/UI commits.
+Windows validation:
 
-Validation: recomp-ui 43/43 tests, F-Zero 8/8 tests, F-Zero desktop/headless
-builds, SMW stock build, 3600 headless audio frames in each game, and focused
-engine tests all pass. F-Zero's existing stock tier-2 coverage profile was
-retained for regeneration. Linux shell syntax and MSBuild XML were checked;
-Linux/MSVC builds were not run. No pushes, main merges, releases, delivery
-folder replacements, owner-save changes or visible playtests were performed.
+- F-Zero: desktop/headless builds with embedded BS Deluxe; 18/18 CTests;
+  75 record identities and folder/ZIP parity; races from Astra/Bower/CGP/MAX;
+  matched stock/BS/custom native two-player hashes with save/load and rewind;
+  eight real synthetic MSU playback/fallback/rewind checks.
+- SMW content: build; 204 content tests (seven private-fixture skips); real
+  THNAN gameplay plus stock/installed captures byte-identical to the existing
+  accepted build, including stock WRAM CRC `13D6AC0F`; native save isolation.
+- SMW native co-op: build; core/hook/input/storage tests; both actors' cape,
+  star, pipe and door runtime checks. Native co-op implementation/package
+  unchanged by removal.
+- Per-pin launcher checks: F-Zero 5/5, SMW content 5/5, native co-op 3/3;
+  shared guarded-write/donor/manifest/localization checks pass.
 
-Evidence and retained qualification builds:
-`G:\Temp\Codex\sm-qol-20261027\removal-evidence.json`. The removal beads are
-`beads-0fu.32`, `beads-8wg.5.110`, `beads-8wg.3.41`, and engine
-`beads-8wg.2.157`. Retain these worktrees/builds/logs until integration;
-then remove disposable generated sources, ROM copies and build outputs there.
+One existing failure is retained explicitly: F-Zero's lifecycle harness has
+an identical viewport hash mismatch before and after removal, tracked as
+`beads-8wg.5.111`. It is not a passing viewport test or a removal regression.
+No new removal regression was found in the checks above.
 
-**Super Metroid's feature-specific conversion is still outstanding.** The
-inherited `mod_operand` edits remain uncommitted in `_wt-sm-qol-engine`.
-SM still pins `47f010b`; finish the operand mechanism and convert its own
-ROM-writing helpers before bumping that pin. The rest of the original
-feature burndown below remains open. There is no reason to repeat the
-standalone patcher-removal audit or wait for F-Zero replacements.
+Evidence: `G:/Temp/Codex/sm-qol-20261027/modern-preservation-evidence.json`,
+adjacent scripts/logs, and each candidate's
+`docs/validation/ROM_PATCHER_REMOVAL_20261027.md`. Passing candidate builds
+are retained for integration; temporary cleanup is recorded alongside them.
+Original modern worktrees, delivered builds, owner saves and settings are
+untouched. No code push, main merge, release, Linux/MSVC build or human
+controller/visual qualification was performed.
+
+**Super Metroid conversion remains open.** Finish and test the inherited
+`mod_operand` runtime/emission work and convert SM's ROM-writing helpers before
+bumping its engine pin. Auto charge and falling aim-down still await tester
+definitions. Resume only after the requested owner checkpoint.
 
 A tester sent a Super Metroid quality-of-life wishlist plus three favourite
 ROM hacks: **Ancient Chozo 1.1.5**, **Super Metroid Redux** and **Ascent
@@ -96,7 +100,7 @@ engine mod packages.
 | 2026-10-27 clarification | Preserve modern semantic F-Zero/SMW content loaders, music/MSU, BS content and native two-player mods. Remove the historical playable patched-ROM/recompilation workflow and abandoned SMW IPS/Luigi co-op. Audit donor/resource-import helpers by their actual use before deleting shared dependencies; stock-only checks on old branches do not qualify modern functionality. This scope clarification takes precedence over the earlier broad-removal interpretation. |
 | 2026-10-27 | Per-feature mods, grouped into themed packages with per-feature toggles. |
 | 2026-10-27 | Full hacks (Ancient Chozo/Ascent level design, Ancient Chozo art) come later through the **SMW shared-data-pack approach** built for *This Hack Needs A Name* (`SuperMarioWorldRecomp/docs/SHARED_DATA_PACKS.md`, branch `feat/smw-custom-mods`): a semantic `pack.json` world/audio pack loaded by stock recompiled code, a content selector, a separate save namespace per pack, and the launcher's Custom Mods page. **Ancient Chozo work is deferred indefinitely** (bead `beads-8wg.6.33.41`). |
-| 2026-10-27 | **ROM patching is forever deprecated and forbidden.** This covers applying IPS/BPS, recompiling a patched ROM, and runtime writes into the loaded ROM image (SM's `SmModRomPatch`/`SmModPatchImm16`, the engine's old `live_operand`, `guarded_patch` aimed at ROM). Every known use must be removed. Behaviour goes through the mod loader: `mod_hook`, `mod_operand`, input transforms, overlays and content loaders. Only content loaders in the SMW/F-Zero style get promoted into the shared engine. |
+| 2026-10-27 | **ROM patching is forbidden for these enhancements.** Implement against the stock program without applying a playable IPS/BPS hack, recompiling a patched ROM, or writing into the loaded ROM image (SM's `SmModRomPatch`/`SmModPatchImm16`, the engine's old `live_operand`, `guarded_patch` aimed at ROM). Modern game loaders and reviewed donor-resource imports are preserved under the later scope clarification. Enhancement behaviour goes through the mod loader: `mod_hook`, `mod_operand`, input transforms, overlays and content loaders. Only content loaders in the SMW/F-Zero style get promoted into the shared engine. |
 | 2026-10-27 | Credits skip must **not** skip the ending pose. That is what it does today, so no change is needed. |
 | 2026-10-27 | **Automated playtesting** is the default. Validate every feature headlessly, using pokes and cheats to reach the needed states. Hand the owner only a short, focused checklist of what automation genuinely cannot judge. |
 | 2026-10-27 | Do not give time estimates; report task burndown. |
@@ -334,11 +338,10 @@ Remaining:
 5. Run the full engine test suite (`tests/run_c_tests.sh` under PowerShell,
    pytest with `C:\Users\Matthew\.pyenv\pyenv-win\versions\3.10.9\python.exe -m pytest tests/v2`),
    then commit on `feat/sm-qol-mod-hooks`.
-6. Standalone engine ROM-patcher removal is committed as `253c635` (see takeover result above):
-   - `runner/src/guarded_patch.*` is used by Star Fox on RAM buffers, which is allowed.
-     Make it refuse targets inside the cart ROM image, or drop it if unused.
-   - `runner/src/rom_patch.c` (IPS/BPS) and its use in `runner/src/content_variant.c`
-     (SMW content variants) are forbidden. See 6.3.
+6. Standalone engine removal and donor-resource correction are committed as
+   `253c635` + `ca9bc269` on this branch. Guarded cartridge-ROM writes and the
+   generic variant patcher are removed; reviewed donor imports and RAM writes
+   remain. Modern consumer validation is recorded at the checkpoint above.
 
 **SM side** (integration branch, after the engine pin is bumped):
 - Convert all 34 `live_operand` lines in `recomp/bank{00,02,08,10,20,23}.cfg` to
@@ -393,25 +396,24 @@ Human playtest checklist from the agent (things automation couldn't judge):
 - wall-jump screw attack and bomb blocks;
 - speed booster sound bug.
 
-### 6.3 Cross-repo ROM-patching removal (historical audit; now implemented locally)
+### 6.3 Cross-repo removal: corrected scope and validation
 
-The standalone removals below are completed and Windows-qualified in the
-takeover commits above. Push/main merge/release remain pending. This table
-records what was found, not functionality still present in those candidates.
+See the controlling checkpoint above and the per-game validation documents.
+The original audit conflated generic playable-ROM patching with reviewed
+resource extraction and game-owned compatibility adapters. Do not repeat that
+blanket deletion.
 
-Known uses that must be removed or replaced by content loaders:
-
-| Repo | Use |
+| Area | Current result |
 |---|---|
-| snesrecomp engine | `runner/src/rom_patch.c` (IPS/BPS applier); `runner/src/content_variant.c` applies patches (SMW+SMAS content variants work); `runner/src/snes_text_xlate.cpp` has a `rom_patch` section in translation files. |
-| recomp-ui | Exports `rom_patch_apply`. |
-| FZeroRecomp | BS F-Zero Deluxe built by applying `patches/bs-deluxe-usa.ips` (`tools/import_bs_deluxe.py`, `inspect_bs_deluxe.py`, AppImage/release packaging). MSU-1 support reads the user's `f-zero_msu1.ips` (`src/fzero_msu.c`); it still needs checking whether that only parses or actually patches. |
-| SuperMarioWorldRecomp | Co-op target applies `smw_coop.ips` at run time (`src/coop_patch.c`, `src/main.c`, CMake, regen and release scripts). Co-op is already abandoned; delete it. Also `tools/apply_msu_patch.py`, `tools/create_ips.py`. |
-| StarFoxSNESRecomp | Clean: its test asserts no `guarded_patch_apply`. |
+| Shared engine | Generic variant `rom_patch.c` and localization ROM writes removed where present; cartridge-ROM guarded writes rejected. Reviewed donor-resource APIs retained. |
+| recomp-ui | Generic patch picker/API/tool and auto-patch prompts removed on each current pinned UI base; Custom Mods, music and native controls retained and tested. |
+| F-Zero Forever | Modern courses, vehicles, BS content, host music and multiplayer preserved and validated. Existing game-specific BS/legacy-music adapters remain; not a blanket no-image-assembly migration. |
+| SMW content | Abandoned IPS executable/tools removed; semantic world/audio/character packs preserved and tested. All-Stars remains outside scope. |
+| SMW native co-op | Old IPS executable/tools removed; new normal-executable native co-op preserved and tested. |
 
-Each needs a bead under the right project epic and a replacement plan (content
-loader / `mod_hook`). Released features (F-Zero BS Deluxe) need the owner told
-before removal ships.
+All source changes are local feature-branch candidates. Push/main merge/release
+remain pending. Do not remove or replace the owner's current deliveries during
+the Super Metroid handoff.
 
 ## 7. Beads
 
