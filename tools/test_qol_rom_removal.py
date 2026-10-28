@@ -25,7 +25,11 @@ except ModuleNotFoundError:
 
 SOURCE = Path(__file__).resolve().parents[1]
 ROM_SHA = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
-STOCK_TRACE = "66976992eb0baea5b7c6696cd6f8e0def597797cb8880497204a58ac93cfc947"
+# The same original trace is CRLF on Windows and LF on Linux. Every byte
+# otherwise matches; retain raw file identities without confusing line endings
+# with a guest-state regression.
+STOCK_TRACE = ("66976992eb0baea5b7c6696cd6f8e0def597797cb8880497204a58ac93cfc947" if os.name == "nt" else
+               "63bf723ed7e919aad7df7cac4004ecff2b4943f94d1626cf77e110b2881cced5")
 
 
 def state(features):
@@ -82,6 +86,11 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
     shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
     (profile / "mods/preloaded/state.toml").write_text(state(features), encoding="utf8")
     env = dict(os.environ)
+    # Offline cases must not inherit another session's networking/test knobs.
+    # A peer fixture supplies its explicit local setup through env_overrides.
+    for key in list(env):
+        if key.startswith(("SNES_NET", "SNES_RB", "RNET_RB_", "RNET_SIM_", "RBE_RB_")):
+            env.pop(key)
     for key in ("SM_RUN_FRAMES", "SNESRECOMP_LLE_INTERP_TARGET_FILE", "SM_CAPTURE_PATH", "SM_CAPTURE_FRAME",
                 "SNESRECOMP_SCREENSHOT", "SNESRECOMP_SCREENSHOT_FRAME", "SNESRECOMP_SCREENSHOT_DIR",
                 "SNESRECOMP_SCREENSHOT_FROM", "SNESRECOMP_SCREENSHOT_TO"):

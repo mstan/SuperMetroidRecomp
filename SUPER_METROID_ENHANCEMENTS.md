@@ -128,9 +128,22 @@ All local; **nothing is pushed**.
 | `F:\Projects\snesrecomp\_wt-sm-qol-movement` | SuperMetroidRecomp | `feat/qol-movement` | | Fast-forwarded into the integration branch (`edb3f8e`). Can be removed. |
 | `F:\Projects\snesrecomp\_wt-sm-qol-combat` | SuperMetroidRecomp | `feat/qol-combat` | `edb3f8e` | Combat + balance-fixes. **Stopped at handoff**: `6e80b43` (combat, done) + `74a1abd` (WIP balance-fixes). Not merged. Build dir `build-combat`. See 6.2. |
 
-The SM `snesrecomp` submodule is pinned to engine commit `a4f3674f`. That
+The SM `snesrecomp` submodule is pinned to engine commit `e265a2be` (operand
+implementation base `a4f3674f`, plus complete netplay mod-set publication). That
 commit exists only in the local engine repo, `F:\Projects\snesrecomp\snesrecomp`,
-which shares its object store with the engine worktree. `recomp-ui` is pinned to `e4d8762`, and `framework_pins.txt` matches the gitlinks.
+which shares its object store with the engine worktree. `recomp-ui` is pinned
+to `7fdd3a87`; nested recomp-net is `445eed76` (wire 3 / module ABI 2), and
+`framework_pins.txt` matches the physical checkouts and gitlinks.
+
+**Network capacity checkpoint:** the full 40-feature settings list is 2,526
+bytes. Shared bounded startup chunks, lobby fields and SNES/UI publication,
+adoption and launch checks now carry it completely. Native 34-test net suite,
+module ABI, Windows UDP, real catalog/option/adoption and two-/three-seat
+latency/jitter/loss checks pass. Matching sets run; tail mismatches refuse at
+frame zero. See `snesrecomp/docs/validation/LARGE_MOD_SETS_20261028.md`.
+Final regeneration, network-enabled game build and actual game peers are
+pending at this pin checkpoint. Other games' validated removal-preservation
+candidate pins are unchanged.
 
 - **New worktree submodule init:**
   ```
