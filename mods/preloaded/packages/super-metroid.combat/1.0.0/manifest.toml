@@ -36,3 +36,124 @@ label = "Half"
 [[plugin]]
 feature = "shinespark-drain"
 id = "super-metroid.combat.shinespark-drain"
+
+[[feature]]
+id = "screw-attack"
+name = "Screw attack breaks blocks and frozen enemies"
+description = "Screw attack breaks shot blocks (not power bomb, super missile or door blocks) and destroys frozen enemies instead of landing on them. Frozen enemies part by Adam (Screw Attack Frozen Enemies, as in Super Metroid Redux by ShadowOne333); also in Ancient Chozo (Grime)."
+group = "Combat"
+default_enabled = false
+
+[[option]]
+feature = "screw-attack"
+id = "shot-blocks"
+label = "Break shot blocks"
+description = "Screw attack breaks shot blocks, respawning or not."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "screw-attack"
+id = "frozen-enemies"
+label = "Destroy frozen enemies"
+description = "Touching a frozen enemy with screw attack unfreezes it so the attack hits it. Platform enemies stay platforms, and landing on a frozen enemy from above still stands on it."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "screw-attack"
+id = "speed"
+label = "Speed booster and shinespark too"
+description = "Running with the Speed Booster or shinesparking does the same as screw attack."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "screw-attack"
+id = "super-metroid.combat.screw-attack"
+
+[[feature]]
+id = "item-magnet"
+name = "Charge beam item magnet"
+description = "While the beam charges, item drops fly toward Samus. The tractor beam of Ancient Chozo (Grime)."
+group = "Combat"
+default_enabled = false
+
+[[option]]
+feature = "item-magnet"
+id = "charge"
+label = "Pulls while"
+description = "When drops start moving."
+type = "choice"
+default = "charging"
+[[option.choice]]
+value = "charging"
+label = "Charging"
+[[option.choice]]
+value = "full"
+label = "Fully charged"
+
+[[option]]
+feature = "item-magnet"
+id = "strength"
+label = "Speed"
+description = "How fast drops move toward Samus."
+type = "choice"
+default = "normal"
+[[option.choice]]
+value = "weak"
+label = "Slow (1 pixel per frame)"
+[[option.choice]]
+value = "normal"
+label = "Normal (2 pixels per frame)"
+[[option.choice]]
+value = "strong"
+label = "Fast (4 pixels per frame)"
+
+[[plugin]]
+feature = "item-magnet"
+id = "super-metroid.combat.item-magnet"
+
+[[feature]]
+id = "bomb-limit"
+name = "More bombs on screen"
+description = "Lay more bombs at once, and sooner after each other, than the original five bombs 16 frames apart. Requested by testers."
+group = "Combat"
+default_enabled = false
+
+[[option]]
+feature = "bomb-limit"
+id = "bombs"
+label = "Bombs at once"
+description = "How many bombs and power bombs can be out at the same time (original: 5)."
+type = "integer"
+default = 8
+min = 5
+max = 10
+step = 1
+
+[[option]]
+feature = "bomb-limit"
+id = "interval"
+label = "Frames between bombs"
+description = "How soon the next bomb can be laid (original: 16). A bomb lasts about 69 frames, so the original wait alone allows only 4 or 5 at once."
+type = "integer"
+default = 8
+min = 2
+max = 16
+step = 1
+
+[[plugin]]
+feature = "bomb-limit"
+id = "super-metroid.combat.bomb-limit"
+
+[[feature]]
+id = "beam-combo-select"
+name = "Beam combos with Select"
+description = "With the beam fully charged, press Select (item switch) to fire its combo (special beam attack) without selecting power bombs first. Costs power bombs as usual. From Super Metroid Redux (ShadowOne333)."
+group = "Combat"
+default_enabled = false
+
+[[plugin]]
+feature = "beam-combo-select"
+id = "super-metroid.combat.beam-combo-select"
