@@ -313,8 +313,16 @@ static void eye_beam_clamped_tail(void) {
     for(unsigned v=0;v<4;++v) {
       SmViewport view=views[v]; assert(SmRendererDraw(output,view,false,1));
       assert(SmRendererGetStats().eye_beam_lines==224);
-      for(unsigned y=0;y<224;++y)
-        assert(!memcmp(native+y*256,output+y*view.width+view.extra,256*sizeof(*native)));
+      for(unsigned y=0;y<224;++y) {
+        int d=(int)y+1-71;
+        int l=mirror?-30+2*d:286-6*d,r=mirror?-30+6*d:286-2*d;
+        for(unsigned x=0;x<256;++x) {
+          bool false_edge=view.extra && d>0 && ((l>255 && x==255) || (r<0 && x==0));
+          assert(output[y*view.width+view.extra+x]==
+              (false_edge?0xff00ffu:native[y*256+x]));
+          if(false_edge) assert(native[y*256+x]==0xff0000u);
+        }
+      }
       if(!view.extra)continue;
       int outside=mirror?266:-10,inside=mirror?290:-30;
       assert(output[223*view.width+view.extra+outside]==0xff00ff);

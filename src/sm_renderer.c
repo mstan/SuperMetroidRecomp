@@ -997,7 +997,11 @@ static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram
   return (priority << 12) | (b->layer << 8) | palette | pixel;
 }
 
-typedef struct SmWideWindow { bool valid; int left, right; bool first; } SmWideWindow;
+typedef struct SmWideWindow {
+  bool valid;
+  int left, right;
+  bool first, remove_clamped_edge;
+} SmWideWindow;
 
 static int q8_floor(int value) {
   return value >= 0 ? value / 256 : -((-value + 255) / 256);
@@ -1139,7 +1143,7 @@ static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
                             left, right)) return false;
   /* Require the guest's native table, including saturated one-pixel edge
    * runs from the offscreen walkers. Geometry only supplies extra columns;
-   * every original pixel continues to use the captured hardware windows. */
+   * native rows otherwise retain their captured hardware windows. */
   for (unsigned row = 0; row < 230; ++row) {
     unsigned native = read16(ram, 0x9100 + row * 2);
     int l = left[row], r = right[row];
@@ -1157,7 +1161,13 @@ static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
     memcpy(&raster, f->lines[row].registers, PPU_SAVESTATE_REGS_SIZE);
     unsigned native = read16(ram, 0x9100 + (row + 1) * 2);
     if (raster.window1left != (native & 255) || raster.window1right != (native >> 8)) continue;
-    rows[row] = (SmWideWindow){true, left[row + 1], right[row + 1], true};
+    /* An entirely offscreen cone can leave $0000/$FFFF in the hardware
+     * table: a false one-pixel stripe at the old viewport edge. In a wider
+     * view use the verified geometry at that edge too; native aspect keeps
+     * the exact hardware result. */
+    bool clamped = (native == 0xffff && left[row + 1] > 255) ||
+                   (native == 0 && right[row + 1] < 0);
+    rows[row] = (SmWideWindow){true, left[row + 1], right[row + 1], true, clamped};
     extended = true;
   }
   return extended;
@@ -1233,7 +1243,7 @@ static bool in_window(const Ppu *p, int layer, int x, int extra, const SmWideWin
   int r1 = p->window1right == 255 ? 255 + extra : p->window1right;
   int l2 = p->window2left == 0 ? -extra : p->window2left;
   int r2 = p->window2right == 255 ? 255 + extra : p->window2right;
-  if (wide->valid && (x < 0 || x >= 256)) {
+  if (wide->valid && (x < 0 || x >= 256 || (extra && wide->remove_clamped_edge))) {
     if (wide->first) { l1 = wide->left; r1 = wide->right; }
     else { l2 = wide->left; r2 = wide->right; }
   }
@@ -2067,6 +2077,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       wl[which] = wide_windows[y].left; wr[which] = wide_windows[y].right;
     }
     SnesRenderWindowPlan margin_windows = SnesRenderWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
+    if (viewport.extra && wide_windows[y].remove_clamped_edge)
+      native_windows = margin_windows;
 #endif
     int mode7_y = y + 1;
     int mode7_size = (scanout.mosaic >> 4) + 1;
