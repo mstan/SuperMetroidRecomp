@@ -59,7 +59,9 @@ Not all of these are congruous but this list was more being jotted down while I 
 
 ## Owner clarification
 
-Remove ROM patchers immediately; a replacement is not a prerequisite for
-shipping their removal. This explicitly permits temporarily withdrawing
-F-Zero BS Deluxe. The credits skip must keep the ending pose. Ancient Chozo
-content-pack work remains deferred indefinitely.
+Remove the old playable ROM-hack patching/recompilation workflow and abandoned
+SMW IPS/Luigi co-op. Preserve the modern F-Zero and SMW semantic content
+loaders, music/MSU support, BS content and new native two-player mods. The
+owner clarified this distinction after takeover; feature withdrawal is not
+the intended result. The credits skip must keep the ending pose. Ancient
+Chozo content-pack work remains deferred indefinitely.

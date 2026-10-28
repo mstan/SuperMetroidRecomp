@@ -14,13 +14,34 @@ The tester has not yet clarified auto charge or falling aim-down controls.
 
 **Immediate priority:** remove ROM patchers now. A replacement is explicitly
 not required before removal ships, including for released F-Zero BS Deluxe.
-Temporary loss of that feature is accepted. Do not retain patching under a
-deprecation warning or a compatibility exception. Pushes and main-branch
-merges remain owner-gated.
+Do not retain the obsolete patch-then-recompile path under a deprecation
+warning. Pushes and main-branch merges remain owner-gated.
+
+**Owner scope clarification after takeover:** preserve the modern F-Zero
+course loader, SMW semantic course/world loader, MSU/music features, BS
+content and the new native two-player mods. Remove the historical playable
+patched-ROM workflow and abandoned SMW IPS/Luigi co-op. Feature retirement is
+not the acceptance criterion. The current modern checkouts are:
+
+- F-Zero Forever: `_wt-fzero-track-packs`, `feat/fzero-local-2p`, `eaae4f4`.
+- SMW content packs: `_wt-content-variants-smw`, `feat/smw-custom-mods`, `a2d5d81`.
+- SMW native co-op: `_wt-smw-native-coop`, `feat/native-simultaneous-coop`, `d4b5865`.
+
+These checkouts have not been modified by the removal work. The removal
+commits below were based on older game checkouts. They are **not ready for
+integration** as a modern-game preservation result: F-Zero's modern source
+still references `cp_patch_apply`/`cp_pack_apply` in donor-resource paths, and
+has old BS/MSU adapters alongside its modern loader. Preserve supported
+content/music and native multiplayer while distinguishing semantic resource
+imports from applying a playable ROM-hack image. Reconcile these dependencies
+before carrying the shared deletion forward. Do not cherry-pick the broad
+F-Zero feature-withdrawal commit into the modern branch.
 
 ### Codex takeover: immediate patcher-removal result
 
-The standalone patcher removal is implemented and Windows-qualified locally:
+The following legacy-checkout removals were Windows-qualified locally. The
+scope clarification above supersedes any implication that their stock-only
+tests qualify the current content-loader or multiplayer branches:
 
 | Repository | Commit | Branch / checkout |
 |---|---|---|
