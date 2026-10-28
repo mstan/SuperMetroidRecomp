@@ -34,3 +34,18 @@ bool SmModPatchImm16(const char *name, uint32_t insn_addr,
 typedef struct SmModValue { char text[128]; } SmModValue;
 const char *SmModOption(SmModValue *out, const char *package, const char *feature,
                         const char *option, const char *fallback);
+
+/* A boolean option: true when its committed value is "true". */
+bool SmModOptionBool(const char *package, const char *feature,
+                     const char *option, bool fallback);
+
+/* Arm the `mod_hook` declared at each LoROM bus address (snesrecomp
+ * docs/MOD_HOOK.md). Every hook armed here is disarmed by the same reset
+ * callback that reverts ROM patches, so a disabled feature is stock on the
+ * next launch. Returns how many were armed; a PC without a declared hook is
+ * reported like a refused patch. */
+size_t SmModArmHooks(const char *name, const uint32_t *pcs, size_t count);
+
+/* One word of the loaded ROM image at a LoROM bus address ($8000-$FFFF),
+ * or 0 outside the image. */
+uint16_t SmModRomWord(uint32_t snes_addr);

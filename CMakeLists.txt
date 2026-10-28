@@ -285,6 +285,11 @@ set(SM_HOST_SOURCES
     src/mods/sm_hud_plugins.c
     src/mods/sm_laser_sight_plugin.c
     src/mods/sm_reveal_map_plugin.c
+    src/mods/sm_cinematic_skip_plugin.c
+    src/mods/sm_door_plugin.c
+    src/mods/sm_item_pickup_plugin.c
+    src/mods/sm_screen_shake_plugin.c
+    src/mods/sm_return_to_title_plugin.c
 )
 
 if(ANDROID)

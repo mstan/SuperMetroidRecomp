@@ -3,7 +3,7 @@ id = "super-metroid.pacing"
 version = "1.0.0"
 name = "Super Metroid Pacing"
 author = "SuperMetroidRecomp contributors"
-description = "Shorter waits: faster elevators and more. Each feature is a separate switch. Ideas from Super Metroid Redux (ShadowOne333), Project Base (Begrimed) and Ancient Chozo, reimplemented for the stock game."
+description = "Shorter waits: skippable intro and credits, faster doors and elevators, quicker item pickups and more. Each feature is a separate switch. Ideas from Super Metroid Redux (ShadowOne333), Project Base (Begrimed) and Ancient Chozo, reimplemented for the stock game."
 license = "MIT"
 resolver = "declarative"
 save_compatibility = "shared"
@@ -36,3 +36,132 @@ label = "3x"
 [[plugin]]
 feature = "elevators"
 id = "super-metroid.pacing.elevators"
+
+[[feature]]
+id = "intro-skip"
+name = "Skippable intro"
+description = "Press Start during the story intro to go straight to the flight to Ceres. Not offered with Japanese text. Intro skip by samsamcmoi, as in Super Metroid Redux."
+group = "Pacing"
+default_enabled = false
+
+[[plugin]]
+feature = "intro-skip"
+id = "super-metroid.pacing.intro-skip"
+
+[[feature]]
+id = "ceres-skip"
+name = "Start on Zebes"
+description = "A new game skips the intro and Ceres Station and starts at the Landing Site. Based on the Skip Ceres patch shipped with Super Metroid Redux."
+group = "Pacing"
+default_enabled = false
+
+[[plugin]]
+feature = "ceres-skip"
+id = "super-metroid.pacing.ceres-skip"
+
+[[feature]]
+id = "credits-skip"
+name = "Skippable credits"
+description = "Press Start during the staff roll to go to the ending pose and final screen."
+group = "Pacing"
+default_enabled = false
+
+[[plugin]]
+feature = "credits-skip"
+id = "super-metroid.pacing.credits-skip"
+
+[[feature]]
+id = "doors"
+name = "Faster door transitions"
+description = "Doors fade and scroll faster, in every direction and through elevators and boss doors. Inspired by Project Base (Begrimed), Super Metroid Redux and Ancient Chozo."
+group = "Pacing"
+default_enabled = false
+
+[[option]]
+feature = "doors"
+id = "speed"
+label = "Speed"
+description = "2x: twice as fast scrolling and fades. Maximum: the fastest scroll the map loader keeps up with (2x sideways and up, 3.5x down) and near-instant fades."
+type = "choice"
+default = "2x"
+[[option.choice]]
+value = "2x"
+label = "2x"
+[[option.choice]]
+value = "max"
+label = "Maximum"
+
+[[plugin]]
+feature = "doors"
+id = "super-metroid.pacing.doors"
+
+[[feature]]
+id = "item-pickup"
+name = "Quicker item pickups"
+description = "Shorter interruptions when collecting items. Ideas from Super Metroid Redux (message skip, expansion sounds by Sadiztyk Fish) and Ancient Chozo (no pickup freeze)."
+group = "Pacing"
+default_enabled = false
+
+[[option]]
+feature = "item-pickup"
+id = "skip-message"
+label = "Skippable message boxes"
+description = "A new button press closes item, map, recharge and Save Completed messages at once."
+type = "boolean"
+default = true
+
+[[option]]
+feature = "item-pickup"
+id = "no-freeze"
+label = "No pickup freeze"
+description = "Items show no message box; the fanfare plays while you keep moving."
+type = "boolean"
+default = false
+
+[[option]]
+feature = "item-pickup"
+id = "short-jingle"
+label = "Short expansion sound"
+description = "Energy and reserve tanks and repeat missile, super missile and power bomb expansions play a short pickup sound instead of the fanfare."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "item-pickup"
+id = "super-metroid.pacing.item-pickup"
+
+[[feature]]
+id = "screen-shake"
+name = "Reduce screen shake"
+description = "Earthquakes shake the screen less, or not at all. They still last as long and trigger the same events."
+group = "Comfort"
+default_enabled = false
+
+[[option]]
+feature = "screen-shake"
+id = "shake"
+label = "Shaking"
+description = "How far the screen moves during earthquakes."
+type = "choice"
+default = "half"
+[[option.choice]]
+value = "half"
+label = "Half"
+[[option.choice]]
+value = "off"
+label = "Off"
+
+[[plugin]]
+feature = "screen-shake"
+id = "super-metroid.pacing.screen-shake"
+
+[[feature]]
+id = "return-to-title"
+name = "Return to title after the ending"
+description = "Press Start on the final screen to fade out and return to the title screen, as Game Over's End does, without resetting the console."
+group = "Pacing"
+default_enabled = false
+
+[[plugin]]
+feature = "return-to-title"
+id = "super-metroid.pacing.return-to-title"
