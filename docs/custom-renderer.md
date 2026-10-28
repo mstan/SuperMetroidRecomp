@@ -87,6 +87,16 @@ and guest-trace equality alone previously passed a black-margin fallback.
 
 ## October 2026 feedback regressions
 
+Plasma Spark's nonrectangular level allocation includes complete unused
+256x256 screens filled with solid block `$83FF`, whose diagnostic tile is a
+white cross. Widening now mattes only screens containing 256 such blocks.
+A screen with any other block remains visible, preserving real walls,
+hidden content and PLM changes. The matte follows the raster/interpolated
+terrain position and clips the final world pixel; native pixels are unchanged.
+Four-width, three-phase fixtures exercise the moving boundary and content
+preservation. The October27 replay burndown records the built traversal,
+save/load and immutable before/after evidence for this correction.
+
 The HUD's BG3 tilemap can remain on the color-math subscreen after the
 gameplay IRQ. Its status/minimap rows now stay within the native horizontal
 span, preventing the dotted minimap border from wrapping into a widened

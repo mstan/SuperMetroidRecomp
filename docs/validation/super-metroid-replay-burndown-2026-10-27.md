@@ -2,13 +2,13 @@
 
 Updated: 2026-10-28. Tracker: **beads-8wg.6.34**.
 
-Worktree: `G:\Temp\Codex\supermetroid\replay-bugfix-20261027\source`  
-Branch: `fix/replay-bugfixes-20261027`  
+Worktree: `G:\Temp\Codex\supermetroid\replay-bugfix-20261027\source`
+Branch: `fix/replay-bugfixes-20261027`
 Starting game commit: `e617b6573ea090e3bcab2690f4193ce5c2fa4869` (0.3.17).
 
 ## Burndown chart
 
-**1 / 7 unique clip reports resolved; 6 remain.**
+**1 / 7 unique clip reports fixed and validated; 6 unresolved reports deferred by the owner. No active implementation items remain in this pass.**
 
 ```mermaid
 xychart-beta
@@ -18,7 +18,7 @@ xychart-beta
     bar [7, 6]
 ```
 
-| Checkpoint | Total unique clip reports | Fixed and validated | Verified existing behavior / duplicate of another row | Remaining |
+| Checkpoint | Total unique clip reports | Fixed and validated | Verified existing behavior / duplicate of another row | Unresolved (including deferred) |
 | --- | ---: | ---: | ---: | ---: |
 | Intake, 2026-10-27 | 7 | 0 | 0 | 7 |
 | Room padding fix, 2026-10-28 | 7 | 1 | 0 | 6 |
@@ -31,12 +31,12 @@ Names below are exact files in `E:\Downloads`. Scene descriptions and inspection
 
 | ID | Work order | Clip | Length | Scene / observed candidate | Status | Next decisive check and closure target |
 | --- | ---: | --- | ---: | --- | --- | --- |
-| SM27-01 | 6 | [clip_1,793,140,731,658.mp4](E:/Downloads/clip_1,793,140,731,658.mp4) | 8.292 s | Vertical movement through a tall green/brown room. Inspect terrain/background scrolling, room margins, and moving Samus. Specific defect remains unconfirmed. | **Open: identify symptom** | Match footage to room, inventory, camera and motion in the replay index; inspect consecutive frames and audio. Record an exact defect/timestamp before implementing. Validate the same movement on the candidate. |
-| SM27-02 | 7 | [clip_1,793,140,528,702.mp4](E:/Downloads/clip_1,793,140,528,702.mp4) | 10.724 s | Blue corridor with an eye/light-cone effect while Samus moves horizontally. Cone geometry, motion, culling and audio are inspection targets, not established failures. | **Open: identify symptom** | Find the actual cone activation and camera movement, rather than an idle capture from the same room. Compare native and widened output through activation/deactivation and inspect audio. Close only the demonstrated symptom. |
-| SM27-03 | 4 | [clip_1,793,140,650,331.mp4](E:/Downloads/clip_1,793,140,650,331.mp4) | 9.717 s | Jumps and scrolling through a Norfair room above lava. Check moving terrain/background alignment, lava boundaries and HUD-edge artifacts; root cause unconfirmed. | **Open: reproduce motion** | Start with the matching-inventory `$A788` replay candidates. Match a footage timestamp, capture adjacent simulations/intermediate presentations, then validate terrain, effects and HUD together through the jump. |
-| SM27-04 | 3 | [clip_1,793,140,682,203.mp4](E:/Downloads/clip_1,793,140,682,203.mp4) | 16.136 s | Chozo/item room, door transitions and a speed-boosted run over lava. Isolated door images are visible during transitions; whether each is intended needs frame-level comparison. | **Open: reproduce transition** | Locate outgoing/incoming rooms and loader phases; inspect both transition directions, door ownership and the following lava run. Compare retail behavior where needed. Distinguish normal transition blanks from an introduced phantom door or stale room image. |
-| SM27-05 | 1 | [clip_1,793,140,699,506.mp4](E:/Downloads/clip_1,793,140,699,506.mp4) | 17.250 s | Crocomire encounter. Apparent discontinuities in terrain/liquid at native-view boundaries are visible in the footage. Exact cause and offending replay frames remain unconfirmed. | **Open: reproduce seams** | Use Crocomire replay `20261026-161546-22582-000325` and nearby segments as candidates. Match the camera/presentation phase; isolate terrain, boss canvas, liquid and color math. Eliminate the demonstrated seams while preserving native pixels, boss behavior and lava. |
-| SM27-06 | 5 | [clip_1,793,140,666,141.mp4](E:/Downloads/clip_1,793,140,666,141.mp4) | 3.181 s | Vertical movement in a green Bubble Mountain scene. Inspect background/terrain alignment, sprites and camera motion; thin black/corrupted HUD rows are visible during the jump; exact failing frame is being matched. | **Open: reproduce HUD corruption** | Begin with `$ACB3` replay `20261026-161546-22582-000182`; confirm footage alignment rather than treating a similar screenshot as an exact match. Check consecutive frames and sound, then reproduce and validate the identified fault. |
+| SM27-01 | 6 | [clip_1,793,140,731,658.mp4](E:/Downloads/clip_1,793,140,731,658.mp4) | 8.292 s | Plasma Spark `$D340` upper shaft. The black left-margin cutout crosses a boundary between a full `$83FF` padding screen and real `$8210` wall blocks. | **Deferred: intended fault unconfirmed** | Reopen with an intended symptom beyond, or a decision about, the authored padding matte. Room/camera matches and the unresolved interpretation are retained below. |
+| SM27-02 | 7 | [clip_1,793,140,528,702.mp4](E:/Downloads/clip_1,793,140,528,702.mp4) | 10.724 s | Morph Ball eye room `$9E9F`; cone activation is visible in the clip, but a definite visual, audio or gameplay fault was not established. | **Deferred: symptom unknown** | The owner cannot identify a more specific symptom and authorized deferral. Keep the original clip; no cone fix is claimed for this report. |
+| SM27-03 | 4 | [clip_1,793,140,650,331.mp4](E:/Downloads/clip_1,793,140,650,331.mp4) | 9.717 s | Cathedral `$A788`, jumps above lava. Similar-inventory replays and native pixel checks pass; the alleged alignment/HUD problem was not localized. | **Deferred: defect unconfirmed** | Retain candidate replays 170/171 and captures. Reopen when a concrete failing timestamp/behavior is established; passing static native pixels is not motion acceptance. |
+| SM27-04 | 3 | [clip_1,793,140,682,203.mp4](E:/Downloads/clip_1,793,140,682,203.mp4) | 16.136 s | Wave Beam room `$ADDE` to Double Chamber `$ADAD`, then a speed-boosted lava run. Isolated-door frames alone do not establish a phantom-door defect. | **Deferred: transition defect unconfirmed** | Retain the clip and room identities. Reopen with a mismatched door or other concrete failure; do not treat ordinary black transition phases as a demonstrated bug. |
+| SM27-05 | 1 | [clip_1,793,140,699,506.mp4](E:/Downloads/clip_1,793,140,699,506.mp4) | 17.250 s | Crocomire `$A98D`. Apparent terrain/liquid discontinuities remain a candidate; sampled original captures, adjacent interpolation and nearby dense replays did not reproduce a definite bad seam. | **Deferred: seam not reproduced** | Retain matched candidate frames/captures and reproduction tools. Reopen with exact presentation/camera timing or another failing capture; no fix or already-fixed claim is made. |
+| SM27-06 | 5 | [clip_1,793,140,666,141.mp4](E:/Downloads/clip_1,793,140,666,141.mp4) | 3.181 s | Bubble Mountain `$ACB3`; two original 600-frame candidate segments pass, but the clip movement and a definite fault have not been matched. HUD-edge noise was only a hypothesis. | **Deferred: symptom unknown** | The owner cannot identify a more specific symptom and authorized deferral. Keep the original clip and selected diagnostic frames; no HUD fix is claimed. |
 | SM27-07 | 2 | [clip_1,793,140,718,500.mp4](E:/Downloads/clip_1,793,140,718,500.mp4) | 14.085 s | Plasma Spark room `$D340`, lower route: white cross-pattern strip in the left margin (6.35-13.98 s). | **Fixed and validated: complete unused screens clipped** | Built traversal left, right, then left; current-build save/load; immutable before/after capture at camera `(256,1280)`; native pixels unchanged at four widths. See outcome below. |
 
 The suggested order starts with the clearest visible candidates and may change when measurements identify a shared cause or a more consequential defect.
@@ -106,19 +106,19 @@ These links intentionally refer to this prepared local task directory. Do not co
 - **Duplicate:** link the canonical defect and validate that its resolution covers this clip. Keep both original evidence references.
 - **Blocked / unverified:** document the exact missing prerequisite and continue other rows. This does not reduce the remaining count.
 
-Complete the goal only when all seven clip reports and any distinct defects discovered from this evidence have a validated disposition, the combined candidate regression checks pass, and changes/evidence are recorded. If owner judgment is still required, prepare the concrete check and leave that requirement outstanding. Commit validated source and this chart on the worktree branch; do not merge, publish or release without the owner's instruction. Preserve useful evidence, update the resource ledger, and clean superseded agent-created scratch.
+On 2026-10-28 the owner authorized deferring reports when their bug cannot be determined. This pass therefore ends with one validated fix and six explicit deferrals. Deferred rows remain unresolved in the burndown; they do not count as fixes or verified existing behavior. Keep their clips, findings and reproduction paths. Commit validated source and this chart; do not merge, publish or release. Preserve useful evidence and clean superseded scratch.
 
 ## Findings and completed work
 
 | ID | Concrete symptom / matched timestamp | Root cause / owning issue | Fix commit | Built validation and before/after evidence | Disposition |
 | --- | --- | --- | --- | --- | --- |
-| SM27-01 | Pending | Pending | None | Intake only | Open |
-| SM27-02 | Pending | Pending | None | Intake only | Open |
-| SM27-03 | Pending | Pending | None | Baseline candidate replays pass | Open |
-| SM27-04 | Pending | Pending | None | Intake only | Open |
-| SM27-05 | Candidate seams; exact replay frame pending | Pending | None | Baseline candidate replay/captures pass | Open |
-| SM27-06 | Pending | Pending | None | Baseline candidate replay passes | Open |
-| SM27-07 | Left cross-pattern strip, 6.35-13.98 s; Plasma Spark `$D340`, camera `(256,1280)` | Completely unused 256x256 screens filled with `$83FF` inside a nonrectangular room were rendered as level content; beads-8wg.6.34 | This branch: `src/sm_renderer.c`, `tests/sm_renderer_test.c` | Fresh built traversal in both directions and current-build save/load pass. Same captured frame: 1,128 cross pixels removed at width342, zero native/right-margin changes. Four widths and three interpolation phases covered by regression fixtures; 28 real scene/width native comparisons pass; 18/18 CTest. | Fixed and validated |
+| SM27-01 | Black cutouts at 3.724/5.213 s; Plasma Spark upper shaft | Authored filler boundary explains shape; intended fault unconfirmed | None | ROM geometry/camera alignment retained; not a validated defect | Deferred by owner; unresolved |
+| SM27-02 | Eye cone activation visible; exact fault unknown | Undetermined | None | Same-room baseline and existing cone fixtures are insufficient for this clip | Deferred by owner; unresolved |
+| SM27-03 | Norfair movement/lava candidate | Undetermined | None | Original replays 170/171 checkpoints and static native pixels pass; motion fault unlocalized | Deferred by owner; unresolved |
+| SM27-04 | Wave Beam to Double Chamber transition/run | Undetermined | None | Room identities established; isolated-door phases not demonstrated wrong | Deferred by owner; unresolved |
+| SM27-05 | Candidate Crocomire seams; exact presentation pending | Undetermined | None | Two dense original segments and sampled immutable/interpolated captures; seam not reproduced | Deferred by owner; unresolved |
+| SM27-06 | Bubble Mountain movement; exact fault unknown | Undetermined | None | Replays 178/182 each pass 600 checkpoints; full clip movement unmatched | Deferred by owner; unresolved |
+| SM27-07 | Left cross-pattern strip, 6.35-13.98 s; Plasma Spark `$D340`, camera `(256,1280)` | Completely unused 256x256 screens filled with `$83FF` inside a nonrectangular room were rendered as level content; beads-8wg.6.34 | `1f41930` | Fresh built traversal in both directions and current-build save/load pass. Same captured frame: 1,128 cross pixels removed at width 342, zero native/right-margin changes. Four widths and three interpolation phases covered by regression fixtures; 28 real scene/width native comparisons pass; 18/18 CTest. | Fixed and validated |
 
 ### 2026-10-28: SM27-07 resolved
 
@@ -131,8 +131,18 @@ Validation: Windows native-raster Release binary SHA256 `1f50d13af577326b4335e00
 Retained evidence:
 
 - [Built traversal, both directions and save/load](../../../diagnostics/plasma-spark-padding-final/result.json), with command journal and 117 screenshots in that directory.
-- [Same immutable capture before](../../../evidence/padding-same-capture-before.bmp) and [after](../../../evidence/padding-same-capture-after.bmp): native camera `(256,1280)`, width342, 1,128 changed left-margin pixels, all left-margin gameplay pixels now black, zero native/right-margin changes.
+- [Same immutable capture before](../../../evidence/padding-same-capture-before.bmp) and [after](../../../evidence/padding-same-capture-after.bmp): native camera `(256,1280)`, width 342, 1,128 changed left-margin pixels, all left-margin gameplay pixels now black, zero native/right-margin changes.
 - [28 scene/width comparisons](../../../evidence/padding-comparisons/results.json): all 49,152 native pixels below the HUD match stock and the baseline in every case; the six other selected scenes have no margin changes.
-- [18 passing combined tests](../../../evidence/padding-ctest.log). The renderer fixture covers 256/342/448/682 widths, alpha0/0.5/1, a moving boundary, preserving native pixels and preserving a filled screen with real content.
+- [18 passing combined tests](../../../evidence/padding-ctest.log). The renderer fixture covers 256/342/448/682 widths, alpha 0/0.5/1, a moving boundary, preserving native pixels and preserving a filled screen with real content.
 
 Other findings remain open. SM27-01's geometry now points toward Plasma Spark's upper shaft rather than the earlier Watering Hole guess, but its black edge cutouts need a separate matched reproduction. SM27-04 starts in the Wave Beam room `$ADDE`, then Double Chamber `$ADAD`; its transitions remain unverified. Direct Ceres-to-Zebes room setups were invalid because common room graphics had not been initialized; these were replaced by fresh landing-based setups. Similar-room screenshots and passing checkpoint hashes are not dispositions for the remaining reports.
+
+### 2026-10-28: owner-authorized deferrals
+
+The owner answered the targeted question about the Bubble Mountain and eye clips: **"I don't konw. defer if you can't determine"**. The same rule is applied to the other reports whose alleged defect remains unconfirmed after the retained checks. The six deferred rows stay in the unresolved count. No speculative source fixes were made for them.
+
+For SM27-01, foreground matching establishes Plasma Spark, with cameras approximately `(512,20)` at 0.0 s, `(256,105)` at 3.724 s, and `(256,108)` at 5.213 s. The left black cutout ends at screen rows 149/146 respectively: the source world's y256 boundary. Its upper-left screen is 256 blocks of `$83FF`; the screen below is 256 genuine `$8210` wall blocks. The conservative matte preserves that real wall. This explains the shape, but does not establish that this was the intended fault, so the report remains deferred. See [source/clip alignment](../../../evidence/shaft-padding-location.json).
+
+SM27-06 candidate replays 178 and 182 each match all 600 recorded checkpoints. Sampled footage comparisons do not establish the same complete movement; the HUD-corruption guess is not a demonstrated diagnosis. SM27-05's retained original frames include nearest candidates around replay 324 frame 194363 and replay 325 frame 194454, plus immutable raster pairs; they do not establish the suspected seam. Wrong-room guesses and invalid pre-landing setups are disposable diagnostics, not regression findings.
+
+Final pass result: **one source fix (`1f41930`), 18/18 combined tests, 28 native scene/width comparisons, current-build save/load and both-direction Plasma Spark traversal pass; six unresolved reports explicitly deferred.** Beads remains open for those reports. No merge, release or owner-facing game launch was performed.
