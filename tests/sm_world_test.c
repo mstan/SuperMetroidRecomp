@@ -85,6 +85,30 @@ int main(void) {
   assert(!memcmp(saved,ram,sizeof(ram)));
   Word(0x84d000,0xc7b1); /* another special-block setup is not a down-only floor */
   assert(SmWorldLoad(&world,Read,NULL) && world.marker_count==5);
+  /* An arrival/reverse header without a source block cannot make a passage
+   * two-way, or impose a fabricated atlas constraint. */
+  const uint8_t empty_level[]={1,0,2,0xe6,0xff,0,0xff};
+  for (unsigned i=0; i<sizeof(empty_level); ++i) Byte(0xc28000+i,empty_level[i]);
+  Long(0x8f940d,0xc28000);
+  assert(SmWorldLoad(&world,Read,NULL));
+  assert(world.doors[0].block_x==0 && world.doors[1].block_x==-1);
+  assert(!world.doors[0].reciprocal && !world.doors[1].reciprocal);
+  assert(!SmWorldLayout(&world,layout) && layout[1][0]==24);
+  /* A scripted escape door reads its native spawn coordinates and setup
+   * index, including bounds/signature checks, without executing the script. */
+  Fixture(); Header(0x8fdd58,5,1,1,0xddf0);
+  Word(0x8fdd63,0xe5e6); State(0xdd65,0x9280);
+  Word(0x83900c,0xdd58); Word(0x8fddf0,0x9018); Word(0x8fddf2,0x9024);
+  Word(0x839018,0x91f8); Word(0x839024,0x91f8);
+  Byte(0xa9b333,0x22); Long(0xa9b334,0x8483d7);
+  Byte(0xa9b337,0); Byte(0xa9b338,6); Word(0xa9b339,0xb677);
+  Word(0x84b677,0xb5f8); Byte(0x84b5fb,0xa9); Word(0x84b5fc,0x9001);
+  assert(SmWorldLoad(&world,Read,NULL));
+  const SmWorldRoom *escape=SmWorldFindRoom(&world,0xdd58);
+  assert(escape && world.doors[escape->first_door+1].block_x==0 && world.doors[escape->first_door+1].block_y==6);
+  Byte(0xa9b338,16); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"escape door block"));
+  Byte(0xa9b338,6); Byte(0xa9b333,0); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"escape door spawn"));
+  Fixture();
   Word(0x8f9203,0xffff); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"selector"));
   Fixture(); Byte(0xc0fffe,0x80); /* invalid absolute copy before any output */
   assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"compressed level"));

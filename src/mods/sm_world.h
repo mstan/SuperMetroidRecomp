@@ -21,7 +21,7 @@ typedef struct SmWorldRoom {
 } SmWorldRoom;
 typedef struct SmWorldDoor {
   uint16_t definition, source, destination, index;
-  int16_t block_x, block_y; /* source room blocks; -1 if script-created */
+  int16_t block_x, block_y; /* physical/scripted source blocks; -1 for header-only records */
   uint8_t direction, flags, arrival_x, arrival_y, arrival_screen_x, arrival_screen_y;
   bool reciprocal;
 } SmWorldDoor;

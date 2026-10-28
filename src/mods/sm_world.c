@@ -154,6 +154,27 @@ static bool Marker(SmWorld *w, uint16_t room, uint16_t state, uint16_t plm,
   w->markers[w->marker_count++]=(SmWorldMarker){room,state,plm,argument,x,y,(uint8_t)kind,(uint8_t)detail,(uint8_t)direction};
   return true;
 }
+/* Mother Brain creates her escape door after the fight, rather than storing
+ * its block in the compressed room. Read the stock SpawnHardcodedPlm record
+ * and its typed setup operand; never infer an exit from an unused header. */
+static bool ScriptedDoors(SmWorld *w, Reader r) {
+  const SmWorldRoom *room=SmWorldFindRoom(w,0xdd58);
+  if (!room) return true;
+  uint32_t call=0xa9b333, args=call+4;
+  if (B(r,call)!=0x22 || L(r,call+1)!=0x8483d7)
+    return Fail(w,"escape door spawn",call);
+  uint16_t plm=W(r,args+2), setup=W(r,0x840000u|plm);
+  if (setup!=0xb5f8 || B(r,0x840000u+setup+3)!=0xa9)
+    return Fail(w,"escape door setup",0x840000u|plm);
+  uint16_t block=W(r,0x840000u+setup+4);
+  unsigned index=block&0x7f, x=B(r,args), y=B(r,args+1);
+  if ((block&0xf000)!=0x9000 || index>=room->door_count ||
+      x>=room->width*16u || y>=room->height*16u)
+    return Fail(w,"escape door block",0x840000u+setup+4);
+  SmWorldDoor *door=&w->doors[room->first_door+index];
+  door->block_x=(int16_t)x; door->block_y=(int16_t)y;
+  return true;
+}
 bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   if (!w || !read) return false;
   memset(w,0,sizeof(*w)); Reader r={read,context};
@@ -183,11 +204,6 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
     }
     if (!LevelDoors(w,r,room,room->default_state)) return false;
   }
-  for (unsigned i=0; i<w->door_count; ++i) {
-    SmWorldDoor *d=&w->doors[i]; const SmWorldRoom *to=SmWorldFindRoom(w,d->destination);
-    if (to) for (unsigned j=0; j<to->door_count; ++j)
-      if (w->doors[to->first_door+j].destination==d->source) { d->reciprocal=true; break; }
-  }
   for (unsigned i=0; i<w->state_count; ++i) {
     uint16_t state=w->states[i], room=w->state_rooms[i];
     SmWorldRoom *owner=NULL;
@@ -200,6 +216,16 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
       uint16_t plm=W(r,p); if (!plm) break;
       if (!Marker(w,room,state,plm,B(r,p+2),B(r,p+3),W(r,p+4))) return false;
       if (j==255) return Fail(w,"unterminated PLM population",p);
+    }
+  }
+  if (!ScriptedDoors(w,r)) return false;
+  for (unsigned i=0; i<w->door_count; ++i) {
+    SmWorldDoor *d=&w->doors[i];
+    if (d->block_x<0) continue;
+    const SmWorldRoom *to=SmWorldFindRoom(w,d->destination);
+    if (to) for (unsigned j=0; j<to->door_count; ++j) {
+      const SmWorldDoor *reverse=&w->doors[to->first_door+j];
+      if (reverse->block_x>=0 && reverse->destination==d->source) { d->reciprocal=true; break; }
     }
   }
   for (unsigned area=0; area<SM_WORLD_AREAS; ++area) {
@@ -257,17 +283,8 @@ unsigned SmWorldLayout(const SmWorld *w, int16_t xy[SM_WORLD_ROOMS][2]) {
     for (unsigned i=0; i<room->door_count; ++i) {
       const SmWorldDoor *door=&w->doors[room->first_door+i];
       const SmWorldRoom *other=SmWorldFindRoom(w,door->destination);
-      if (!other) continue;
+      if (!other || door->block_x<0) continue;
       int x=door->block_x, y=door->block_y;
-      if (x<0) {
-        const SmWorldDoor *reverse=NULL; unsigned matches=0;
-        for (unsigned j=0; j<other->door_count; ++j) {
-          const SmWorldDoor *d=&w->doors[other->first_door+j];
-          if (d->destination==room->header) { reverse=d; ++matches; }
-        }
-        if (matches!=1) continue;
-        x=reverse->arrival_x; y=reverse->arrival_y;
-      }
       static const int dx[]={1,-1,0,0},dy[]={0,0,1,-1};
       unsigned direction=door->direction&3;
       int ax=(door->flags&0x80) ? door->arrival_screen_x : door->arrival_x/16;
