@@ -229,6 +229,9 @@ if(BUILD_TESTING AND NOT ANDROID)
         src/mods/sm_map_view.c ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
     target_include_directories(sm_map_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_map_views COMMAND sm_map_test)
+    add_executable(sm_quit_test tests/sm_quit_test.c src/mods/sm_return_to_title_plugin.c)
+    target_include_directories(sm_quit_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_quit_file_select COMMAND sm_quit_test)
     add_executable(sm_render_capture tools/sm_render_capture.c src/sm_renderer.c src/sm_video.c src/sm_mode7.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
     target_include_directories(sm_render_capture PRIVATE src
@@ -238,7 +241,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
             sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test
-            sm_controls_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test)
+            sm_controls_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()

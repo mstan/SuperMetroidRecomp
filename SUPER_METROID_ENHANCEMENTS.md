@@ -220,7 +220,7 @@ measured headlessly; the owner hasn't playtested any feature yet.
 | .5 | Faster elevators (2x/3x) | Done. The Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
 | .6 | Item pickup: short jingle, no freeze, skip message boxes | Done. Freeze goes 565 → 60 → 0 frames. |
 | .7 | Reduce screen shake (off/half) | Converted to hooks at `$A0:86A5` / `$86:843C` plus operand `$A0:8705`; measured 3/2/0 px for stock/half/off, with unchanged timers. |
-| .8 | Return to title from the mission-complete screen | Done. **TODO:** "quit to file select" action from gameplay. |
+| .8 | Ending return; quit to file select during gameplay | Both implemented independently. New pause Options action passes actual native transition, SRAM preservation, fade-save/late-load, two-frame run-ahead and interpreted file-select checks. See `docs/validation/SM_QUIT_20261028.md`; owner review pending. |
 
 ### `super-metroid.movement`
 | Bead | Feature | Hook sites / evidence |
@@ -485,7 +485,7 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
    review. Seven-case checks and the LLE-authoritative pause-boundary limit
    are recorded in `docs/validation/SM_MAPS_20261028.md`.
 5. **Pacing:**
-   - quit to file select from gameplay;
+   - quit to file select implemented and automatically qualified; owner review pending;
    - elevator and boss-door headless checks.
 6. **Movement extras:**
    - spark down-to-morph;
@@ -495,7 +495,7 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 8. **Automated playtest pass** over every feature. Then write the owner a
    short, focused checklist of what automation cannot judge (feel, visuals).
 9. **Cross-repo removal preservation gate complete** (6.3); keep the validated modern loaders/music/multiplayer candidates intact.
-10. **At final handoff only:** ask the owner to define .26 falling aim-down. Auto charge .20 is already defined and needs implementation.
+10. **At final handoff only:** ask the owner to define .26 falling aim-down. Auto charge .20 is implemented and automatically qualified.
 11. **Owner-gated:** push and merge of the engine and SM branches.
 
 ## 10. Traps already hit

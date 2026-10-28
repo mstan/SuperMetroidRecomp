@@ -31,6 +31,10 @@ bool g_config_dirty;
 bool f_host_live = true;
 bool snesrecomp_host_frame_is_live(void) { return f_host_live; }
 bool f_exit_requested;
+bool f_quit_enabled;
+unsigned f_quit_requests;
+bool SmQuitFileSelectEnabled(void) { return f_quit_enabled; }
+bool SmQuitFileSelectRequest(void) { if (!f_quit_enabled) return false; ++f_quit_requests; return true; }
 int f_fullscreen;        /* 0 = windowed, 1 = borderless */
 int f_vsync = 1;         /* 0 = off, 1 = on, 2 = adaptive */
 int f_frame_blend;
@@ -140,6 +144,7 @@ int main(void) {
   /* Opened on Widescreen at the defaults: sm-video defaults, and the faked
    * framework defaults (windowed, vsync on, no blend, no run-ahead, scale 3). */
   HashCheck(256, 0x3606AAC9u);
+
   HashCheck(342, 0x99C47AB9u);
 
   /* Speculative/rollback UI may navigate for its picture, but cannot change
@@ -356,6 +361,13 @@ int main(void) {
   /* The opening picture again. */
   HashCheck(256, 0x3606AAC9u);
 
+  /* The optional gameplay quit row exists only with its feature on; default
+   * pictures/navigation above remain identical when it is off. */
+  SmPauseOptions_SetActive(false); f_quit_enabled=true; SmPauseOptions_SetActive(true);
+  assert(SmPauseOptions_CursorValid(11) && !SmPauseOptions_CursorValid(12));
+  for (unsigned i=0; i<8; ++i) Frame(kButton_Down,0); /* HUD row is disabled */
+  Frame(kButton_A,0);
+  assert(f_quit_requests==1 && !f_exit_requested);
   puts("sm_pause_options: ok");
   return 0;
 }

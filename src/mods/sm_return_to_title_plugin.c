@@ -32,6 +32,9 @@
 #include "mod_hook.h"
 #include "mod_runtime.h"
 #include "sm_mod_support.h"
+#include "sm_return_to_title_plugin.h"
+#include "../sm_pause_options.h"
+#include "snes_overlay_draw.h"
 
 #define RAM16(cpu, a) ((uint16_t)((cpu)->ram[(a)] | (cpu)->ram[(a) + 1] << 8))
 static void Put16(CpuState *cpu, uint32_t a, uint16_t v) {
@@ -48,22 +51,69 @@ enum {
   kNullsub127 = 0xE7BA, kQuitMarker = 0x9A47, /* CinematicFunctionNone */
 };
 
+enum { kQuitIdle, kQuitRequested, kQuitFading, kQuitNavigating };
+static bool g_quit_enabled;
+static uint32_t g_quit_state;
+
+bool SmQuitFileSelectEnabled(void) { return g_quit_enabled; }
+bool SmQuitFileSelectRequest(void) {
+  if (!g_quit_enabled) return false;
+  g_quit_state=kQuitRequested; return true;
+}
+uint32_t SmQuitFileSelectState(void) { return g_quit_state; }
+bool SmQuitFileSelectStateValid(uint32_t state) { return state<=kQuitNavigating; }
+void SmQuitFileSelectRestore(uint32_t state) { if (SmQuitFileSelectStateValid(state)) g_quit_state=state; }
+static bool FadeOut(CpuState *cpu) {
+  uint8_t *inidisp=&cpu->ram[kInidisp];
+  uint16_t counter=RAM16(cpu,kScreenFadeCounter);
+  if (!counter) {
+    Put16(cpu,kScreenFadeCounter,RAM16(cpu,kScreenFadeDelay));
+    if (*inidisp&15) *inidisp=(*inidisp&15)==1 ? 0x80 : (uint8_t)((*inidisp&15)-1);
+  } else Put16(cpu,kScreenFadeCounter,(uint16_t)(counter-1));
+  return !(*inidisp&15);
+}
+
+/* The existing Options wrapper runs this before entering the original pause
+ * routine. A true result delegates to its bare RTS: no bank prefix was run
+ * and no old pause dispatch may run with the new game-over menu index. */
+bool SmQuitPauseStep(CpuState *cpu) {
+  if (!g_quit_enabled || (g_quit_state!=kQuitRequested && g_quit_state!=kQuitFading) || RAM16(cpu,kGameState)!=15) return 0;
+  if (g_quit_state==kQuitRequested) {
+    Put16(cpu,kScreenFadeDelay,1); Put16(cpu,kScreenFadeCounter,1); g_quit_state=kQuitFading;
+  }
+  SmPauseOptions_SetActive(false);
+  /* Fade the existing pause picture first. Entering Game Over before black
+   * would draw its baby/missile objects with the pause screen's graphics. */
+  if (FadeOut(cpu)) {
+    Put16(cpu,kMenuMissileTimer,0); Put16(cpu,kMenuMissileFrame,0); Put16(cpu,kBabyMetroidTimer,0);
+    Put16(cpu,kScreenFadeDelay,0); Put16(cpu,kScreenFadeCounter,0);
+    Put16(cpu,kMenuIndex,7); Put16(cpu,kGameState,0x1a); g_quit_state=kQuitNavigating;
+  }
+  return true;
+}
+/* Finish navigation in guest execution, including speculative/rollback frames. */
+uint32 SmQuitFileSelectReadyHook(CpuState *cpu,uint32 pc24) {
+  (void)pc24;
+  if (g_quit_enabled && g_quit_state==kQuitNavigating && RAM16(cpu,kGameState)==4) g_quit_state=kQuitIdle;
+  return 0;
+}
+static uint16_t SmQuitNavigationInput(uint16_t buttons,const SnesModInputContext *context) {
+  if (context->player || !context->wram || !g_quit_enabled || g_quit_state!=kQuitNavigating) return buttons;
+  const uint8_t *p=context->wram;
+  uint16_t state=(uint16_t)(p[kGameState]|p[kGameState+1]<<8);
+  uint16_t frame=(uint16_t)(p[0x5b6]|p[0x5b7]<<8);
+  /* Fresh one-frame Start edges navigate the normal title/options screens.
+   * Use guest time, with no host counter or writes into controller WRAM. */
+  return (state==1 || state==2) && !(frame&7) ? (uint16_t)(buttons|SNES_PAD_START) : buttons;
+}
+
 uint32 SmReturnToTitleHook(CpuState *cpu, uint32 pc24) {
   (void)pc24;
   if (RAM16(cpu, kGameState) != 0x27) return 0;
   uint16_t fn = RAM16(cpu, kCinematicFunction);
   if (fn == kQuitMarker) {
-    uint8_t *inidisp = &cpu->ram[kInidisp];
-    uint16_t counter = RAM16(cpu, kScreenFadeCounter);
-    if (counter == 0) {  /* HandleFadeOut */
-      Put16(cpu, kScreenFadeCounter, RAM16(cpu, kScreenFadeDelay));
-      if (*inidisp & 0xF)
-        *inidisp = (*inidisp & 0xF) == 1 ? 0x80 : (uint8_t)((*inidisp & 0xF) - 1);
-    } else {
-      Put16(cpu, kScreenFadeCounter, (uint16_t)(counter - 1));
-    }
-    if (*inidisp & 0xF) return 0;
-    *inidisp = 0x80;
+    if (!FadeOut(cpu)) return 0;
+    cpu->ram[kInidisp] = 0x80;
     Put16(cpu, kCinematicFunction, kNullsub127);
     Put16(cpu, kScreenFadeDelay, 0);
     Put16(cpu, kScreenFadeCounter, 0);
@@ -88,8 +138,17 @@ static void SmReturnToTitleActivate(void) {
   size_t n = SmModArmHooks("return-to-title", kHooks, 1);
   fprintf(stderr, "[mods] return to title: %zu/1 hooks\n", n);
 }
+static void SmQuitFileSelectActivate(void) {
+  static const uint32_t pcs[]={0x8289e5};
+  g_quit_enabled=true; SmModArmHooks("quit-to-file-select",pcs,1);
+  snes_mod_register_input_transform(SmQuitNavigationInput);
+}
+static void SmReturnReset(void) { g_quit_enabled=false; g_quit_state=kQuitIdle; }
 
 SNES_MOD_CONSTRUCTOR(sm_register_return_to_title_plugin) {
+  snes_mod_register_reset_callback(SmReturnReset);
   snes_mod_register_activation_plugin("super-metroid.pacing.return-to-title",
                                       SmReturnToTitleActivate);
+  snes_mod_register_activation_plugin("super-metroid.pacing.quit-to-file-select",
+                                      SmQuitFileSelectActivate);
 }

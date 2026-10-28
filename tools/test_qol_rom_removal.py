@@ -71,7 +71,7 @@ def read_rows(path):
                 for r in csv.DictReader(f)]
 
 
-def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None):
+def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None, env_overrides=None):
     exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
     config = (SOURCE / "config.ini").read_text(encoding="utf8")
     config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
@@ -93,6 +93,7 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
     if screenshot_frame is not None:
         env["SNESRECOMP_SCREENSHOT"] = str(profile / "presented.ppm")
         env["SNESRECOMP_SCREENSHOT_FRAME"] = str(screenshot_frame)
+    if env_overrides: env.update(env_overrides)
     executable = build / exe_name
     command = [str(executable), "--config", str(profile / "config.ini")]
     if script is None: env["SM_RUN_FRAMES"] = "3200"

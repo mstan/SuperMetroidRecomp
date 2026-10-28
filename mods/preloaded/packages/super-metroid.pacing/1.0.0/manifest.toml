@@ -165,3 +165,14 @@ default_enabled = false
 [[plugin]]
 feature = "return-to-title"
 id = "super-metroid.pacing.return-to-title"
+
+[[feature]]
+id = "quit-to-file-select"
+name = "Quit to file select"
+description = "Adds Quit to file select to the pause menu's Options tab. Returns through the normal title flow without changing your saved progress."
+group = "Pacing"
+default_enabled = false
+
+[[plugin]]
+feature = "quit-to-file-select"
+id = "super-metroid.pacing.quit-to-file-select"

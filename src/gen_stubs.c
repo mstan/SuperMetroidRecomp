@@ -13,6 +13,7 @@
 #include "variables.h"
 #include "sm_rtl.h"
 #include "sm_pause_options.h"
+#include "mods/sm_return_to_title_plugin.h"
 #include "sm_activity.h"
 
 /* Wait replacements unwind compiled calls to the interruptible scheduler.
@@ -330,8 +331,10 @@ SM_JML1784_WRAPPER(HleSmJmlIndirect1784_A3AC, 0x20A3ACu)
  * frame and still bounces nested calls into compiled code
  * (docs/HLE_FUNC.md, "Delegating to the original"). */
 RecompReturn HleSmGameState_15_Paused_Async(CpuState *cpu) {
-  const uint32 entry = ((uint32)cpu->PB << 16) | 0x90E8u;
   SmPauseOptions_GuestTick();
+  /* The optional quit action fades the existing picture and leaves through
+   * the routine's bare RTS. Its PHB prefix has not run, so PLB is skipped. */
+  const uint32 entry = ((uint32)cpu->PB << 16) | (SmQuitPauseStep(cpu) ? 0x90FEu : 0x90E8u);
   if (interp_bridge_in_lle_scheduler())
     return interp_bridge_lle_yield_unwind(cpu, entry);
   return interp_tier_run_call_frame(cpu, entry, entry, 2, NULL);

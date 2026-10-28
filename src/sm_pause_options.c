@@ -2,6 +2,7 @@
  * a host panel and not a recompiled screen. */
 
 #include "sm_pause_options.h"
+#include "mods/sm_return_to_title_plugin.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -81,6 +82,12 @@ static const RecompRuntimeUiItem kItems[] = {
 };
 
 static RecompRuntimeUi *g_ui;
+static bool g_ui_has_quit;
+static RecompRuntimeUiItem g_items_with_quit[sizeof(kItems)/sizeof(kItems[0])+1];
+static const RecompRuntimeUiItem kQuitItem = {
+  "quit_file", kSection, "Quit to file select", NULL,
+  RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL
+};
 static bool g_leave;   /* "Back to map" was accepted this frame */
 
 static bool *BoolField(const RecompRuntimeUiItem *item) {
@@ -132,6 +139,7 @@ static int SetValue(void *ctx, const RecompRuntimeUiItem *item, int value) {
 
 static int RunAction(void *ctx, const RecompRuntimeUiItem *item) {
   (void)ctx;
+  if (!strcmp(item->key, "quit_file")) return SmQuitFileSelectRequest();
   if (!strcmp(item->key, "back")) {
     g_leave = true;
     return 1;
@@ -162,7 +170,10 @@ static void Save(void *ctx) {
 }
 
 static RecompRuntimeUi *Ui(void) {
-  if (g_ui) return g_ui;
+  bool quit = SmQuitFileSelectEnabled();
+  if (g_ui && g_ui_has_quit == quit) return g_ui;
+  bool open = g_ui && recomp_runtime_ui_is_open(g_ui);
+  if (g_ui) recomp_runtime_ui_destroy(g_ui);
   for (int i = 0; i < SM_ASPECT_COUNT; ++i)
     g_aspect_choices[i] = SmAspectName((SmAspect)i);
   RecompRuntimeUiConfig config;
@@ -170,6 +181,13 @@ static RecompRuntimeUi *Ui(void) {
   config.title = "Game options";
   config.items = kItems;
   config.item_count = sizeof(kItems) / sizeof(kItems[0]);
+  if (quit) {
+    size_t before = config.item_count - 2; /* before Exit and Back */
+    memcpy(g_items_with_quit, kItems, before * sizeof(kItems[0]));
+    g_items_with_quit[before] = kQuitItem;
+    memcpy(g_items_with_quit + before + 1, kItems + before, 2 * sizeof(kItems[0]));
+    config.items = g_items_with_quit; ++config.item_count;
+  }
   config.callbacks.get_value = GetValue;
   config.callbacks.set_value = SetValue;
   config.callbacks.run_action = RunAction;
@@ -178,6 +196,8 @@ static RecompRuntimeUi *Ui(void) {
   config.theme = "snes";
   config.navigation_flags = RECOMP_RUNTIME_UI_NAVIGATION_SKIP_DISABLED;
   g_ui = recomp_runtime_ui_create(&config);
+  g_ui_has_quit = quit;
+  if (open && g_ui) recomp_runtime_ui_open_section(g_ui, kSection);
   return g_ui;
 }
 
@@ -199,7 +219,7 @@ unsigned SmPauseOptions_Cursor(void) {
 }
 
 bool SmPauseOptions_CursorValid(unsigned row) {
-  return row < sizeof(kItems) / sizeof(kItems[0]);
+  return row < sizeof(kItems) / sizeof(kItems[0]) + (SmQuitFileSelectEnabled() ? 1u : 0u);
 }
 
 void SmPauseOptions_RestoreCursor(unsigned row) {
