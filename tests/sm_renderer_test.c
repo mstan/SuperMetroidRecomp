@@ -464,6 +464,40 @@ static void cannon_motion(void) {
   memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu)); memset(rom, 0, sizeof(rom));
 }
 
+static void nonrectangular_room_padding(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false}, {342,43,16.0/9,true},
+      {448,96,21.0/9,true}, {682,213,32.0/9,true}};
+  for (unsigned real_content = 0; real_content < 2; ++real_content) {
+    ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+    word(0x998,8); word(0x7a5,32); word(0x7a7,32);
+    for (unsigned by=0;by<16;++by)
+      for (unsigned bx=0;bx<16;++bx) word(0x10002+2*(by*32+bx),0x83ff);
+    /* Even one nonpadding block preserves this screen, including content
+     * outside today's view. Do not infer visibility from scroll permission. */
+    if (real_content) word(0x10002,0x8000);
+    ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=1;
+    ppu.cgadsub=32; ppu.fixedColor=31;
+    for (unsigned frame=1;frame<=2;++frame) {
+      word(0x911,frame==1?254:258); ppu.hScroll[0]=frame==1?254:258;
+      BeginFixtureFrame(ram,frame);
+      for(unsigned y=1;y<=224;++y)SmRendererCaptureLine(&ppu,y);
+      assert(SmRendererEndFrame(stock));
+    }
+    for (unsigned v=0;v<sizeof(views)/sizeof(views[0]);++v)
+      for (unsigned phase=0;phase<3;++phase) {
+        SmViewport view=views[v];
+        assert(SmRendererDraw(output,view,false,phase*.5));
+        for(int x=0;x<256;++x) assert(output[100*view.width+view.extra+x]==0xff0000);
+        for(int x=0;x<view.extra;++x) {
+          int world_x=254+(int)phase*2+x-view.extra;
+          assert(output[100*view.width+x]==
+              (real_content || world_x>=256 ? 0xff0000u : 0));
+        }
+      }
+  }
+  ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+}
+
 int main(int argc, char **argv) {
   pause_menu_fade();
   hud_colour_math_margins();
@@ -475,6 +509,7 @@ int main(int argc, char **argv) {
   bg2_object_canvas();
   crocomire_parked_bg2();
   room_effect_matte();
+  nonrectangular_room_padding();
   cannon_motion();
   raster_storage();
   /* Reveal substitutions, row-major multi-block writes, linked BTS blocks,

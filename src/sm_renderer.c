@@ -688,6 +688,28 @@ static unsigned tile_pixel(const uint16_t *vram, unsigned address, int x, int y,
   return pixel;
 }
 
+/* Nonrectangular rooms retain whole unused screens in their rectangular
+ * level allocation. The ROM fills those screens with solid block $83FF,
+ * whose diagnostic cross tile is never meant to enter the camera. Treat
+ * only a completely filled screen as padding: a real wall, hidden passage
+ * or PLM change in an otherwise filled screen must remain visible. */
+static void room_padding_screens(const uint8_t *ram, uint8_t padding[256]) {
+  memset(padding, 0, 256);
+  unsigned w = read16(ram, 0x7a5), h = read16(ram, 0x7a7);
+  if (!w || !h || (w & 15) || (h & 15) || w > 256 || h > 256 ||
+      (uint64_t)w * h > 0x3200) return;
+  for (unsigned sy = 0; sy < h / 16; ++sy)
+    for (unsigned sx = 0; sx < w / 16; ++sx) {
+      bool filled = true;
+      for (unsigned by = sy * 16; filled && by < sy * 16 + 16; ++by)
+        for (unsigned bx = sx * 16; bx < sx * 16 + 16; ++bx)
+          if (read16(ram, 0x10002 + 2 * (by * w + bx)) != 0x83ff) {
+            filled = false; break;
+          }
+      padding[sy * 16 + sx] = filled;
+    }
+}
+
 /* Host-only reconstruction of $91:CB8E's revealed block map. The high bit
  * marks replacement blocks, whose quadrant swaps do not flip tile pixels. */
 static uint16_t xray_blocks[0x3200];
@@ -1855,6 +1877,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   memset(out, 0, (size_t)viewport.width * 224 * sizeof(*out));
   unsigned state = read16(f->ram, 0x998);
   bool room = room_state(state);
+  uint8_t padding_screens[256] = {0};
+  if (room && viewport.extra) room_padding_screens(f->ram, padding_screens);
   SmBg2Object bg2 = bg2_object(f, previous, alpha);
   int camera_x = (int16_t)read16(f->ram, 0x911);
   int camera_y = (int16_t)read16(f->ram, 0x915);
@@ -2113,6 +2137,11 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       if (mode == 1 && (x < 0 || x >= 256) && world->room_width &&
           (matte_x + x < 0 || matte_x + x >= world->room_width ||
            matte_y + y + 1 < 0 || matte_y + y + 1 >= world->room_height)) continue;
+      unsigned padding_x = (unsigned)(matte_x + x) / 256;
+      unsigned padding_y = (unsigned)(matte_y + y + 1) / 256;
+      if (mode == 1 && (x < 0 || x >= 256) && world->room &&
+          padding_x < 16 && padding_y < 16 &&
+          padding_screens[padding_y * 16 + padding_x]) continue;
       uint16_t screens[2] = {0x500, 0x500};
 #if SM_NATIVE_RASTER
       unsigned window_mask = SnesRenderWindowMask(x < 0 || x >= 256 ? &margin_windows : &native_windows, x);
