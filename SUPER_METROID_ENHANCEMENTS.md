@@ -305,7 +305,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .36 | Save station refills everything | Done. Hook `$84:8CF1`. |
 | .37 | Leave Tourian before Mother Brain | Automated traversal passes: natural baby drain, recovery, both grey gates to DC65/DC19; re-entry selects DCDD, music 1E/5, nine corpse population entries. Stock stays locked. Complete selector interpreted path matches; a narrower mixed-path engine boundary failure remains tracked separately. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
-| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have boundary regressions. Actual jump/contact/refill, screw menu, manual reserves, X-ray, exact pause race, suit pickups, full new reserves, valid sprite clear, eye cleanup, native wall jump and bomb-block contexts are recorded in the final checkpoint with tier limits. Ghost slot-zero gameplay passes; nonzero-index coverage is boundary-only. Sound/palette owner judgment remains. Correctness fixes default on; elective full tanks/manual-control default off. 25 CTests pass. Ship-save was not implemented by the inherited work. |
+| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have boundary regressions. Actual jump/contact/refill, screw menu, manual reserves, X-ray, exact pause race, suit pickups, full new reserves, valid sprite clear, eye cleanup, native wall jump and bomb-block contexts are recorded in the final checkpoint with tier limits. A constructed nonzero ghost slot now retains the slot-zero native AI trajectory only with the fix; full WRAM/scheduler-tier comparison passes. Native Speed Booster sound-call stage and stopping pass actual compiled/interpreted comparison. Sound quality/palette owner judgment remains. Correctness fixes default on; elective full tanks/manual-control default off. 25 CTests pass. Ship-save was not implemented by the inherited work. |
 
 Full-hack content packs (`.41`) are deferred indefinitely.
 
@@ -513,7 +513,8 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
    Auto charge .20 is implemented and automatically qualified. Do not guess .26.
 3. Resolve concrete owner findings, then rerun affected checks. The narrowly mixed
    selector continuation defect remains separately tracked in `beads-8wg.2.163`;
-   full-selector parity passes. Ghost nonzero-index is boundary coverage only.
+   full-selector parity passes. Ghost nonzero-index gameplay now passes in a
+   constructed unused-slot fixture; stock populations themselves use slot zero.
 4. **Completed foundation:** ROM-write removal, integrated combat/bug fixes,
    source/reference map audit, real elevator/boss-door checks, movement extras,
    available-tier comparisons, Linux build and actual netplay mismatch refusal.

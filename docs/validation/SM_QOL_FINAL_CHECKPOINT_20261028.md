@@ -64,7 +64,8 @@ tracked separately; the complete selector comparison passes.
 | Screw menu without boots/Spring Ball | Control cursor cannot reach Screw; fixed cursor `0502` selects it and A disables it | `bugfix-menu-native-input/results.json` |
 | Manual reserves | A cancels at health 62 / reserves 288 and stays there; option-off continues to 78 / 272 | Same menu evidence |
 | X-ray over respawning item | Genuine active item `EEE3`, argument `801B`; real X-ray input enters its stages. Forced interpreter stock path bails on its unbalanced stack; fixed normal/alternate paths match complete WRAM | `bugfix-xray-control-ready/`, `bugfix-xray-interp/`, `extended-bug-comparisons.json` |
-| Wrecked Ship ghost | Native 900-frame cycle runs and normal/alternate complete WRAM matches. All stock populations use slot zero; this does not demonstrate a nonzero-index spawn. Native callback regression covers that defect | `bugfix-xray-ghost-probe/`, `extended-bug-comparisons.json` |
+| Wrecked Ship ghost | Native 900-frame cycles at slot0 and a constructed unused slot`0240`: corrected nonzero-slot AI states/coordinates match stock slot0 at every sample; stock nonzero diverges (frame250, Y0 vs136). Full WRAM/AI-sample equality under alternate surrounding execution | `ghost-nonzero-qualified-aot-v3/`, `ghost-nonzero-qualified-interp-surrounding/`; `tools/test_qol_ghost.py` |
+| Speed Booster sound-call state | Equipment only is granted; native running reaches boost. At frame10337 stock reloads `0401`/animation delay3 after the sound call, fixed `0402`/delay1. Both finish with boost/sound flags0. Every observed frame/full WRAM matches with the animation routine forced through the interpreter | `speed-sound-native{,-interp}/`, `speed-sound-native-validated.json`; `tools/test_qol_speed_sound.py` |
 | Same-frame zero-health pause race | Control enters auto refill (27); fixed enters pause fade (12), reaches native pause (15), unpauses and completes health 99 / reserves 201. Full WRAM normal/alternate equality | `reserve-pause-complete{,-interp}/`, `trace-bug-comparisons.json` |
 | Varia / Gravity grant timing | Real orb shots and pickups. Control grants at frame 16/stage `DEC0`; fix grants at frame 504/stage `DEC4`, during native animation after message acknowledgement. Gravity power-on bit is an explicit room-state prerequisite bypass, not a boss-fight result | `bugfix-pickups-ready{,-interp}/`, `trace-bug-comparisons.json` |
 | Full new reserve tank | Real orb shot/pickup: max reserves 100; control starts empty, option starts at 100. Full WRAM normal/alternate equality | Same pickup evidence |
@@ -75,9 +76,18 @@ tracked separately; the complete selector comparison passes.
 
 The original 12 vanilla fixes and six reserve options also pass native boundary
 regressions. Real speed-jump, contact invulnerability and reserve refill checks
-are in [combat details](SM_COMBAT_20261028.md). Speed-booster sound and blue-suit
-palette still need owner audio/visual judgment; the ghost's nonzero-index case
-has only boundary coverage. Follow-up `bugfix-pickups-complete/results.json`
+are in [combat details](SM_COMBAT_20261028.md). Speed-booster audio quality and
+blue-suit palette still need owner audio/visual judgment. The ghost's nonzero-slot
+fixture relocates an initialized native enemy record and its used extra-RAM
+records to a verified unused slot; stock room populations themselves use slot0.
+It does not write AI result coordinates, timers or handlers. Denying the ghost
+roots alone changed no interpreter counts in this workload and is not separate
+compiled-ghost evidence; the passing comparison also denies the available
+compiled enemy scheduler `A0:8EB6`. Native ghost AI is LLE-authoritative here.
+By contrast, denying Speed Booster animation root `90:852C` increases actual
+interpreter work from 4,550,182 to 4,551,787 instructions in each sound case.
+The two sound scripts were verified byte-identical to the durable tool before
+validating their captured data. Follow-up `bugfix-pickups-complete/results.json`
 advances all six suit/reserve stock/mod cases another 720 frames: every case
 returns to state8, normal input handler `E695`, animation stage0. The first-grant
 comparison above remains the tier-equality evidence. The six repeatable wall,
