@@ -75,3 +75,28 @@ label = "Always"
 [[plugin]]
 feature = "laser-sight"
 id = "super-metroid.map-hud.laser-sight"
+
+[[feature]]
+id = "reveal-map"
+name = "Reveal whole map"
+description = "Every area's map is shown on the pause screen and minimap as if you had used its map station. Your exploration progress is kept. From the Super Metroid Redux widescreen bonus patches."
+group = "Map"
+default_enabled = false
+
+[[option]]
+feature = "reveal-map"
+id = "secrets"
+label = "Secret rooms"
+description = "Also show rooms the map stations leave out."
+type = "choice"
+default = "hidden"
+[[option.choice]]
+value = "hidden"
+label = "Hidden"
+[[option.choice]]
+value = "shown"
+label = "Shown"
+
+[[plugin]]
+feature = "reveal-map"
+id = "super-metroid.map-hud.reveal-map"
