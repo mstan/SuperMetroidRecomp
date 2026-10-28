@@ -53,7 +53,7 @@ id = "super-metroid.map-hud.ammo-totals"
 [[feature]]
 id = "laser-sight"
 name = "Laser sight"
-description = "A red sight line shows where shots will go while Samus aims diagonally, Metroid Prime style. It does not stop at walls."
+description = "A red sight line shows where shots will go while Samus aims diagonally, Metroid Prime style. It stops at the first solid block."
 group = "HUD"
 default_enabled = false
 presentation_only = true

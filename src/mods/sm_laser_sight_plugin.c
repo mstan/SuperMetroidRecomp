@@ -7,8 +7,11 @@
  * >= $10 mean "cannot shoot") and the projectile origin offsets that
  * InitProjectilePositionDirection ($90:BA56) adds to Samus' position, minus
  * the pose's y_offset_to_gfx. Running poses and the aim-up moonwalks use the
- * second offset table, as the game does. The line runs to the frame edge
- * and does not stop at walls.
+ * second offset table, as the game does. The line stops at the first block
+ * the game treats as solid to a horizontal collision check (block types in
+ * kBlockColl_Horiz_CheckColl, $94:9515: slopes, solid/shot/grapple, door,
+ * spike, special, bomb), reading the room's level data ($7F:0002) and
+ * following extension blocks through their BTS ($7F:6402).
  */
 
 #include <stdbool.h>
@@ -26,7 +29,8 @@ extern const uint8_t *g_rom;
 enum {
   kGameState = 0x0998, kLayer1X = 0x0911, kLayer1Y = 0x0915,
   kPose = 0x0A1C, kMovementType = 0x0A1F, kSamusX = 0x0AF6, kSamusY = 0x0AFA,
-  kPoseParams = 0x91B629,
+  kPoseParams = 0x91B629, kRoomWidth = 0x07A5, kRoomHeight = 0x07A7,
+  kLevelData = 0x10002, kBts = 0x16402,
 };
 
 static const int8_t kOrigin3X[10] = {2, 13, 11, 13, 2, -5, -14, -11, -19, -2};
@@ -46,6 +50,22 @@ static const uint8_t *PoseParams(uint16_t pose) {
   return g_rom + offset + (uint32_t)pose * 8;
 }
 
+/* Whether the block at room pixel (x, y) stops a shot line. */
+static bool Solid(const uint8_t *wram, int x, int y) {
+  int width = Word(wram, kRoomWidth), height = Word(wram, kRoomHeight);
+  if (x < 0 || y < 0 || x >= width * 16 || y >= height * 16 || !width) return true;
+  int index = (y >> 4) * width + (x >> 4);
+  for (int hops = 0; hops < 4; ++hops) {
+    if (index < 0 || index >= width * height) return true;
+    int type = wram[kLevelData + index * 2 + 1] >> 4;
+    int8_t bts = (int8_t)wram[kBts + index];
+    if (type == 0x5) { index += bts; continue; }             /* horizontal extension */
+    if (type == 0xD) { index += bts * width; continue; }     /* vertical extension */
+    return type == 0x1 || type >= 0x8;
+  }
+  return true;
+}
+
 static void SmLaserSightDraw(uint32_t *pixels, int stride, int width, int height,
                              int stage_x, const uint8_t *wram) {
   if (!g_rom || Word(wram, kGameState) != 8) return;
@@ -61,10 +81,13 @@ static void SmLaserSightDraw(uint32_t *pixels, int stride, int width, int height
           (alt ? kOrigin4X : kOrigin3X)[dir] + stage_x;
   int y = (int16_t)(Word(wram, kSamusY) - Word(wram, kLayer1Y)) +
           (alt ? kOrigin4Y : kOrigin3Y)[dir] - params[4];
+  /* Room position of screen pixel (stage_x, 0). */
+  int room_x = Word(wram, kLayer1X) - stage_x, room_y = Word(wram, kLayer1Y);
   /* Dotted: 3 lit, 2 dark, starting a little ahead of the muzzle. */
   for (int i = 6; i < 512; ++i) {
     int px = x + kStepX[dir] * i, py = y + kStepY[dir] * i;
     if (px < 0 || px >= width || py < 32 || py >= height) break;   /* not over the HUD */
+    if (Solid(wram, room_x + px, room_y + py)) break;
     if (i % 5 < 3) pixels[py * stride + px] = 0xFFFF3030u;
   }
 }
