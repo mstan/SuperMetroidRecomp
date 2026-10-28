@@ -337,6 +337,13 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
 #endif
 int main(int argc, char **argv) {
   SmStartupLogging();
+  fprintf(stderr, "SM renderer: native=%d row-plan=%d\n", SM_NATIVE_RASTER,
+#if defined(SM_NATIVE_ROW_PLAN) && SM_NATIVE_RASTER
+          SM_NATIVE_ROW_PLAN
+#else
+          0
+#endif
+  );
   for (int i = 1; i < argc; ++i) {
     if (!strcmp(argv[i], "--config") && i + 1 < argc)
       SmReplaySetConfigPath(argv[i + 1]);

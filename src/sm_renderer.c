@@ -2,6 +2,9 @@
 #ifndef SM_NATIVE_RASTER
 #define SM_NATIVE_RASTER 0
 #endif
+#ifndef SM_NATIVE_ROW_PLAN
+#define SM_NATIVE_ROW_PLAN 0
+#endif
 #if SM_NATIVE_RASTER
 #include "snes/raster_jobs.h"
 #include "snes/raster_image.h"
@@ -1838,6 +1841,10 @@ static uint32_t colour(const Ppu *p, const uint16_t *palette, const uint8_t *bri
   return result;
 }
 
+#if SM_NATIVE_RASTER && SM_NATIVE_ROW_PLAN
+#include "sm_row_plan.inc"
+#endif
+
 bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, double alpha) {
   memset(grapple_motion, 0, sizeof(grapple_motion));
   memset(&render_stats, 0, sizeof(render_stats));
@@ -2102,6 +2109,14 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
      * BG2-only effect lines can leave its registers stale. */
     int matte_x = mode == 1 && (enabled & 1) ? background_lines[0].world_x : camera_x;
     int matte_y = mode == 1 && (enabled & 1) ? background_lines[0].world_y : camera_y;
+#if SM_NATIVE_RASTER && SM_NATIVE_ROW_PLAN
+    if (mode == 1) {
+      native_render_mode1_row(&scanout, l, background_lines, native_backgrounds,
+          native_layer, objects, y, viewport, matte_x, matte_y, brightness,
+          &native_windows, &margin_windows, out + y * viewport.width);
+      continue;
+    }
+#endif
     for (int sx = 0; sx < viewport.width; ++sx) {
       int x = sx - viewport.extra;
       /* The room matte owns the finished world pixel, including OBJ and
