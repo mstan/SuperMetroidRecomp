@@ -659,8 +659,24 @@ class Session:
                     except (OSError, ValueError, RuntimeError) as error:
                         self.final_execution['tier2_dump_error'] = str(error)
             if self.process.poll() is None:
+                # On Linux SDL handles SIGTERM as a quit request. A paused
+                # debugger can keep the host from reaching its event loop;
+                # release it only after recording the final paused evidence.
+                if os.name != 'nt' and getattr(self, 'sock', None):
+                    try:
+                        self.command('continue')
+                    except (OSError, ValueError, RuntimeError):
+                        pass
                 self.process.terminate()
-                self.process.wait(timeout=10)
+                try:
+                    self.process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    # The route has ended; this is our own disposable host.
+                    # Do not leave it running or hide an earlier test failure.
+                    self.process.kill()
+                    self.process.wait(timeout=10)
+                    (self.output / 'shutdown.json').write_text(json.dumps(
+                        dict(forced_after_qa=True, reason='host did not exit after resume/SIGTERM'), indent=2))
         if getattr(self, 'sock', None):
             self.stream.close()
             self.sock.close()

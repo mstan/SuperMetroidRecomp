@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 try:
@@ -98,6 +99,11 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
     env.update(SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy", SNESRECOMP_NO_LAUNCHER="1",
                SM_REPLAY_RECORD="0", SM_STATE_TRACE=str(profile / "state.csv"),
                SM_WRAM_PROBE=str(profile / "wram.csv"), SM_WRAM_PROBE_ADDRS=fields)
+    # TRACE builds bind a debugger even for scripted runs. Use a private port
+    # so parallel cases cannot collide with each other or an owner playtest.
+    with socket.socket() as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        env['SNESRECOMP_DEBUG_PORT'] = str(reservation.getsockname()[1])
     if interp_targets: env["SNESRECOMP_LLE_INTERP_TARGET_FILE"] = str(interp_targets.resolve())
     if screenshot_frame is not None:
         env["SNESRECOMP_SCREENSHOT"] = str(profile / "presented.ppm")

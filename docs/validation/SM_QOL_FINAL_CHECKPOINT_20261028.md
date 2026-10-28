@@ -1,7 +1,11 @@
 # Super Metroid QoL qualification checkpoint, 2026-10-28
 
 The local integration branch implements the listed toggles; the owner-deferred
-falling aim-down definition and final pickup sound/animation scope remain open.
+falling aim-down definition and suit-animation scope remain open. The owner
+specified cutting every pickup fanfare; the new option is implemented and its
+separate Windows/Linux builds are qualified. See [pickup evidence](SM_PICKUP_SOUNDS_20261028.md).
+The inherited ship-save omission is now being corrected; that candidate remains
+under qualification and is not included in the existing passing binaries.
 Owner visual, audio and controller acceptance remains pending. Nothing has been
 pushed, merged to main or released.
 Full hack content packs remain deferred indefinitely.
@@ -120,12 +124,14 @@ pending. See [map coverage limits](SM_MAPS_20261028.md).
 
 The inherited feature notes are not proof of the whole runtime/tier requirement.
 Current cinematic skip/ending-return comparisons pass; see
-[cinematic evidence](SM_CINEMATICS_20261028.md). The audit still needs
-isolated shinespark-drain/Select-combo checks, native save-station
-refill and wider/faster X-ray checks. Existing historical measurements and
-implementation remain recorded; these game-level gates are not declared complete.
-The new reserve pickup suite covers a real minor-item collector and the existing
-three pacing options; it does not establish every major pickup's behavior.
+[cinematic evidence](SM_CINEMATICS_20261028.md). The isolated shinespark-drain,
+Select-combo, real save-station and wider/faster X-ray checks also pass; see
+[isolated feature evidence](SM_ISOLATED_FEATURE_CHECKS_20261028.md). Historical
+notes are superseded by these actual-game comparisons, not treated as proof alone.
+The original reserve suite covers a real minor-item collector and the existing
+three pacing options. The new cut-all suite additionally covers every collector
+and both suits, including eight real-room comparisons. Its Linux gate and216
+cross-host memory comparisons pass.
 
 Prepared playtest executable SHA-256 is
 `aa0bfec57896ab44337351b4ce0bc82c6ff4f944ff46157a2f2b90222948b419`;
@@ -141,10 +147,9 @@ right-stick weapons, movement feel and remaining audio/visual judgments. Record
 individual Pass/Fail/deferred notes; a bundle label does not clear caveats.
 Falling aim-down stays unimplemented until the owner defines it at this handoff.
 Instant pickup currently skips the pickup message/freeze, while native suit
-transformations remain. The inherited short-jingle option affects energy/reserve
-tanks and repeat ammo only; major upgrades and first ammo retain the fanfare.
-Whether the requested jingle toggle should cover those too is an explicit open
-scope question, not a claim that every pickup fanfare is already shortened.
+transformations remain. The inherited short-jingle option retains its original
+expansion-only behavior. The owner's additional all-item request is implemented
+as mute-jingle, which takes priority and cuts the fanfare for every pickup.
 No replacement full-hack content pack is promised here.
 No release archive or delivery folder has been changed. To reopen the selector:
 

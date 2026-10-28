@@ -1,4 +1,4 @@
-/* super-metroid.pacing / item-pickup: three independent options.
+/* super-metroid.pacing / item-pickup: independent pacing and sound options.
  *
  * Stock pickup: the item PLM runs PlmInstr_ClearMusicQueueAndQueueTrack
  * ($84:8BDD, track 2 = item fanfare), then its collect instruction, which
@@ -35,6 +35,12 @@
  * scheduled room music pending there). With no-freeze it is queued at the
  * skipped box call instead. "First of its kind" is decided from guest state
  * alone: max ammo 0 before the collect, max == the PLM argument after it.
+ *
+ * mute-jingle: skip the fanfare and delayed room-music restart for every
+ * collect instruction, including major upgrades and first ammo pickups.
+ * The room track continues; this takes priority over short-jingle, so no
+ * replacement pickup sound is queued. Message boxes and suit animations
+ * retain their normal behavior unless changed by their own options.
  */
 
 #include <stdio.h>
@@ -60,7 +66,7 @@ enum {
   kMessageBoxIndex = 0x1C1F,
 };
 
-static bool g_skip_message, g_no_freeze, g_short_jingle;
+static bool g_skip_message, g_no_freeze, g_short_jingle, g_mute_jingle;
 
 typedef enum { kEtank, kReserve, kMissile, kSuper, kPowerBomb, kKinds } Kind;
 typedef struct {
@@ -79,6 +85,14 @@ static const Minor kMinor[kKinds] = {
   {0x89A9, 0x89C1, 0x89C8, 0x89CB, 0x89CF, 0x02, kMaxMissiles, 0x03},  /* missile */
   {0x89D2, 0x89EA, 0x89F1, 0x89F4, 0x89F8, 0x03, kMaxSupers, 0x04},    /* super */
   {0x89FB, 0x8A13, 0x8A1A, 0x8A1D, 0x8A21, 0x04, kMaxPowerBombs, 0x05},/* PB */
+};
+/* Major collect instructions, their music delay, and message-argument load.
+ * Beam/equipment message IDs are loaded from the PLM argument, not immediate. */
+static const struct { uint16_t instr, music_lda, box_lda; } kMajor[] = {
+  {0x88B0, 0x88DE, 0x88E5}, /* beam */
+  {0x88F3, 0x8905, 0x890C}, /* equipment */
+  {0x891A, 0x8930, 0x8937}, /* grapple */
+  {0x8941, 0x8957, 0x895E}, /* X-ray */
 };
 /* Every collect instruction's JSL DisplayMessageBox and the INY after it. */
 static const struct { uint16_t jsl, after; } kBoxCalls[] = {
@@ -124,24 +138,36 @@ static bool MinorAfter(const CpuState *cpu, const Minor *m) {
 uint32 SmItemFanfareHook(CpuState *cpu, uint32 pc24) {
   uint16_t next = SmModReadRom16(0x840000u | (uint16_t)(cpu->Y + 1));
   for (int k = 0; k < kKinds; ++k)
-    if (kMinor[k].instr == next && MinorBefore(cpu, &kMinor[k]))
+    if (kMinor[k].instr == next && (g_mute_jingle || MinorBefore(cpu, &kMinor[k])))
       return (pc24 & 0xFF0000u) | 0x8C05u;
+  if (g_mute_jingle)
+    /* All six Varia/Gravity lists clear charge before the equipment collect. */
+    if (next == 0xE29D &&
+        SmModReadRom16(0x840000u | (uint16_t)(cpu->Y + 3)) == 0x88F3)
+      return (pc24 & 0xFF0000u) | 0x8C05u;
+  if (g_mute_jingle)
+    for (size_t i = 0; i < sizeof(kMajor) / sizeof(kMajor[0]); ++i)
+      if (kMajor[i].instr == next) return (pc24 & 0xFF0000u) | 0x8C05u;
   return 0;
 }
 
-/* LDA #$0168 in a minor collect instruction. */
+/* LDA #$0168 before a collect instruction schedules the room-music restart. */
 uint32 SmItemRoomMusicHook(CpuState *cpu, uint32 pc24) {
   for (int k = 0; k < kKinds; ++k) {
     const Minor *m = &kMinor[k];
     if (m->music_lda != (uint16_t)pc24) continue;
-    return MinorAfter(cpu, m) ? (pc24 & 0xFF0000u) | m->box_lda : 0;
+    return (g_mute_jingle || MinorAfter(cpu, m)) ? (pc24 & 0xFF0000u) | m->box_lda : 0;
   }
+  if (g_mute_jingle)
+    for (size_t i = 0; i < sizeof(kMajor) / sizeof(kMajor[0]); ++i)
+      if (kMajor[i].music_lda == (uint16_t)pc24)
+        return (pc24 & 0xFF0000u) | kMajor[i].box_lda;
   return 0;
 }
 
 /* JSL DisplayMessageBox in a collect instruction (no-freeze). */
 uint32 SmItemMessageHook(CpuState *cpu, uint32 pc24) {
-  if (g_short_jingle)
+  if (g_short_jingle && !g_mute_jingle)
     for (int k = 0; k < kKinds; ++k)
       if (kMinor[k].box_jsl == (uint16_t)pc24 && MinorAfter(cpu, &kMinor[k]))
         QueueSfx2(cpu, kMinor[k].sfx);
@@ -156,7 +182,7 @@ uint32 SmItemMessageHook(CpuState *cpu, uint32 pc24) {
 uint32 SmMessageBoxWaitHook(CpuState *cpu, uint32 pc24) {
   (void)pc24;
   uint16_t box = RAM16(cpu, kMessageBoxIndex) & 0xFF;
-  if (g_short_jingle && cpu->X == 0x168 &&
+  if (g_short_jingle && !g_mute_jingle && cpu->X == 0x168 &&
       RAM16(cpu, kMusicReadPos) == RAM16(cpu, kMusicWritePos)) {
     for (int k = 0; k < kKinds; ++k)
       if (kMinor[k].box_index == box) QueueSfx2(cpu, kMinor[k].sfx);
@@ -173,19 +199,23 @@ static void SmItemPickupActivate(void) {
   g_skip_message = SmModOptionBool(PACKAGE, FEATURE, "skip-message", true);
   g_no_freeze = SmModOptionBool(PACKAGE, FEATURE, "no-freeze", false);
   g_short_jingle = SmModOptionBool(PACKAGE, FEATURE, "short-jingle", true);
+  g_mute_jingle = SmModOptionBool(PACKAGE, FEATURE, "mute-jingle", false);
   uint32_t hooks[32];
   size_t n = 0;
-  if (g_skip_message || g_short_jingle) hooks[n++] = 0x8584A0;
-  if (g_short_jingle) {
+  if (g_skip_message || (g_short_jingle && !g_mute_jingle)) hooks[n++] = 0x8584A0;
+  if (g_short_jingle || g_mute_jingle) {
     hooks[n++] = 0x848BDD;
     for (int k = 0; k < kKinds; ++k) hooks[n++] = 0x840000u | kMinor[k].music_lda;
   }
+  if (g_mute_jingle)
+    for (size_t i = 0; i < sizeof(kMajor) / sizeof(kMajor[0]); ++i)
+      hooks[n++] = 0x840000u | kMajor[i].music_lda;
   if (g_no_freeze)
     for (size_t i = 0; i < sizeof(kBoxCalls) / sizeof(kBoxCalls[0]); ++i)
       hooks[n++] = 0x840000u | kBoxCalls[i].jsl;
   size_t armed = SmModArmHooks("item-pickup", hooks, n);
-  fprintf(stderr, "[mods] item pickup skip-message=%d no-freeze=%d short-jingle=%d: %zu/%zu hooks\n",
-          g_skip_message, g_no_freeze, g_short_jingle, armed, n);
+  fprintf(stderr, "[mods] item pickup skip-message=%d no-freeze=%d short-jingle=%d mute-jingle=%d: %zu/%zu hooks\n",
+          g_skip_message, g_no_freeze, g_short_jingle, g_mute_jingle, armed, n);
 }
 
 SNES_MOD_CONSTRUCTOR(sm_register_item_pickup_plugin) {

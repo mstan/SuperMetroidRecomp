@@ -114,7 +114,7 @@ default = true
 feature = "item-pickup"
 id = "no-freeze"
 label = "No pickup freeze"
-description = "Items show no message box; the fanfare plays while you keep moving."
+description = "Items show no message box, so you keep moving. Pickup sounds follow your sound options."
 type = "boolean"
 default = false
 
@@ -125,6 +125,14 @@ label = "Short expansion sound"
 description = "Energy and reserve tanks and repeat missile, super missile and power bomb expansions play a short pickup sound instead of the fanfare."
 type = "boolean"
 default = true
+
+[[option]]
+feature = "item-pickup"
+id = "mute-jingle"
+label = "No pickup jingle"
+description = "Cut the pickup fanfare for every item, including major upgrades and first ammo pickups. Room music keeps playing. Overrides Short expansion sound."
+type = "boolean"
+default = false
 
 [[plugin]]
 feature = "item-pickup"

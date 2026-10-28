@@ -23,8 +23,13 @@ doors are audited. See the current measurements, exact coverage limits and
 remaining owner judgments in
 [`docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md`](docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md).
 Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
-Falling aim-down remains undefined; final item sound/suit-animation scope awaits
-the owner's choices. Full hack packs remain deferred. No main
+The cut-all pickup jingle request is implemented and qualified in a separate
+Windows/Linux candidate, including216 matching WRAM checkpoints across hosts.
+Cinematic and isolated
+resource/combo/visor gates are qualified by QA commits `8455d24` and `d3a3159`.
+The inherited ship-save omission is now being corrected and qualified with
+native-flow hooks. Falling aim-down and suit-animation scope await the owner's
+answers. Full hack packs remain deferred. No main
 merge, code push, release or delivery replacement is authorized.
 
 **Controlling scope after owner clarification:** preserve modern F-Zero/SMW
@@ -246,7 +251,7 @@ measured headlessly; the owner hasn't playtested any feature yet.
 | .3 | Intro skip, Ceres skip, credits skip | Current runtime gates pass: matched English intro gameplay9304→3452; Japanese stock/mod WRAM identical; Ceres skip starts on Zebes1882 vs Ceres9274. Staff roll8306→1 after Start, with native pose/final sequence retained. Normal/alternate full WRAM matches. See `docs/validation/SM_CINEMATICS_20261028.md`. |
 | .4 | Faster doors (2x/max) | Done. Left 106/60/54, down 98/56/38, up 97/55/49, right 136/90/84 frames for stock/2x/max. Real Tourian grey gates also pass: 121/106 stock, 75/60 at 2x, 69/54 at max. Full WRAM/observed-frame tier equality. |
 | .5 | Faster elevators (2x/3x) | Done. Real Zebes down/up trips: stock651/641, 2x407/370, 3x326/280 frames; same heights/SRAM and tier equality. Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
-| .6 | Item pickup: short jingle, no freeze, skip message boxes | Real reserve room/orb shot + collection: freeze425 stock/short-sound,79 message-skip,0 no-freeze/combined; same acquisition tick16 and unchanged SRAM. Room music3 + short SFX02 instead of fanfare2. Five normal/alternate cases match all sampled data/full WRAM. Short sounds currently cover energy/reserve and repeat ammo only; major/first-ammo sounds and native suit transformations await owner scope choices. |
+| .6 | Item pickup: cut every jingle, short expansion sounds, no freeze, skip messages | Owner clarified CUT every jingle, including majors/first ammo. mute-jingle overrides short sounds. Nine collectors + both suits pass56 fixture and8 real-room cases on Windows/Linux, normal/alternate Windows equality,216 cross-host WRAM matches, SRAM preserved. Real room tracks3/5/5/3 continue through Varia/Gravity/first missile/reserve pickups. Legacy pacing/stock traces/25 CTests/netplay setting checks pass. Native suit-animation scope remains pending. See `docs/validation/SM_PICKUP_SOUNDS_20261028.md`. |
 | .7 | Reduce screen shake (off/half) | Converted to hooks at `$A0:86A5` / `$86:843C` plus operand `$A0:8705`; measured 3/2/0 px for stock/half/off, with unchanged timers. |
 | .8 | Ending return; quit to file select during gameplay | Both implemented independently. Native ending: Start during pose is ignored; final-screen Start returns to title only when enabled, SRAM unchanged, normal/alternate full WRAM matches. Pause Options quit passes native transition, SRAM, fade-save/late-load, run-ahead2 and interpreted file-select checks. See cinematic and quit validation docs; owner review pending. |
 
@@ -272,11 +277,11 @@ definition in the decomp, so the plugin uses them as spare memory.
 ### `super-metroid.combat`
 | Bead | Feature | Status |
 |---|---|---|
-| .22 | Shinespark health drain off/half | Done. "Off" raises `CMP #$001E` to `#$7FFF` at `$90:D0C9/D0F8/D124` (`mod_operand`). "Half" hooks the DEC at `$90:D0CE/D0FD/D129`. |
+| .22 | Shinespark health drain off/half | Nine actual-flight cases pass: 12-frame drain12/6/0 for stock/half/none, horizontal/vertical/diagonal. Native trajectories/collisions stay identical; full WRAM matches alternate execution, SRAM unchanged. See isolated feature validation. |
 | .18 | Screw attack breaks shot blocks and frozen enemies | Done (`feat/qol-combat` 6e80b43). Stock stops at x $4BB at the shot-block wall; mod passes to $519, block breaks then respawns. Frozen enemy dies on contact. |
 | .19 | Charge-beam item magnet (Ancient Chozo tractor beam) | Done. Drop moves 2 px/frame toward Samus and is collected. |
 | .21 | Raise bomb limit (count option + "frames between bombs" option) | Done. Stock peaks at 4 because the 16-frame inter-bomb wait is the real cap; mod reaches 10 (or 6 at limit 6). |
-| .23 | Charge combos via Select (Redux) | Done. Select fires the combo, 1 PB spent. Headless test forced the charge because scripts release all buttons for a frame between inputs. |
+| .23 | Charge combos via Select (Redux) | Six exact-input cases pass with auto charge OFF: native held X builds charge, X+Select spends1 PB and creates4 special projectiles while retaining weapon0. Low charge/no ammo preserve stock full WRAM; all normal/alternate snapshots match. No charge-result injection. |
 | .20 | Auto charge | Implemented to the owner's definition. Stock/auto/no-Charge-Beam and native/Select combos pass in both paths; four taps give charged/normal/normal/charged after waiting, no idle shots. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 
 ### `super-metroid.controls`
@@ -301,9 +306,9 @@ definition in the decomp, so the plugin uses them as spare memory.
 ### `super-metroid.balance-fixes`
 | Bead | Feature | Status |
 |---|---|---|
-| .39 | Wider X-ray (wide/widest, aim speed) | Done. Uses `mod_operand` `$88:8791`, `$88:8799`, `$88:87F7/8819/884F/887A`. |
+| .39 | Wider X-ray (wide/widest, aim speed) | Ten actual-input cases pass: both facings, half-width10/18/26, step1/2, both end limits and native close/unfreeze. Full WRAM/bitmaps match alternate execution; SRAM unchanged. |
 | .35 | Missile station refills supers and PBs | Done. Hooks `$84:8CD2`→8CDA, B2EE→B2F0, B321→B323, AEC5→AEC7. Hook `$85:8311` supplies the complete AMMO RELOAD row while stock code copies it into WRAM. Runtime check refills 5/3/2 ammo versus stock 5/0/0 and validates the surrounding spaces. |
-| .36 | Save station refills everything | Done. Hook `$84:8CF1`. |
+| .36 | Save station refills everything | Real room93D5/contact/prompt/Yes/Save Completed passes. Mod refills health/reserve/missiles/supers/PB499/300/50/15/10, stock retains depleted values. Saved resource words and native/mirrored SRAM checksums validate; full SRAM/WRAM match alternate execution. |
 | .37 | Leave Tourian before Mother Brain | Automated traversal passes: natural baby drain, recovery, both grey gates to DC65/DC19; re-entry selects DCDD, music 1E/5, nine corpse population entries. Stock stays locked. Complete selector interpreted path matches; a narrower mixed-path engine boundary failure remains tracked separately. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
 | .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have boundary regressions. Actual jump/contact/refill, screw menu, manual reserves, X-ray, exact pause race, suit pickups, full new reserves, valid sprite clear, eye cleanup, native wall jump and bomb-block contexts are recorded in the final checkpoint with tier limits. A constructed nonzero ghost slot now retains the slot-zero native AI trajectory only with the fix; full WRAM/scheduler-tier comparison passes. Native Speed Booster sound-call stage and stopping pass actual compiled/interpreted comparison. Sound quality/palette owner judgment remains. Correctness fixes default on; elective full tanks/manual-control default off. 25 CTests pass. Ship-save was not implemented by the inherited work. |
@@ -361,10 +366,10 @@ refill/full text row, and all three steering directions. Raw evidence is under
 `G:/Temp/Codex/sm-qol-20261027/rom-removal-runtime-v2/`; supporting conversion
 audit, first probes and all-current-feature activation logs are adjacent.
 
-**Still owed:** tier-parity qualification for every feature, the full feature
-burndown, Linux game build, netplay mismatch check and owner playtesting.
-The engine's isolated compiled/interpreter operand tests already pass; that
-does not replace game-level parity checks. No main merge, code push or release.
+**Historical remaining list, superseded by section9:** this early conversion
+checkpoint preceded the combined available-tier, Linux and netplay gates now
+recorded in the final checkpoint. The active burndown tracks the later cut-all
+pickup/ship-save additions and owner review. No main merge, code push or release.
 
 ### 6.2 Combat + balance-fixes integration checkpoint
 
@@ -506,12 +511,15 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
 
 ## 9. Burndown (remaining tasks, in order)
 
-Current acceptance audit: close the remaining isolated drain/Select-combo,
-native save-station refill and
-wide/faster X-ray runtime/tier gates. Historical Done text does not replace those
-checks. Native reserve pickup pacing, nonzero ghost placement and Speed Booster
-sound-call state now have new actual-game comparisons. Current intro, Ceres,
-credits/pose and ending-return comparisons also pass. This is still an active
+Current acceptance audit: isolated drain/Select-combo, native save-station refill
+and wide/faster X-ray runtime/tier gates now pass, including actual native SRAM
+checksums and X-ray bitmaps. See `docs/validation/SM_ISOLATED_FEATURE_CHECKS_20261028.md`.
+Native pickup pacing, ghost, Speed Booster sound-call state, intro/Ceres and
+credits/pose/ending return also have current actual-game comparisons. The new
+cut-all pickup jingle passes Windows/Linux qualification. The inherited ship-save
+omission is also being closed: three declared hooks reorder the native save and
+Save Completed message; original Yes/No behavior is reproduced, candidate
+qualification is pending. This is still an active
 burndown; prepared owner review does not declare the full wishlist complete.
 
 1. **Owner review:** use `tools/sm_qol_playtest.py` and the prepared native-paused
@@ -520,9 +528,9 @@ burndown; prepared owner review does not declare the full wishlist complete.
    feel, map readability, Speed Booster sound and palette judgment remain.
 2. **At this final handoff only:** ask the owner to define .26 falling aim-down.
    Auto charge .20 is implemented and automatically qualified. Do not guess .26.
-   Also resolve pickup scope: the inherited short-jingle option retains major/
-   first-ammo fanfares, and no-freeze retains suit transformations. Those choices
-   are now explicitly pending; the broad wishlist is not declared complete.
+   Pickup sound scope is decided: CUT every pickup fanfare, including majors/
+   first ammo, implemented as mute-jingle. Only the separate suit-transformation
+   scope remains pending; the broad wishlist is not declared complete.
 3. Resolve concrete owner findings, then rerun affected checks. The narrowly mixed
    selector continuation defect remains separately tracked in `beads-8wg.2.163`;
    full-selector parity passes. Ghost nonzero-index gameplay now passes in a
