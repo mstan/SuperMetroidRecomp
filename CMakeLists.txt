@@ -244,7 +244,7 @@ set(SM_GEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/gen" CACHE PATH
 # Everything that is not Super Metroid now comes from the framework through
 # the snesrecomp_target_* helpers below. This list used to also carry private
 # forks of config.c, post_mortem.c, glsl_shader.c, opengl.c and
-# fiber_compat.c â€” roughly 2,400 lines of host code that was either identical
+# fiber_compat.c — roughly 2,400 lines of host code that was either identical
 # to the framework's or ahead of it, and which therefore stopped inheriting
 # fixes in both directions. The parts this port was ahead on (the Android
 # fiber backend, the post-mortem's DB-tripwire and stack/dispatch dumps, the
@@ -307,7 +307,7 @@ else()
     snesrecomp_target_sdl(SuperMetroidSNESRecomp)
 endif()
 
-# â”€â”€ Shared host services, from the framework instead of a private fork â”€â”€â”€â”€â”€â”€
+# ── Shared host services, from the framework instead of a private fork ──────
 #
 # The desktop host itself: launcher flow, ROM resolution, config.ini +
 # [KeyMap] (which is what gives the in-game overlays their hotkeys), the
@@ -361,13 +361,13 @@ snesrecomp_target_config_seed(SuperMetroidSNESRecomp)
 # ROM identity. rom_identity.txt is the one place the digests live: this turns
 # it into snesrecomp_rom_identity.h for src/main.c, and tools/regen.sh,
 # scripts/package_release.sh and the release workflow read the same file.
-# Before this call the digests were written out THREE times â€” here in
+# Before this call the digests were written out THREE times — here in
 # rom_identity.txt, as a byte array plus a CRC literal in src/main.c, and
 # again in src/codegen_setup.c, whose comment claimed to be the single source
 # of truth. A revision bump is one edit now.
 snesrecomp_rom_identity(SuperMetroidSNESRecomp ${CMAKE_CURRENT_SOURCE_DIR}/rom_identity.txt)
 
-# Win32 Fiber API on ucontext (desktop) / pthreads (Android) â€” sm_rtl.c's
+# Win32 Fiber API on ucontext (desktop) / pthreads (Android) — sm_rtl.c's
 # single-fiber frame model runs on it. The Android backend in the framework
 # copy came from this port.
 
