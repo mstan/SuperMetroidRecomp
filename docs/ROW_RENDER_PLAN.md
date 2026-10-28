@@ -2,7 +2,7 @@
 
 `SM_NATIVE_ROW_PLAN` selects the Super Metroid adapter for the framework's
 pure `SnesRenderPlanCompose` job. It is a build-time development option,
-currently OFF pending final qualification and owner approval. Build with
+OFF by owner direction; qualification does not promote the default. Build with
 `SM_RASTER_IMPL=NATIVE` and `SM_NATIVE_ROW_PLAN=ON` to exercise it. The native
 compositor with the option OFF and the separate LLE renderer remain available.
 
@@ -38,8 +38,27 @@ stock-versus-wide trace assertion fails at frame3114 in both builds, while
 the per-viewport original/candidate traces and images match. The title already
 supports viewport-dependent simulation activity.
 
-Current-build state qualification and balanced built-game performance acceptance
-are still in progress. Preliminary pilot timings are not accepted campaign
-results. Tracking: `beads-8wg.6.35`, roadmap `beads-49cy`, central optimization
-campaign `beads-2wy8.1`. Owner approval of the combined candidate playtest is
-required before merge. Original Xbox qualification remains separate.
+Automated current-build qualification is complete: production same-process
+save/load matches the full trace and final image/capture, and the TRACE QA
+build passes fresh-process continuation and six invalid-input isolation cases.
+Interactive rewind remains part of the combined owner playtest.
+
+Five balanced 7,200-frame Eye pairs per profile on an i5-4670 measured median
+process-CPU reductions of 8.86% custom 4:3 and 5.56% at 16:9 (five positive
+pairs each). Stock and 32:9 are neutral/inconclusive. Both arms used
+NoSpriteLimits=0; retain that feature identity when comparing later packages.
+Changing background host load is recorded. Preliminary local pilot timings
+are excluded. Exact qualified source is `aa66ec96`; source/binary/runtime
+identities, raw paired samples and relevant code/stack costs are retained in
+`G:/Temp/Codex/snesrecomp/sm-row-plan-20261028/campaign-results.json`.
+
+This is a title adapter adopting a shared facility already in snesrecomp,
+not a new engine-wide gain. Owner direction on 2026-10-28: finish this existing
+candidate, then prioritize game-agnostic shared mechanisms; substantial new
+title adoption belongs at the end of the shared-engine burndown. Keep title
+scene/asset/camera policy here and elevate reusable operations with validated
+consumers.
+
+Tracking: `beads-8wg.6.35`, roadmap `beads-49cy`, central optimization campaign
+`beads-2wy8.1`. Combined owner playtest approval is required before merge.
+No original Xbox or cross-build/cross-host netplay qualification is claimed.
