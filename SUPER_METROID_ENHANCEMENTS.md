@@ -18,6 +18,44 @@ Temporary loss of that feature is accepted. Do not retain patching under a
 deprecation warning or a compatibility exception. Pushes and main-branch
 merges remain owner-gated.
 
+### Codex takeover: immediate patcher-removal result
+
+The standalone patcher removal is implemented and Windows-qualified locally:
+
+| Repository | Commit | Branch / checkout |
+|---|---|---|
+| snesrecomp | `253c635` | `feat/sm-qol-mod-hooks`; clean qualification checkout `G:\Temp\Codex\sm-qol-20261027\engine` on `fix/rom-patcher-removal-20261027` |
+| recomp-ui | `e4d8762` | `fix/remove-rom-patching-20261027`, `G:\Temp\Codex\sm-qol-20261027\recomp-ui` |
+| FZeroRecomp | `5f03229` | same branch name, `G:\Temp\Codex\sm-qol-20261027\fzero` |
+| SuperMarioWorldRecomp | `4a27a84` | same branch name, `G:\Temp\Codex\sm-qol-20261027\smw` |
+
+Both engine IPS/BPS implementations, variant-patch support, the localization
+ROM writer, recomp-ui's patch picker/cache/API/tool and MSU auto-patcher,
+F-Zero's BS Deluxe and MSU ROM-patching integrations, and SMW's abandoned
+co-op target and IPS tools are deleted. Old patch manifest/localization
+declarations reject with an error. Guarded writes reject cartridge-ROM
+overlaps and remain usable for RAM. F-Zero and SMW pin these engine/UI commits.
+
+Validation: recomp-ui 43/43 tests, F-Zero 8/8 tests, F-Zero desktop/headless
+builds, SMW stock build, 3600 headless audio frames in each game, and focused
+engine tests all pass. F-Zero's existing stock tier-2 coverage profile was
+retained for regeneration. Linux shell syntax and MSBuild XML were checked;
+Linux/MSVC builds were not run. No pushes, main merges, releases, delivery
+folder replacements, owner-save changes or visible playtests were performed.
+
+Evidence and retained qualification builds:
+`G:\Temp\Codex\sm-qol-20261027\removal-evidence.json`. The removal beads are
+`beads-0fu.32`, `beads-8wg.5.110`, `beads-8wg.3.41`, and engine
+`beads-8wg.2.157`. Retain these worktrees/builds/logs until integration;
+then remove disposable generated sources, ROM copies and build outputs there.
+
+**Super Metroid's feature-specific conversion is still outstanding.** The
+inherited `mod_operand` edits remain uncommitted in `_wt-sm-qol-engine`.
+SM still pins `47f010b`; finish the operand mechanism and convert its own
+ROM-writing helpers before bumping that pin. The rest of the original
+feature burndown below remains open. There is no reason to repeat the
+standalone patcher-removal audit or wait for F-Zero replacements.
+
 A tester sent a Super Metroid quality-of-life wishlist plus three favourite
 ROM hacks: **Ancient Chozo 1.1.5**, **Super Metroid Redux** and **Ascent
 1.12**. The archives are at `E:\Downloads\Ancient chozo.7z`,
@@ -274,7 +312,7 @@ Remaining:
 5. Run the full engine test suite (`tests/run_c_tests.sh` under PowerShell,
    pytest with `C:\Users\Matthew\.pyenv\pyenv-win\versions\3.10.9\python.exe -m pytest tests/v2`),
    then commit on `feat/sm-qol-mod-hooks`.
-6. Remove ROM writing from the engine itself:
+6. Standalone engine ROM-patcher removal is committed as `253c635` (see takeover result above):
    - `runner/src/guarded_patch.*` is used by Star Fox on RAM buffers, which is allowed.
      Make it refuse targets inside the cart ROM image, or drop it if unused.
    - `runner/src/rom_patch.c` (IPS/BPS) and its use in `runner/src/content_variant.c`
@@ -333,7 +371,11 @@ Human playtest checklist from the agent (things automation couldn't judge):
 - wall-jump screw attack and bomb blocks;
 - speed booster sound bug.
 
-### 6.3 Cross-repo ROM-patching removal (audited 2026-10-27; not started)
+### 6.3 Cross-repo ROM-patching removal (historical audit; now implemented locally)
+
+The standalone removals below are completed and Windows-qualified in the
+takeover commits above. Push/main merge/release remain pending. This table
+records what was found, not functionality still present in those candidates.
 
 Known uses that must be removed or replaced by content loaders:
 

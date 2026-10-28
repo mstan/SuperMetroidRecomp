@@ -10,7 +10,7 @@ to ROMs or recompile patched ROMs.
 - Favorite: https://www.romhacking.net/hacks/4028/
 - Honorable mentions: https://www.romhacking.net/hacks/6347/ and https://www.romhacking.net/hacks/4963/
 - Aim reference: https://www.igdb.com/games/metroid-prime-origins
-- Exact map supplied by owner: [Falcon Zero complete Zebes map](reference/metroid3_map.gif), copied unchanged from `C:\Users\Matthew\Desktop\metroid3_map.gif`. Preserve its author credit. It is a design reference, not permission to redistribute its art in the game.
+- Exact map supplied by owner: [Falcon Zero complete Zebes map](reference/metroid3_map.gif), copied unchanged from `C:\Users\Matthew\Desktop\metroid3_map.gif`. Preserve its author credit when using this design reference.
 
 ## Original tester message
 
