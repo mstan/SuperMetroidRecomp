@@ -1,8 +1,9 @@
 # Super Metroid QoL qualification checkpoint, 2026-10-28
 
-The local integration branch implements the requested feature set except the
-owner-deferred falling aim-down definition. Owner visual, audio and controller
-acceptance remains pending. Nothing has been pushed, merged to main or released.
+The local integration branch implements the listed toggles; the owner-deferred
+falling aim-down definition and final pickup sound/animation scope remain open.
+Owner visual, audio and controller acceptance remains pending. Nothing has been
+pushed, merged to main or released.
 Full hack content packs remain deferred indefinitely.
 
 Tested production source: `82e17c6`, engine `e265a2be`, UI `7fdd3a87`, nested
@@ -130,7 +131,11 @@ right-stick weapons, movement feel and remaining audio/visual judgments. Record
 individual Pass/Fail/deferred notes; a bundle label does not clear caveats.
 Falling aim-down stays unimplemented until the owner defines it at this handoff.
 Instant pickup currently skips the pickup message/freeze, while native suit
-transformations remain. No replacement full-hack content pack is promised here.
+transformations remain. The inherited short-jingle option affects energy/reserve
+tanks and repeat ammo only; major upgrades and first ammo retain the fanfare.
+Whether the requested jingle toggle should cover those too is an explicit open
+scope question, not a claim that every pickup fanfare is already shortened.
+No replacement full-hack content pack is promised here.
 No release archive or delivery folder has been changed. To reopen the selector:
 
 ```powershell

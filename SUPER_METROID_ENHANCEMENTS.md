@@ -23,7 +23,8 @@ doors are audited. See the current measurements, exact coverage limits and
 remaining owner judgments in
 [`docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md`](docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md).
 Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
-Falling aim-down remains undefined; full hack packs remain deferred. No main
+Falling aim-down remains undefined; final item sound/suit-animation scope awaits
+the owner's choices. Full hack packs remain deferred. No main
 merge, code push, release or delivery replacement is authorized.
 
 **Controlling scope after owner clarification:** preserve modern F-Zero/SMW
@@ -245,7 +246,7 @@ measured headlessly; the owner hasn't playtested any feature yet.
 | .3 | Intro skip, Ceres skip, credits skip | Done. Gameplay starts at frame 2553 instead of 9225 (re-measured). Credits 12728 → 4998 frames. The ending pose is kept (owner ruling). |
 | .4 | Faster doors (2x/max) | Done. Left 106/60/54, down 98/56/38, up 97/55/49, right 136/90/84 frames for stock/2x/max. Real Tourian grey gates also pass: 121/106 stock, 75/60 at 2x, 69/54 at max. Full WRAM/observed-frame tier equality. |
 | .5 | Faster elevators (2x/3x) | Done. Real Zebes down/up trips: stock651/641, 2x407/370, 3x326/280 frames; same heights/SRAM and tier equality. Ceres ride is 308 frames shorter at 3x. Uses 8 `mod_operand` sites in bank23 (`$A3:958B, 9594, 95A6, 95AF, 95C8, 95D1, 95E2, 95EB`). |
-| .6 | Item pickup: short jingle, no freeze, skip message boxes | Done. Freeze goes 565 → 60 → 0 frames. |
+| .6 | Item pickup: short jingle, no freeze, skip message boxes | Existing behavior measured: freeze 565 to60 to0 frames; short sounds cover energy/reserve and repeat ammo only. Major upgrades/first ammo retain fanfares; native suit transformations remain. Owner questions are pending on extending sounds to all items and skipping suit animations. |
 | .7 | Reduce screen shake (off/half) | Converted to hooks at `$A0:86A5` / `$86:843C` plus operand `$A0:8705`; measured 3/2/0 px for stock/half/off, with unchanged timers. |
 | .8 | Ending return; quit to file select during gameplay | Both implemented independently. New pause Options action passes actual native transition, SRAM preservation, fade-save/late-load, two-frame run-ahead and interpreted file-select checks. See `docs/validation/SM_QUIT_20261028.md`; owner review pending. |
 
@@ -511,6 +512,9 @@ profile and `--config <profile>/config.ini` isolate all writable paths.
    feel, map readability, Speed Booster sound and palette judgment remain.
 2. **At this final handoff only:** ask the owner to define .26 falling aim-down.
    Auto charge .20 is implemented and automatically qualified. Do not guess .26.
+   Also resolve pickup scope: the inherited short-jingle option retains major/
+   first-ammo fanfares, and no-freeze retains suit transformations. Those choices
+   are now explicitly pending; the broad wishlist is not declared complete.
 3. Resolve concrete owner findings, then rerun affected checks. The narrowly mixed
    selector continuation defect remains separately tracked in `beads-8wg.2.163`;
    full-selector parity passes. Ghost nonzero-index gameplay now passes in a
