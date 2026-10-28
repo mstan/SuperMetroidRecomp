@@ -660,6 +660,12 @@ bool SmRendererRoomTile(const uint8_t ram[0x20000], int x, int y,
                         uint16_t *entry) {
   return SmRendererRoomLayerTile(ram, 0, x, y, entry);
 }
+static uint16_t room_block_tile(const uint8_t *ram, unsigned block, int x, int y) {
+  unsigned qx = ((unsigned)x / 8 & 1) ^ ((block >> 10) & 1);
+  unsigned qy = ((unsigned)y / 8 & 1) ^ ((block >> 11) & 1);
+  unsigned table = 0xa000 + (block & 1023) * 8 + (qy * 2 + qx) * 2;
+  return (uint16_t)(read16(ram, table) ^ ((block & 0xc00) << 4));
+}
 bool SmRendererRoomLayerTile(const uint8_t ram[0x20000], unsigned layer,
                             int x, int y, uint16_t *entry) {
   if (!ram || !entry || layer > 1 || x < 0 || y < 0) return false;
@@ -670,10 +676,7 @@ bool SmRendererRoomLayerTile(const uint8_t ram[0x20000], unsigned layer,
   unsigned address = (layer ? 0x19602 : 0x10002) + 2 * (by * w + bx);
   if (address >= 0x20000 - 1) return false;
   unsigned block = read16(ram, address);
-  unsigned qx = ((unsigned)x / 8 & 1) ^ ((block >> 10) & 1);
-  unsigned qy = ((unsigned)y / 8 & 1) ^ ((block >> 11) & 1);
-  unsigned table = 0xa000 + (block & 1023) * 8 + (qy * 2 + qx) * 2;
-  *entry = (uint16_t)(read16(ram, table) ^ ((block & 0xc00) << 4));
+  *entry = room_block_tile(ram, block, x, y);
   return true;
 }
 static unsigned tile_pixel(const uint16_t *vram, unsigned address, int x, int y, int bpp) {
@@ -686,6 +689,43 @@ static unsigned tile_pixel(const uint16_t *vram, unsigned address, int x, int y,
     pixel |= ((bits & 1) << 2) | ((bits >> 5) & 8);
   }
   return pixel;
+}
+
+/* Nonrectangular rooms retain whole unused screens in their rectangular
+ * level allocation. The ROM fills those screens with solid block $83FF,
+ * whose diagnostic cross tile is never meant to enter the camera. Treat
+ * only a completely filled screen as padding: a real wall, hidden passage
+ * or PLM change in an otherwise filled screen must remain visible. */
+static void room_padding_screens(const uint8_t *ram, uint8_t padding[256], uint16_t fill[256]) {
+  memset(padding, 0, 256);
+  memset(fill, 0, 256 * sizeof(*fill));
+  uint16_t walls[256] = {0};
+  unsigned w = read16(ram, 0x7a5), h = read16(ram, 0x7a7);
+  if (!w || !h || (w & 15) || (h & 15) || w > 256 || h > 256 ||
+      (uint64_t)w * h > 0x3200) return;
+  for (unsigned sy = 0; sy < h / 16; ++sy)
+    for (unsigned sx = 0; sx < w / 16; ++sx) {
+      unsigned block = read16(ram, 0x10002 + 2 * (sy * 16 * w + sx * 16));
+      bool uniform = true;
+      for (unsigned by = sy * 16; uniform && by < sy * 16 + 16; ++by)
+        for (unsigned bx = sx * 16; bx < sx * 16 + 16; ++bx)
+          if (read16(ram, 0x10002 + 2 * (by * w + bx)) != block) {
+            uniform = false; break;
+          }
+      padding[sy * 16 + sx] = uniform && block == 0x83ff;
+      if (uniform && block != 0x83ff && (block & 0xf000) == 0x8000)
+        walls[sy * 16 + sx] = (uint16_t)block;
+    }
+  /* Continue a complete authored wall vertically into adjacent filler.
+   * Never propagate through filler or infer a wall from a mixed screen. */
+  for (unsigned sy = 0; sy < h / 16; ++sy)
+    for (unsigned sx = 0; sx < w / 16; ++sx) {
+      unsigned i = sy * 16 + sx;
+      if (!padding[i]) continue;
+      unsigned above = sy ? walls[i - 16] : 0;
+      unsigned below = sy + 1 < h / 16 ? walls[i + 16] : 0;
+      if (!above || !below || above == below) fill[i] = (uint16_t)(above ? above : below);
+    }
 }
 
 /* Host-only reconstruction of $91:CB8E's revealed block map. The high bit
@@ -823,7 +863,9 @@ typedef struct SmBackgroundLine {
   unsigned layer, sc, base, low, high;
   const uint8_t *room;
   const uint16_t *revealed;
+  const uint16_t *padding_fill;
   bool screen_space;
+  bool fx_surface;
   bool object_canvas;
   int canvas_x, canvas_y, canvas_width, canvas_height, canvas_scroll_x;
 } SmBackgroundLine;
@@ -854,6 +896,9 @@ static SmBackgroundLine background_line(const Ppu *p, const uint8_t *room, unsig
    * $5A map also includes liquid FX at $5C00..$5FFF: classify the addressed
    * page below, not the entire BG3 map as screen-space. */
   b.screen_space = layer == 2 && (b.sc & 0xfc) == 0x58;
+  /* Room loading uploads 0x840 bytes of FX map starting at word $5BE0.
+   * Its first row (surface bubbles) still belongs to the first $5A page. */
+  b.fx_surface = b.screen_space && (b.sc & 2) && read16(room, 0x1964) != 0;
   if (layer == 1 && object.valid && (room[0x91b] & 1)) {
     b.object_canvas = true;
     b.canvas_width = b.size * (b.sc & 1 ? 64 : 32);
@@ -916,7 +961,12 @@ static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram
       if (wx < 0 || wy < 0 || (unsigned)wx / 16 >= w || (unsigned)wy / 16 >= h) return 0;
       entry = xray_entry(b->room, b->revealed[(unsigned)wy / 16 * w + (unsigned)wx / 16],
                          ((unsigned)wx / 8 & 1) + ((unsigned)wy / 8 & 1) * 2);
-    } else if (!SmRendererRoomLayerTile(b->room, b->layer, wx, wy, &entry)) return 0;
+    } else {
+      unsigned sx = (unsigned)wx / 256, sy = (unsigned)wy / 256;
+      unsigned fill = b->padding_fill && sx < 16 && sy < 16 ? b->padding_fill[sy * 16 + sx] : 0;
+      if (fill) entry = room_block_tile(b->room, fill, wx, wy);
+      else if (!SmRendererRoomLayerTile(b->room, b->layer, wx, wy, &entry)) return 0;
+    }
     tile = entry;
     px = wx & 1023;
     py = wy & 1023;
@@ -931,7 +981,8 @@ static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram
     /* Message HDMA and boss scrolling can expose any UI row. Preserve its
      * opaque-black subscreen without suppressing the adjacent liquid page
      * selected by the same $5A register on lower gameplay scanlines. */
-    if (margin && b->screen_space && (address & 0x7c00) == 0x5800)
+    if (margin && b->screen_space && (address & 0x7c00) == 0x5800 &&
+        !(b->fx_surface && address >= 0x5be0))
       return b->sc & 2 ? (uint16_t)((b->low << 12) | (2 << 8) | SM_PIXEL_OPAQUE_BLACK) : 0;
     tile = vram[address & 0x7fff];
   }
@@ -946,7 +997,11 @@ static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram
   return (priority << 12) | (b->layer << 8) | palette | pixel;
 }
 
-typedef struct SmWideWindow { bool valid; int left, right; bool first; } SmWideWindow;
+typedef struct SmWideWindow {
+  bool valid;
+  int left, right;
+  bool first, remove_clamped_edge;
+} SmWideWindow;
 
 static int q8_floor(int value) {
   return value >= 0 ? value / 256 : -((-value + 255) / 256);
@@ -1086,9 +1141,9 @@ static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   int32_t left[230], right[230];
   if (!SmRendererXrayBounds(tangent, x, y, read16(enemy, 54), half_width,
                             left, right)) return false;
-  /* Require the guest's native table, including the last clamped edge pixel
-   * before its ramp becomes empty. Geometry only supplies the extra columns;
-   * every original pixel continues to use the captured hardware windows. */
+  /* Require the guest's native table, including saturated one-pixel edge
+   * runs from the offscreen walkers. Geometry only supplies extra columns;
+   * native rows otherwise retain their captured hardware windows. */
   for (unsigned row = 0; row < 230; ++row) {
     unsigned native = read16(ram, 0x9100 + row * 2);
     int l = left[row], r = right[row];
@@ -1097,10 +1152,7 @@ static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
       if (native != (unsigned)(l < 0 ? 0 : l) + ((unsigned)(r > 255 ? 255 : r) << 8))
         return false;
     } else if ((native & 255) <= (native >> 8)) {
-      int toward = (int)row + ((int)row < y - 1 ? 1 : -1);
-      if (toward < 0 || toward >= 230 ||
-          !((native == 0xffff && l > 255 && left[toward] <= 255) ||
-            (native == 0 && r < 0 && right[toward] >= 0))) return false;
+      if (!((native == 0xffff && l > 255) || (native == 0 && r < 0))) return false;
     }
   }
   bool extended = false;
@@ -1109,7 +1161,13 @@ static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
     memcpy(&raster, f->lines[row].registers, PPU_SAVESTATE_REGS_SIZE);
     unsigned native = read16(ram, 0x9100 + (row + 1) * 2);
     if (raster.window1left != (native & 255) || raster.window1right != (native >> 8)) continue;
-    rows[row] = (SmWideWindow){true, left[row + 1], right[row + 1], true};
+    /* An entirely offscreen cone can leave $0000/$FFFF in the hardware
+     * table: a false one-pixel stripe at the old viewport edge. In a wider
+     * view use the verified geometry at that edge too; native aspect keeps
+     * the exact hardware result. */
+    bool clamped = (native == 0xffff && left[row + 1] > 255) ||
+                   (native == 0 && right[row + 1] < 0);
+    rows[row] = (SmWideWindow){true, left[row + 1], right[row + 1], true, clamped};
     extended = true;
   }
   return extended;
@@ -1185,7 +1243,7 @@ static bool in_window(const Ppu *p, int layer, int x, int extra, const SmWideWin
   int r1 = p->window1right == 255 ? 255 + extra : p->window1right;
   int l2 = p->window2left == 0 ? -extra : p->window2left;
   int r2 = p->window2right == 255 ? 255 + extra : p->window2right;
-  if (wide->valid && (x < 0 || x >= 256)) {
+  if (wide->valid && (x < 0 || x >= 256 || (extra && wide->remove_clamped_edge))) {
     if (wide->first) { l1 = wide->left; r1 = wide->right; }
     else { l2 = wide->left; r2 = wide->right; }
   }
@@ -1855,6 +1913,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   memset(out, 0, (size_t)viewport.width * 224 * sizeof(*out));
   unsigned state = read16(f->ram, 0x998);
   bool room = room_state(state);
+  uint8_t padding_screens[256] = {0};
+  uint16_t padding_fill[256] = {0};
+  if (room && viewport.extra) room_padding_screens(f->ram, padding_screens, padding_fill);
   SmBg2Object bg2 = bg2_object(f, previous, alpha);
   int camera_x = (int16_t)read16(f->ram, 0x911);
   int camera_y = (int16_t)read16(f->ram, 0x915);
@@ -2016,6 +2077,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       wl[which] = wide_windows[y].left; wr[which] = wide_windows[y].right;
     }
     SnesRenderWindowPlan margin_windows = SnesRenderWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
+    if (viewport.extra && wide_windows[y].remove_clamped_edge)
+      native_windows = margin_windows;
 #endif
     int mode7_y = y + 1;
     int mode7_size = (scanout.mosaic >> 4) + 1;
@@ -2059,6 +2122,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (mode == 1)
       for (unsigned layer = 0; layer < 3; ++layer)
         background_lines[layer] = background_line(&scanout, f->ram, layer, line_bg2);
+    if (mode == 1) background_lines[0].padding_fill = padding_fill;
     if (xray_reveal && mode == 1 && scanout.bgXsc[1] == 0x49 && scanout.windowsel == 0x8008c8) {
       background_lines[1].room = f->ram;
       background_lines[1].revealed = xray_blocks;
@@ -2113,6 +2177,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       if (mode == 1 && (x < 0 || x >= 256) && world->room_width &&
           (matte_x + x < 0 || matte_x + x >= world->room_width ||
            matte_y + y + 1 < 0 || matte_y + y + 1 >= world->room_height)) continue;
+      unsigned padding_x = (unsigned)(matte_x + x) / 256;
+      unsigned padding_y = (unsigned)(matte_y + y + 1) / 256;
+      if (mode == 1 && (x < 0 || x >= 256) && world->room &&
+          padding_x < 16 && padding_y < 16 &&
+          padding_screens[padding_y * 16 + padding_x] &&
+          !padding_fill[padding_y * 16 + padding_x]) continue;
       uint16_t screens[2] = {0x500, 0x500};
 #if SM_NATIVE_RASTER
       unsigned window_mask = SnesRenderWindowMask(x < 0 || x >= 256 ? &margin_windows : &native_windows, x);
