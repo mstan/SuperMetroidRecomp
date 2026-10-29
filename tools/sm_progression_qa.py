@@ -23,6 +23,7 @@ import socket
 import shutil
 import struct
 import subprocess
+import sys
 import time
 from collections import deque
 
@@ -635,32 +636,53 @@ class Session:
         return result
 
     def close(self):
-        if getattr(self, 'process', None) and self.process.poll() is None:
-            if getattr(self, 'sock', None):
-                # A headless host has no window to close and keeps running
-                # once released. Persist the final complete checkpoint (the
-                # periodic one is up to five seconds old) and the execution
-                # counters before stopping it, while the guest is paused at
-                # the frame the route ended on.
+        process = getattr(self, 'process', None)
+        if process is not None and process.poll() is None and self.sock is not None:
+            # A headless host has no window to close and keeps running
+            # once released. Persist the final complete checkpoint (the
+            # periodic one is up to five seconds old) and the execution
+            # counters before stopping it, while the guest is paused at
+            # the frame the route ended on.
+            try:
+                self.final_execution = self.execution()
+            except (OSError, ValueError, RuntimeError) as error:
+                self.final_execution = dict(error=str(error))
+            if self.capture_profile:
                 try:
-                    self.final_execution = self.execution()
+                    self.command(f'tier2_dump {self.output / "tier2-profile.json"}')
                 except (OSError, ValueError, RuntimeError) as error:
-                    self.final_execution = dict(error=str(error))
-                if self.capture_profile:
-                    try:
-                        self.command(f'tier2_dump {self.output / "tier2-profile.json"}')
-                    except (OSError, ValueError, RuntimeError) as error:
-                        self.final_execution['tier2_dump_error'] = str(error)
-            if self.process.poll() is None:
-                self.process.terminate()
-                self.process.wait(timeout=10)
-        if getattr(self, 'sock', None):
-            self.stream.close()
-            self.sock.close()
+                    self.final_execution['tier2_dump_error'] = str(error)
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                # A parked headless host can outlive SIGTERM (its debug loop
+                # never reaps a dead client); escalate so no session leaks a
+                # process, and never raise out of close() to mask the route's
+                # real result.
+                process.kill()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    print(f'[session] process {process.pid} survived SIGKILL; '
+                          f'leaked', file=sys.stderr)
+        if self.sock is not None:
+            try:
+                self.stream.close()
+                self.sock.close()
+            except OSError:
+                pass
+            self.stream = None
+            self.sock = None
         for name in ('journal', 'stdout', 'stderr'):
             stream = getattr(self, name, None)
             if stream:
-                stream.close()
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+                setattr(self, name, None)
 
 
 def path_to(rooms, start, target):

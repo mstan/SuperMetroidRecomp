@@ -60,3 +60,6 @@ typedef struct SmRasterStats {
   unsigned vram_images;
 } SmRasterStats;
 SmRasterStats SmRendererGetRasterStats(void);
+/* ROM-reference accessors for M2 glyph rendering (no asset extraction). */
+const uint8_t *SmRomPtr(unsigned bank, unsigned addr, size_t size);
+uint8_t SmRomByte(unsigned bank, unsigned addr);

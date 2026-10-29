@@ -163,13 +163,19 @@ if(BUILD_TESTING AND NOT ANDROID)
     # saves sm-video.ini, so it runs in its own directory, never beside the
     # game executable.
     add_executable(sm_pause_options_test
-        tests/sm_pause_options_test.c src/sm_pause_options.c src/sm_video.c
+        tests/sm_pause_options_test.c src/sm_pause_options.c src/sm_video.c src/sm_rom_glyphs.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c
         ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c
         ${RECOMP_UI_ROOT}/src/common/recomp_runtime_ui.c)
     target_include_directories(sm_pause_options_test PRIVATE src ${RECOMP_UI_ROOT}/src
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
         ${SNESRECOMP_ROOT}/runner/src/desktop)
+    # Calibration mode prints the actual golden hashes instead of asserting,
+    # so the constants in the test can be regenerated after a layout change.
+    if (PAUSE_OPTIONS_TEST_CALIBRATE)
+        target_compile_definitions(sm_pause_options_test PRIVATE
+            PAUSE_OPTIONS_TEST_CALIBRATE=1)
+    endif()
     # sm_pause_options.c includes host_api.h, which includes the SDL boundary
     # header; the test fakes the API so no SDL runs, but the includes and
     # compile definitions still need the selected backend.
@@ -294,6 +300,7 @@ set(SM_HOST_SOURCES
     src/sm_video.c        # SM aspect/HUD policy + presentation clock
     src/sm_activity.c src/sm_activity_host.c
     src/sm_pause_options.c # 3rd pause tab: the Game Options overlay
+    src/sm_rom_glyphs.c    # M2 ROM glyph rasterizer (no asset extraction)
     src/sm_mods.c         # built-in presentation mod provider
 )
 

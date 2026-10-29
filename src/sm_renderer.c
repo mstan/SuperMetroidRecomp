@@ -146,6 +146,16 @@ static const uint8_t *rom_bytes(unsigned bank, unsigned address, size_t size) {
   return renderer_rom + offset;
 }
 
+/* Public ROM access for host-side overlays. The pause panel's ROM glyphs are
+ * referenced in place -- no tile data is copied out of the cartridge. */
+const uint8_t *SmRomPtr(unsigned bank, unsigned addr, size_t size) {
+  return rom_bytes(bank, addr, size);
+}
+uint8_t SmRomByte(unsigned bank, unsigned addr) {
+  const uint8_t *p = rom_bytes(bank, addr, 1);
+  return p ? *p : 0;
+}
+
 static bool save_capture(const SmSourceFrame *frame, const char *path) {
   if (!path || !frame->valid) return false;
 #if SM_NATIVE_RASTER

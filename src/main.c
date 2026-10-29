@@ -145,8 +145,8 @@ static void SmOnReset(void) {
  * guest-driven SPC queue. The moment state 8 gameplay returns, drop any
  * remainder so Samus can never burst forward after the doorway. */
 static int SmKeepPacingDebt(void) {
-  uint8_t game_state = g_ram[0x0998];
-  return game_state >= 9 && game_state <= 11;
+  const uint8_t gs = g_ram[0x0998];
+  return gs >= 9 && gs <= 11;
 }
 
 static void SmPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *frame_h) {

@@ -33,9 +33,48 @@ extern uint16 counter_global_frames;
 
 /* Pause menu. menu_index selects kPauseMenuFuncs ($82:90FF);
  * pausemenu_button_label_mode is the lit L/R label, which the Load/FadeIn
- * states also read to pick the screen they land on (0 Map, 2 Equipment). */
+ * states also read to pick the screen they land on (0 Map, 2 Equipment).
+ * The shoulder-press effects HandlePauseScreenLrInput writes ($82:A50C). */
 #define menu_index (*(uint16*)(g_ram + 0x0727))
 #define pausemenu_button_label_mode (*(uint16*)(g_ram + 0x0753))
+#define pausemenu_start_lr_pressed_highlight_timer (*(uint16*)(g_ram + 0x0729))
+#define pausemenu_shoulder_button_highlight (*(uint16*)(g_ram + 0x0751))
+
+/* Input filter state written by ReleaseButtonsFilter ($80:8146), which the
+ * pause screens read as newly_held_down_timed_held_input: a button counts
+ * as newly held only once it has been stably held through the decay window
+ * (the pause screen's "timed held" input), so e.g. the unpause Start edge
+ * lands several frames after the press. */
+#define joypad_released_keys (*(uint16*)(g_ram + 0x05D9))
+#define timed_held_input_timer (*(uint16*)(g_ram + 0x05DB))
+#define timed_held_input (*(uint16*)(g_ram + 0x05DF))
+#define previous_timed_held_input (*(uint16*)(g_ram + 0x05E3))
+
+/* PPU shadow register INIDISP (brightness 0-15, bit 7 force-blank), the one
+ * the fade routines step; Vector_NMI (NmiUpdateIoRegisters, $80:9583)
+ * copies it to PPU $2100 each frame. */
+#define reg_INIDISP (*(uint8*)(g_ram + 0x0051))
+
+/* Screen fade words stepped by HandleFadeOut/In ($80:8924/894D): the delay
+ * word is the counter's reload value, so 0 steps INIDISP every frame (fast
+ * tab-change fade) and 1 every other frame (slow unpause fade). */
+#define screen_fade_delay (*(uint16*)(g_ram + 0x0723))
+#define screen_fade_counter (*(uint16*)(g_ram + 0x0725))
+
+/* SFX channel 1 queue as QueueSfx1_Internal ($80:9051) keeps it: a 16-slot
+ * ring ($0656) with rp/wp, plus the one-byte max-queued marker. The guest
+ * pumps it once per frame. */
+#define sfx_readpos ((uint8*)(g_ram + 0x0643))
+#define sfx_writepos ((uint8*)(g_ram + 0x0646))
+#define sfx_max_queued ((uint8*)(g_ram + 0x0653))
+#define sfx1_queue ((uint8*)(g_ram + 0x0656))
+
+/* Gates QueueSfx1_Internal applies before writing the ring. */
+#define power_bomb_explosion_status (*(uint16*)(g_ram + 0x0592))
+#define debug_disable_sounds (*(uint16*)(g_ram + 0x05F5))
+
+/* The main game-state machine counter (the recompiled code's game_state). */
+#define game_state (*(uint16*)(g_ram + 0x0998))
 
 /* Button bits in joypad1_newkeys/lastkeys: the SNES auto-joypad order the ROM
  * reads (decomp: src/ida_types.h `enum Buttons`). */
