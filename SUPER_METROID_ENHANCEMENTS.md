@@ -12,10 +12,10 @@ exact Falcon Zero image are retained in
 [`docs/reference/metroid3_map.gif`](docs/reference/metroid3_map.gif).
 Auto charge is defined: charge automatically while idle, tap to release a charged shot, then fire normal successive shots until another charge is ready. The owner deferred falling aim-down clarification until the final handoff.
 
-**Current checkpoint:** production source `82e17c6`, engine `e265a2be`, UI
+**Current checkpoint:** earlier production source `82e17c6`, engine `e265a2be`, UI
 `7fdd3a87`, nested recomp-net `445eed76`. Windows and Linux pass all 25 title
 tests; the final all-off stock trace is unchanged and all 40 features activate.
-Actual Windows/Linux game peers accept matching complete settings and refuse a
+Actual local game peer pairs on Windows and on Linux accept matching complete settings and refuse a
 tail-option mismatch before frame zero. Combat, movement, pacing and corrected
 map comparisons pass the available execution-path checks. The map model now has
 414 markers, including eye doors; native scripted escape and physical one-way
@@ -27,8 +27,13 @@ The cut-all pickup jingle request is implemented and qualified in a separate
 Windows/Linux candidate, including216 matching WRAM checkpoints across hosts.
 Cinematic and isolated
 resource/combo/visor gates are qualified by QA commits `8455d24` and `d3a3159`.
-The inherited ship-save omission is now being corrected and qualified with
-native-flow hooks. Falling aim-down and suit-animation scope await the owner's
+The inherited ship-save omission is corrected and qualified with four native-flow
+hooks: save before the visible confirmation, preserving native sound/timing.
+Ten Windows/Linux ship cases, normal/alternate comparisons, current-build state
+reload, stock traces and setting-mismatch refusal pass. See
+[`docs/validation/SM_SHIP_SAVE_20261028.md`](docs/validation/SM_SHIP_SAVE_20261028.md)
+for final combined-build identities and measured scope.
+Falling aim-down and suit-animation scope await the owner's
 answers. Full hack packs remain deferred. No main
 merge, code push, release or delivery replacement is authorized.
 
@@ -311,7 +316,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | .36 | Save station refills everything | Real room93D5/contact/prompt/Yes/Save Completed passes. Mod refills health/reserve/missiles/supers/PB499/300/50/15/10, stock retains depleted values. Saved resource words and native/mirrored SRAM checksums validate; full SRAM/WRAM match alternate execution. |
 | .37 | Leave Tourian before Mother Brain | Automated traversal passes: natural baby drain, recovery, both grey gates to DC65/DC19; re-entry selects DCDD, music 1E/5, nine corpse population entries. Stock stays locked. Complete selector interpreted path matches; a narrower mixed-path engine boundary failure remains tracked separately. See `docs/validation/SM_COMBAT_20261028.md`. Owner playtest pending. |
 | .38 | Power bombs reveal hidden blocks | Done (in the WIP commit). Hidden super-missile blocks revealed at f10398; stock stays hidden. |
-| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 12 vanilla + 6 reserve options have boundary regressions. Actual jump/contact/refill, screw menu, manual reserves, X-ray, exact pause race, suit pickups, full new reserves, valid sprite clear, eye cleanup, native wall jump and bomb-block contexts are recorded in the final checkpoint with tier limits. A constructed nonzero ghost slot now retains the slot-zero native AI trajectory only with the fix; full WRAM/scheduler-tier comparison passes. Native Speed Booster sound-call stage and stopping pass actual compiled/interpreted comparison. Sound quality/palette owner judgment remains. Correctness fixes default on; elective full tanks/manual-control default off. 25 CTests pass. Ship-save was not implemented by the inherited work. |
+| .40 | Vanilla bug fixes, one toggle per fix (Redux `vanillabugfixes.asm`) | 13 vanilla + 6 reserve options have boundary regressions. Actual jump/contact/refill, screw menu, manual reserves, X-ray, exact pause race, suit pickups, full new reserves, valid sprite clear, eye cleanup, native wall jump and bomb-block contexts are recorded in the final checkpoint with tier limits. Nonzero ghost-slot and native Speed Booster sound-call comparisons pass. Ship-save now saves before visible confirmation: Yes/No, all three files, default/off controls, normal quit persistence, current-build state reload and Windows/Linux checks pass; see SM_SHIP_SAVE_20261028.md. Sound quality/palette owner judgment remains. Correctness fixes default on; elective full tanks/manual-control default off. 25 CTests pass on both platforms. |
 
 Full-hack content packs (`.41`) are deferred indefinitely.
 
@@ -517,9 +522,11 @@ checksums and X-ray bitmaps. See `docs/validation/SM_ISOLATED_FEATURE_CHECKS_202
 Native pickup pacing, ghost, Speed Booster sound-call state, intro/Ceres and
 credits/pose/ending return also have current actual-game comparisons. The new
 cut-all pickup jingle passes Windows/Linux qualification. The inherited ship-save
-omission is also being closed: three declared hooks reorder the native save and
-Save Completed message; original Yes/No behavior is reproduced, candidate
-qualification is pending. This is still an active
+omission is also closed: four declared hooks reorder the native save and
+Save Completed message while preserving its sound/lead-in. Ten ship scenarios,
+normal/alternate presentation/current-build state checks and Linux qualification
+pass. All 38 WRAM and 38 SRAM snapshots, ten sampled traces and persisted saves
+match Windows/Linux. This is still an active
 burndown; prepared owner review does not declare the full wishlist complete.
 
 1. **Owner review:** use `tools/sm_qol_playtest.py` and the prepared native-paused

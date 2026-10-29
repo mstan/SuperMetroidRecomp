@@ -4,14 +4,18 @@ The local integration branch implements the listed toggles; the owner-deferred
 falling aim-down definition and suit-animation scope remain open. The owner
 specified cutting every pickup fanfare; the new option is implemented and its
 separate Windows/Linux builds are qualified. See [pickup evidence](SM_PICKUP_SOUNDS_20261028.md).
-The inherited ship-save omission is now being corrected; that candidate remains
-under qualification and is not included in the existing passing binaries.
+The inherited ship-save omission is corrected and qualified in the combined
+Windows/Linux candidate: native saving precedes the visible confirmation,
+including normal quit at that message. See [ship-save evidence](SM_SHIP_SAVE_20261028.md)
+for final binary identities, source hashes, current-build state checks and scope.
 Owner visual, audio and controller acceptance remains pending. Nothing has been
 pushed, merged to main or released.
 Full hack content packs remain deferred indefinitely.
 
-Tested production source: `82e17c6`, engine `e265a2be`, UI `7fdd3a87`, nested
-recomp-net `445eed76` (wire 3 / module ABI 2). Earlier mechanics-only game tests
+Earlier tested production source: `82e17c6`, engine `e265a2be`, UI `7fdd3a87`, nested
+recomp-net `445eed76` (wire 3 / module ABI 2). New pickup and ship-save builds
+extend that source; their dedicated reports identify the exact binaries.
+Earlier mechanics-only game tests
 identify their exact executables in JSON; later map-only changes do not replace
 those identities. The trace build enables the supported TCP QA interface.
 

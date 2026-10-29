@@ -5,7 +5,7 @@ import argparse,csv,hashlib,json,os,re,shutil,socket,subprocess
 from pathlib import Path
 from test_qol_rom_removal import SOURCE,ROM_SHA,state,tomllib
 
-def selections(jump=True, mute=False):
+def selections(jump=True, mute=False, ship=True):
     result=[]
     for path in sorted((SOURCE/'mods/preloaded/packages').glob('*/1.0.0/manifest.toml')):
         d=tomllib.loads(path.read_text(encoding='utf8'))
@@ -14,6 +14,7 @@ def selections(jump=True, mute=False):
             if f['id']=='shinespark-steering':name+=':down-to-morph=true,jump-to-cancel='+str(jump).lower()
             if f['id']=='quick-morph':name+=':air-morph=true'
             if f['id']=='item-pickup' and mute:name+=':mute-jingle=true'
+            if f['id']=='bug-fixes' and not ship:name+=':ship-save=false'
             result.append(name)
     return result
 
@@ -36,8 +37,11 @@ def run_pair(a,name,mismatch):
         (p/'config.ini').write_text(config);shutil.copytree(SOURCE/'mods/preloaded/packages',p/'mods/preloaded/packages')
         different = mismatch and seat == 1
         # With the new sound option selected, make that option the mismatch.
-        selected = selections(True if a.cut_pickup_jingle else not different,
-                              a.cut_pickup_jingle and not different)
+        if a.mismatch_ship_save:
+            selected = selections(True, a.cut_pickup_jingle, not different)
+        else:
+            selected = selections(True if a.cut_pickup_jingle else not different,
+                                  a.cut_pickup_jingle and not different)
         (p/'mods/preloaded/state.toml').write_text(state(selected))
         # Netplay forbids local scripts; cold boot with controllers disabled.
         env={k:v for k,v in os.environ.items() if not k.startswith(('SNES_NET','SNES_RB','RNET_','RBE_','SM_'))}
@@ -87,11 +91,14 @@ def main():
     for key in ('build','rom','out'):p.add_argument('--'+key,type=Path,required=True)
     p.add_argument('--cut-pickup-jingle',action='store_true',
                    help='Enable cut-all pickup sounds; mismatch only that option on peer 1')
+    p.add_argument('--mismatch-ship-save',action='store_true',
+                   help='Mismatch only the ship-save correctness option on peer 1')
     a=p.parse_args()
     for key in ('build','rom','out'):setattr(a,key,getattr(a,key).resolve())
     assert hashlib.sha256(a.rom.read_bytes()).hexdigest()==ROM_SHA
     a.out.mkdir(parents=True,exist_ok=False)
-    mismatch_name='different-pickup-jingle' if a.cut_pickup_jingle else 'different-tail-option'
+    mismatch_name=('different-ship-save' if a.mismatch_ship_save else
+                   'different-pickup-jingle' if a.cut_pickup_jingle else 'different-tail-option')
     result={'matching':run_pair(a,'matching',False),mismatch_name:run_pair(a,mismatch_name,True)}
     result['exe_sha256']=hashlib.sha256((a.build/('SuperMetroidSNESRecomp.exe' if os.name=='nt' else 'SuperMetroidSNESRecomp')).read_bytes()).hexdigest()
     result['feature_count']=len(selections());result['matching_trace']='first150 common WRAM probe rows identical'

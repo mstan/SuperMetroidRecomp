@@ -63,7 +63,13 @@
  *                       button cancels it instead of resuming later
  *                       ($82:AF52, $82:AC52).
  *
- * The hooks are declared in recomp/bank02/04/06/10/11/20/28/34.cfg.
+ * ship-save: the native ship dialog shows Save Completed before returning
+ * to GunshipTop_13, which performs the save. Return Yes before that message,
+ * let the gunship call native SaveToSram, then reuse its DisplayMessageBox
+ * call for Save Completed. Native message index/choice encode both phases;
+ * no extra state or guest-call bridge is needed (Redux ShipBugFix behavior).
+ *
+ * The hooks are declared in recomp/bank02/04/05/06/10/11/20/22/28/34.cfg.
  */
 
 #include <stdbool.h>
@@ -78,6 +84,7 @@
 
 enum {
   kNew = 0x8F,
+  kMessageChoice = 0x05F9, kMessageIndex = 0x1C1F,
   kPauseItem = 0x0755, kManualCounter = 0x0757,
   kGameState = 0x0998, kEquipped = 0x09A2,
   kHealth = 0x09C2, kMaxHealth = 0x09C4, kMaxReserve = 0x09D4, kReserve = 0x09D6,
@@ -189,6 +196,47 @@ uint32 SmFixSuitPickupHook(CpuState *cpu, uint32 pc24) {
   return SuitPlmArgument(cpu->Y) ? At(pc24, (uint16_t)((pc24 & 0xFFFF) + 3)) : 0;
 }
 
+/* Ship Yes is choice0; No is2. Tear down the prompt on Yes while retaining
+ * index1C so native MessageBoxPostProcess returns that actual choice. */
+uint32 SmFixShipPromptHook(CpuState *cpu, uint32 pc24) {
+  return W(cpu, kMessageIndex) == 0x1C && W(cpu, kMessageChoice) == 0
+      ? At(pc24, 0x80E8) : 0;
+}
+
+/* The second dialog (18) has already followed the native save; do not repeat
+ * the save when its call returns to the shared gunship instruction. */
+uint32 SmFixShipMessageReturnHook(CpuState *cpu, uint32 pc24) {
+  if (W(cpu, kMessageIndex) != 0x18) return 0;
+  /* MessageBoxPostProcess returns18; retain the skipped CMP #2 flags. */
+  cpu->_flag_C = 1;
+  cpu->_flag_N = cpu->_flag_Z = 0;
+  return At(pc24, 0xAB40);
+}
+
+/* A fresh Saved dialog normally uses the generic path. For the gunship's
+ * second call, retain its original refill sound and 160-frame lead-in before
+ * opening the confirmation. The actual native actor/room identify the call;
+ * station confirmations and other message18 uses keep their normal timing. */
+uint32 SmFixShipPresentationHook(CpuState *cpu, uint32 pc24) {
+  uint16_t enemy = W(cpu, 0x0E54);
+  if (W(cpu, kMessageIndex) != 0x18 || W(cpu, 0x079B) != 0x91F8 ||
+      (enemy & 0x3F) || enemy >= 0x800 || W(cpu, 0x0F78 + enemy) != 0xD07F ||
+      W(cpu, 0x0FB2 + enemy) != 0xAB1F)
+    return 0;
+  return At(pc24, 0x80D6);
+}
+
+/* Both native Yes/save and No branches reach AB40. Only the first Yes
+ * return (index1C, choice0) may show Saved. Reuse JSL DisplayMessageBox in
+ * the same gunship function, with the native LDA #18 register/flag effects.
+ * That dialog changes index to18, preventing re-entry here afterward. */
+uint32 SmFixShipSavedHook(CpuState *cpu, uint32 pc24) {
+  if (W(cpu, kMessageIndex) != 0x1C || W(cpu, kMessageChoice) != 0) return 0;
+  cpu->A = 0x18;
+  cpu->_flag_N = cpu->_flag_Z = 0;
+  return At(pc24, 0xAB22);
+}
+
 /* ── reserve-tanks ────────────────────────────────────────────────────── */
 
 uint32 SmFixReservePauseHook(CpuState *cpu, uint32 pc24) {
@@ -285,6 +333,7 @@ static const Fix kBugFixes[] = {
   {"ws-ghost-position", {0xA89C13, 0xA89D45, 0xA89DC3, 0xA89DCD}},
   {"sprite-objects", {0xB4BDA3}},
   {"suit-pickup-palette", {0x8488F6, 0x8488FF}},
+  {"ship-save", {0x8580CD, 0x858093, 0xA2AB26, 0xA2AB40}},
 };
 
 static void SmBugFixesActivate(void) {

@@ -14,6 +14,8 @@ HOOK(SmFixSpeedBoosterSfxHook); HOOK(SmFixSpeedBoosterJumpHook);
 HOOK(SmFixWallJumpScrewHook); HOOK(SmFixBlueSuitPaletteHook);
 HOOK(SmFixScrewIframesHook); HOOK(SmFixWsGhostHook);
 HOOK(SmFixSpriteObjectClearHook); HOOK(SmFixSuitPickupHook);
+HOOK(SmFixShipPromptHook); HOOK(SmFixShipMessageReturnHook); HOOK(SmFixShipSavedHook);
+HOOK(SmFixShipPresentationHook);
 HOOK(SmFixReservePauseHook); HOOK(SmFixReserveFullHook);
 HOOK(SmFixReserveAutoEntryHook); HOOK(SmFixReserveAutoKeepHook);
 HOOK(SmFixReserveManualCancelHook); HOOK(SmFixReserveManualKeepHook);
@@ -42,7 +44,7 @@ static uint16_t Get(unsigned a) { return (uint16_t)(ram[a] | ram[a+1] << 8); }
 int main(void) {
   assert(bugs && reserves && reset);
   options = false; bugs(); reserves(); assert(!arms);
-  options = true; bugs(); reserves(); assert(arms == 24);
+  options = true; bugs(); reserves(); assert(arms == 28);
   CpuState c = {0}; c.ram = ram; c.S = 0x1ff9; c.DB = 0x7e;
   c.X = 10; assert(SmFixScrewMenuHook(&c, 0x82B4C4) == 0x82B4BA);
   c.X = 12; assert(!SmFixScrewMenuHook(&c, 0x02B4C4));
@@ -84,6 +86,29 @@ int main(void) {
     assert(SmFixSuitPickupHook(&c, 0x8488FF) == 0x848902);
   }
   c.Y = 0xE000; assert(!SmFixSuitPickupHook(&c, 0x8488F6));
+  /* No must not show Saved or touch the native save path. Yes returns first,
+   * then Saved reuses the call once without looping or repeating the save. */
+  Put(0x1C1F, 0x1C); Put(0x5F9, 2);
+  assert(!SmFixShipPromptHook(&c, 0x8580CD));
+  assert(!SmFixShipSavedHook(&c, 0xA2AB40));
+  assert(!SmFixShipMessageReturnHook(&c, 0xA2AB26));
+  Put(0x5F9, 0);
+  assert(SmFixShipPromptHook(&c, 0x0580CD) == 0x0580E8);
+  c.A = 0; c._flag_N = c._flag_Z = 1;
+  assert(SmFixShipSavedHook(&c, 0x22AB40) == 0x22AB22);
+  assert(c.A == 0x18 && !c._flag_N && !c._flag_Z);
+  Put(0x1C1F, 0x18);
+  c._flag_C = 0;
+  assert(SmFixShipMessageReturnHook(&c, 0xA2AB26) == 0xA2AB40);
+  assert(c._flag_C && !c._flag_N && !c._flag_Z);
+  assert(!SmFixShipSavedHook(&c, 0xA2AB40));
+  Put(0xE54, 0x40); Put(0xF78 + 0x40, 0xD07F); Put(0xFB2 + 0x40, 0xAB1F);
+  Put(0x79B, 0x91F8); Put(0x1C1F, 0x18);
+  assert(SmFixShipPresentationHook(&c, 0x858093) == 0x8580D6);
+  Put(0x79B, 0x93D5); assert(!SmFixShipPresentationHook(&c, 0x858093));
+  Put(0x79B, 0x91F8); Put(0xF78 + 0x40, 0); assert(!SmFixShipPresentationHook(&c, 0x858093));
+  Put(0xF78 + 0x40, 0xD07F); Put(0xFB2 + 0x40, 0xA9BD);
+  assert(!SmFixShipPresentationHook(&c, 0x858093));
   Put(0x998, 15); assert(SmFixReservePauseHook(&c, 0x82DB73) == 0x82DB9D);
   Put(0x998, 8); assert(!SmFixReservePauseHook(&c, 0x82DB73));
   Put(0x9D4, 300); SmFixReserveFullHook(&c, 0x848990); assert(Get(0x9D6) == 300);

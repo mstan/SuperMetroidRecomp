@@ -64,8 +64,9 @@ cut-all peers and the original Linux stock trace. Logs/results use
 `pickup-all-suits-linux-v2`, `pickup-mute-rooms-suits-linux-v2`,
 `pickup-cut-netplay-linux`, `pickup-stock-linux`. Every observation and all216
 complete WRAM checkpoints (176 collectors,40 rooms) also match Windows:
-`pickup-cut-cross-host-validated.json`. These are local peer checks on each host;
-the earlier cross-host network gate remains separately identified.
+`pickup-cut-cross-host-validated.json`. Network checks use local peer pairs on
+each OS. The cross-host equality above compares recorded gameplay evidence;
+it does not establish a mixed Windows/Linux network session.
 
 The first Linux TCP suite completed observations but timed out while stopping
 its paused hosts. QA now resumes only after capturing final paused evidence,

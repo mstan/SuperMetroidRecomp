@@ -202,6 +202,14 @@ default = true
 feature = "bug-fixes"
 id = "super-metroid.balance-fixes.bug-fixes"
 
+[[option]]
+feature = "bug-fixes"
+id = "ship-save"
+label = "Ship saves before confirming"
+description = "The ship writes your save before displaying Save Completed, so progress is safe if you quit at that message."
+type = "boolean"
+default = true
+
 [[feature]]
 id = "reserve-tanks"
 name = "Reserve tank fixes"
