@@ -21,11 +21,15 @@ cp -R "$BUILD/assets" "$STAGE/"
 cp VERSION framework_pins.txt README.md LICENSE "$STAGE/"
 cp tools/replay_diagnostic.py "$STAGE/replay_diagnostic.py"
 cp profiles/release.json "$STAGE/release-profile.json"
+# Ship the tracked, read-only feature catalog, never a developer's mod profile.
+mkdir -p "$STAGE/mods"
+cp -R mods/preloaded "$STAGE/mods/"
 # Repository defaults only. Never copy a developer's keybinds, ROM paths, saves,
 # writable mods, video settings or mute configuration from a build directory.
 cp config.ini "$STAGE/"
 mkdir -p "$STAGE/docs"
 cp docs/custom-renderer.md "$STAGE/docs/"
+cp "docs/releases/v$VERSION.md" "$STAGE/docs/release-notes.md"
 cp -R docs/images "$STAGE/docs/"
 FRAMEWORK="$(sed -n 's/^SNESRECOMP_ROOT:PATH=//p' "$BUILD/CMakeCache.txt" | tr -d '\r')"
 FRAMEWORK="${FRAMEWORK:-$ROOT/snesrecomp}"

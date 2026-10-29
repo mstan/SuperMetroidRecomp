@@ -17,6 +17,10 @@ on:
         description: 'Publish after all four native builds and tests pass'
         type: boolean
         default: false
+      prerelease:
+        description: 'Mark the published release as a prerelease'
+        type: boolean
+        default: false
       toolchain_tag:
         description: 'retcomm-toolchains builder version (empty = latest)'
         type: string
@@ -166,4 +170,5 @@ jobs:
             dist/supermetroid-*.zip
             dist/SHA256SUMS
           fail_on_unmatched_files: true
-          make_latest: true
+          prerelease: ${{ inputs.prerelease }}
+          make_latest: ${{ inputs.prerelease && 'false' || 'true' }}

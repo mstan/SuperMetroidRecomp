@@ -21,7 +21,8 @@ const char *SmModOption(SmModValue *out, const char *package, const char *featur
 
 bool SmModOptionBool(const char *package, const char *feature,
                      const char *option, bool fallback) {
-  return !strcmp(SmModOption(package, feature, option,
+  SmModValue value;
+  return !strcmp(SmModOption(&value, package, feature, option,
                              fallback ? "true" : "false"), "true");
 }
 

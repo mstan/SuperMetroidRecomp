@@ -1,6 +1,6 @@
 # Super Metroid enhancements: per-feature QoL mods
 
-Working handoff, updated 2026-10-28. Codex is working solo on the feature burndown; the old combat agent remains stopped. It records the plan, the owner's rulings, the
+Working handoff, updated 2026-10-29. Codex is working solo; the old combat agent remains stopped. It records the plan, the owner's rulings, the
 current state of every branch, the work in flight and what is left, so another
 agent (Codex or Claude) can resume without the original conversation.
 
@@ -28,8 +28,8 @@ failures. Map-fade flashes and detached moving auto-charge flares are corrected
 and pass targeted normal/alternate, stock and affected Linux checks. See
 [`docs/validation/SM_VISUAL_FIXES_20261029.md`](docs/validation/SM_VISUAL_FIXES_20261029.md).
 Follow-up uses `owner-visual-retest` and asks only those two failed subchecks;
-all ten earlier Pass results are preserved. Visual acceptance of the fixes is
-pending. Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
+all ten earlier Pass results are preserved. The owner accepted the corrected
+build on 2026-10-29. Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
 The owner subsequently rejected the redundant gameplay ammo row. That mode and
 its Always control are removed; the optional pause display shows maximum
 capacities only. See `docs/validation/SM_AMMO_HUD_20261029.md`. Live owner windows
@@ -48,8 +48,13 @@ reload, stock traces and setting-mismatch refusal pass. See
 [`docs/validation/SM_SHIP_SAVE_20261028.md`](docs/validation/SM_SHIP_SAVE_20261028.md)
 for final combined-build identities and measured scope.
 Falling aim-down and suit-animation scope await the owner's
-answers. Full hack packs remain deferred. No main
-merge, code push, release or delivery replacement is authorized.
+answers. Full hack packs remain deferred. The owner authorized a feature branch
+rebased onto current main and a repository prerelease on 2026-10-29. The branch is
+`feat/super-metroid-enhancements`, rebased onto `833848e` (v0.3.18 replay and
+widescreen fixes retained), preparing v0.4.0. The original local
+`feat/qol-feature-mods` remains at `85d5a36` for provenance. Dependency feature
+branches publish the exact engine/UI/net pins above so recursive clones work.
+Main-branch merge and delivery-folder replacement are not part of this request.
 
 **Controlling scope after owner clarification:** preserve modern F-Zero/SMW
 semantic content loaders, BS content, MSU/music, vehicles and native multiplayer.

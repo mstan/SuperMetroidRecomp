@@ -125,6 +125,12 @@ Screenshots supplied by the project owner from the custom-renderer build.
 
 ## Releases
 
+The v0.4.0 prerelease adds forty configurable gameplay, movement, combat, map,
+HUD and pacing features under **Mods**. Elective enhancements start disabled;
+correctness fixes start enabled. See the [prerelease notes](docs/releases/v0.4.0.md)
+for feature groups and deferred requests. Maximum ammo capacity appears only
+on pause; gameplay uses the native HUD counters.
+
 Download the precompiled ZIP for Windows x64, Linux x64, macOS arm64 or macOS
 x64 from this repository's Releases page. Extract the entire folder and start
 the executable (on Linux, start `Launch.sh`). Select your own unmodified Super

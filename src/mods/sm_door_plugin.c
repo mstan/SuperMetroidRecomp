@@ -108,7 +108,8 @@ static const Site kSites[] = {
 };
 
 static void SmDoorActivate(void) {
-  const char *speed = SmModOption(PACKAGE, FEATURE, "speed", "2x");
+  SmModValue speed_value;
+  const char *speed = SmModOption(&speed_value, PACKAGE, FEATURE, "speed", "2x");
   bool max = !strcmp(speed, "max");
   g_step_h = 8;
   g_step_down = max ? 14 : 8;

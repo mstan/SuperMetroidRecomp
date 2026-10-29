@@ -111,6 +111,17 @@ def audit(archive_path):
             if any(part in ('toolchain', 'src', 'recomp', 'recomp-ui', 'snesrecomp', 'saves') for part in path.parts[1:]):
                 raise ValueError(f'Build tree or state in package: {name}')
         root = next(iter(roots)) + '/'
+        catalog = ROOT / 'mods/preloaded'
+        if catalog.is_dir():
+            expected = {p.relative_to(ROOT).as_posix(): p
+                        for p in catalog.rglob('*') if p.is_file()}
+            shipped = {n[len(root):] for n in names
+                       if n.startswith(root + 'mods/') and not n.endswith('/')}
+            if shipped != set(expected):
+                raise ValueError('Runtime mod catalog differs from tracked packages')
+            for name, source in expected.items():
+                if archive.read(root + name).replace(b'\r\n', b'\n') != source.read_bytes().replace(b'\r\n', b'\n'):
+                    raise ValueError(f'Runtime mod package differs from source: {name}')
         for required in ('VERSION', 'framework_pins.txt', 'release-profile.json', 'config.ini', 'README.md', 'replay_diagnostic.py'):
             if root + required not in names:
                 raise ValueError(f'Missing package file: {required}')
