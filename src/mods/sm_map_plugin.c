@@ -19,7 +19,7 @@
 static SmWorld world;
 static int16_t layout[SM_WORLD_ROOMS][2];
 static bool ready,failed,area_enabled,world_enabled,mini_enabled;
-static bool world_open,mini_open,mini_pause,registered;
+static bool world_open,world_closing,mini_open,mini_pause,registered;
 static uint16_t previous;
 static unsigned pan_tick,zoom=1;
 static int center_x16,center_y16,mini_width=128;
@@ -48,10 +48,31 @@ static bool Ensure(void) {
 static bool MapPage(const uint8_t *ram) {
   return W(ram,0x998)==15 && W(ram,0x727)==0 && !SmPauseOptions_Visible();
 }
+/* Controls require the settled map page, but its replacement must also cover
+ * the native fade-in/out and tab fades. pause_screen_mode follows the actual
+ * loaded screen, including when menu_index already names the next phase. */
+static bool MapPresentation(const uint8_t *ram) {
+  unsigned state=W(ram,0x998);
+  return state>=14 && state<=16 && W(ram,0x763)==0 && !SmPauseOptions_Visible();
+}
+static void FadeMap(uint32_t *pixels,int stride,int canvas_width,int height,int x,int y,int width,int rows,const uint8_t *ram) {
+  unsigned display=ram[0x51],level=(display&0x80) ? 0 : display&15;
+  if (level==15) return;
+  int right=x+width,bottom=y+rows;
+  if (x<0) x=0;
+  if (y<0) y=0;
+  if (right>canvas_width) right=canvas_width;
+  if (bottom>height) bottom=height;
+  for (; y<bottom; ++y) for (int i=x; i<right; ++i) {
+    uint32_t *p=pixels+(size_t)y*stride+i,c=*p;
+    unsigned r=((c>>16)&255)*level/15,g=((c>>8)&255)*level/15,b=(c&255)*level/15;
+    *p=(c&0xff000000u)|(r<<16)|(g<<8)|b;
+  }
+}
 static void SyncTimeline(void) {
   uint64_t current=RtlStateGeneration();
   if (timeline==current) return;
-  timeline=current; world_open=mini_open=false; previous=0; backdrop_width=backdrop_height=0;
+  timeline=current; world_open=world_closing=mini_open=false; previous=0; backdrop_width=backdrop_height=0;
 }
 bool SmMapFullScreen(const uint8_t *ram) { SyncTimeline(); return world_open && MapPage(ram); }
 static bool Frozen(const uint8_t *ram) {
@@ -76,6 +97,7 @@ static uint16_t Input(uint16_t buttons,const SnesModInputContext *context) {
   bool chord=(buttons&(SNES_PAD_SELECT|SNES_PAD_START))==(SNES_PAD_SELECT|SNES_PAD_START);
   bool old_chord=(previous&(SNES_PAD_SELECT|SNES_PAD_START))==(SNES_PAD_SELECT|SNES_PAD_START);
   previous=buttons;
+  if (!MapPresentation(ram)) world_closing=false;
   if (W(ram,0x998)==8 && !W(ram,0xa78) && mini_enabled) {
     world_open=false;
     if (chord && !old_chord && Ensure()) mini_open=!mini_open;
@@ -86,11 +108,12 @@ static uint16_t Input(uint16_t buttons,const SnesModInputContext *context) {
   if (!MapPage(ram) || !world_enabled) { world_open=false; return buttons; }
   if ((pressed&SNES_PAD_X) && Ensure()) {
     world_open=!world_open;
-    if (world_open) { zoom=1; pan_tick=0; AtlasCenter(); }
+    if (world_open) { world_closing=false; zoom=1; pan_tick=0; AtlasCenter(); }
     buttons=(uint16_t)(buttons&~SNES_PAD_X);
   }
   if (!world_open) return buttons;
   if (pressed&(SNES_PAD_B|SNES_PAD_START)) {
+    world_closing=(pressed&SNES_PAD_START)!=0;
     world_open=false; return (uint16_t)(buttons&~SNES_PAD_B);
   }
   if ((pressed&SNES_PAD_L) && zoom) --zoom;
@@ -140,7 +163,7 @@ static void Backdrop(uint32_t *pixels,int stride,int width,int height,bool freez
 static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,const uint8_t *ram) {
   SyncTimeline();
   if (mini_enabled && W(ram,0x998)==8) Backdrop(pixels,stride,width,height,Frozen(ram));
-  bool map=MapPage(ram) && (ram[0x51]&0x8f)==15;
+  bool map=MapPresentation(ram);
   if (!(map && (area_enabled||world_enabled)) && !(mini_enabled && mini_open && W(ram,0x998)==8)) return;
   if (!Ensure()) return;
   bool reveal,secrets; Visibility(&reveal,&secrets);
@@ -153,7 +176,7 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
     Text(pixels,stride,height,v.x+4,v.y+v.height-10,"SEL+START CLOSE",0xffc3d2df);
     return;
   }
-  if (world_open) {
+  if (world_open || world_closing) {
     snes_ovl_fill_rect(pixels,stride,height,0,0,width,height,0xff080f1e);
     SmMapView v={4,40,width-8,height-68,scales[zoom],center_x16,center_y16,-1,reveal,secrets,false};
     SmMapViewDraw(pixels,stride,height,&world,layout,Read,NULL,ram,v);
@@ -166,6 +189,7 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
       Text(pixels,stride,height,columns[i%3],16+(int)(i/3)*10,SmMapAreaName(legend[i]),SmMapAreaColor(legend[i]));
     Text(pixels,stride,height,8,height-22,"L/R ZOOM  D-PAD PAN",0xffcbd5e1);
     Text(pixels,stride,height,8,height-12,"X/B BACK  Y SAMUS",0xffcbd5e1);
+    FadeMap(pixels,stride,width,height,0,0,width,height,ram);
   } else if (area_enabled) {
     int sx=(int16_t)W(ram,0xb1),sy=(int16_t)W(ram,0xb3);
     snes_ovl_fill_rect(pixels,stride,height,stage_x,0,256,36,0xff080f1e);
@@ -177,6 +201,9 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
     Text(pixels,stride,height,stage_x+96,24,"> ONE-WAY",0xffd2dce6);
     SmMapView v={stage_x+8,38,240,156,8,(128+sx)*2,(116+sy)*2,W(ram,0x79f),reveal,secrets,false};
     SmMapViewDraw(pixels,stride,height,&world,layout,Read,NULL,ram,v);
+    /* Only our opaque rectangles: native borders/footer are already faded. */
+    FadeMap(pixels,stride,width,height,stage_x,0,256,36,ram);
+    FadeMap(pixels,stride,width,height,stage_x+8,38,240,156,ram);
   } else {
     snes_ovl_fill_rect(pixels,stride,height,stage_x+176,24,72,12,0xff080f1e);
     Text(pixels,stride,height,stage_x+184,26,"X WORLD",0xffa9c7e8);
@@ -199,7 +226,7 @@ static void MiniActivate(void) {
   Register();
 }
 static void Reset(void) {
-  ready=failed=area_enabled=world_enabled=mini_enabled=world_open=mini_open=mini_pause=registered=false;
+  ready=failed=area_enabled=world_enabled=mini_enabled=world_open=world_closing=mini_open=mini_pause=registered=false;
   previous=0; pan_tick=0; zoom=1; free(backdrop); backdrop=NULL; backdrop_count=0; backdrop_width=backdrop_height=0;
   timeline=RtlStateGeneration();
 }

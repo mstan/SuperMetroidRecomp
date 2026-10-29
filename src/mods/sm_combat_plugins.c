@@ -305,6 +305,17 @@ uint32 SmAutoChargeInitialShotHook(CpuState *cpu, uint32 pc24) {
   return g.auto_charge && W(cpu, kGameState) == 8 ? At(pc24, 0xB885) : 0;
 }
 
+/* Auto charging does not hold Shoot, so running/jumping retain their lowered
+ * or swinging arm. Native flare offsets assume the extended firing arm.
+ * Hide only its draw call in those poses; native charge timers, suit palette
+ * and sound continue. Real held-Shoot poses and Hyper Beam remain native.
+ * Skip the whole component before PHP, returning through its bare RTS. */
+uint32 SmAutoChargeFlareHook(CpuState *cpu, uint32 pc24) {
+  return g.auto_charge && W(cpu, kGameState) == 8 && !W(cpu, kHyperBeam) &&
+         !(W(cpu, kHeld) & W(cpu, kCfgShoot)) && cpu->ram[kMoveType] != 0
+      ? At(pc24, 0xBCBD) : 0;
+}
+
 /* ── activation ───────────────────────────────────────────────────────── */
 
 #define ARM(name, ...) do {                                                  \
@@ -364,7 +375,7 @@ static void SmBeamComboSelectActivate(void) {
 
 static void SmAutoChargeActivate(void) {
   g.auto_charge = true;
-  ARM("auto-charge", 0x90B83C, 0x90B857);
+  ARM("auto-charge", 0x90B83C, 0x90B857, 0x90BBE1);
 }
 
 static void SmCombatReset(void) { memset(&g, 0, sizeof(g)); }

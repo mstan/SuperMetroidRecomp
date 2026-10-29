@@ -12,7 +12,8 @@ exact Falcon Zero image are retained in
 [`docs/reference/metroid3_map.gif`](docs/reference/metroid3_map.gif).
 Auto charge is defined: charge automatically while idle, tap to release a charged shot, then fire normal successive shots until another charge is ready. The owner deferred falling aim-down clarification until the final handoff.
 
-**Current checkpoint:** production source `b7bf82b` (cut-all pickups and ship-save), engine `e265a2be`, UI
+**Current checkpoint:** the post-review visual candidate extends production base
+`b7bf82b` (cut-all pickups and ship-save), engine `e265a2be`, UI
 `7fdd3a87`, nested recomp-net `445eed76`. Windows and Linux pass all 25 title
 tests; the final all-off stock trace is unchanged and all 40 features activate.
 Actual local game peer pairs on Windows and on Linux accept matching complete settings and refuse a
@@ -22,8 +23,14 @@ map comparisons pass the available execution-path checks. The map model now has
 doors are audited. See the current measurements, exact coverage limits and
 remaining owner judgments in
 [`docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md`](docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md).
-Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
-The refreshed seven-setup handoff uses `owner-playtest-final` at localhost8786;
+Owner review now records ten individual Pass results and two presentation
+failures. Map-fade flashes and detached moving auto-charge flares are corrected
+and pass targeted normal/alternate, stock and affected Linux checks. See
+[`docs/validation/SM_VISUAL_FIXES_20261029.md`](docs/validation/SM_VISUAL_FIXES_20261029.md).
+Follow-up uses `owner-visual-retest` and asks only those two failed subchecks;
+all ten earlier Pass results are preserved. Visual acceptance of the fixes is
+pending. Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
+The earlier seven-setup handoff used `owner-playtest-final` at localhost8786;
 see [`docs/validation/SM_OWNER_PLAYTEST_20261028.md`](docs/validation/SM_OWNER_PLAYTEST_20261028.md).
 Prior profiles and observations are preserved.
 The cut-all pickup jingle request is implemented and qualified in the combined
@@ -251,7 +258,9 @@ mkstate.py OUT pkg/feature[:opt=val,...] ...
 ## 5. Feature catalogue and status
 
 Bead IDs are children of epic `beads-8wg.6.33`. "Done" means implemented and
-measured headlessly; the owner hasn't playtested any feature yet.
+measured headlessly. Owner notes now record ten Pass results and two visual
+failures; the post-review fixes above await only those two repeated checks.
+Those current observations supersede older pending-review wording below.
 
 ### `super-metroid.pacing` (`mods/preloaded/packages/super-metroid.pacing/1.0.0`)
 | Bead | Feature | Status / evidence |
@@ -277,7 +286,8 @@ measured headlessly; the owner hasn't playtested any feature yet.
 | .17 | Heavy physics (Redux Heavy Physics v3) | Converted to 15 consumer hooks plus `mod_operand` `$90:910F`. All 69 old runs accounted for, including 67 typed demo records. Launch speed 4 → 6; air gravity `$1C00` → `$3400`; shorter airtime. See 6.1 for raw traces. |
 
 All three formerly skipped extras are implemented as separate options (default
-off). Their automated checks pass; owner controller/feel review is pending.
+off). Their automated checks pass; the owner's movement, air and heavy-physics
+checks are Pass. Retain those acceptances without repeating the setups.
 
 The WRAM addresses `$0B28`, `$0B3A`, `$0B4E`, `$0B50` and `$0B52` have no
 definition in the decomp, so the plugin uses them as spare memory.
@@ -533,10 +543,9 @@ match Windows/Linux. This is still an active
 burndown; prepared owner review does not declare the full wishlist complete.
 
 1. **Owner review:** use `tools/sm_qol_playtest.py` and the prepared native-paused
-   setups for maps, controls, movement, auto charge/reserves, X-ray, pickup pacing
-   and ship saving. Save
-   individual observations; retain failed/deferred caveats. Physical controller
-   feel, map readability, Speed Booster sound and palette judgment remain.
+   follow-up in `owner-visual-retest`: map transitions and auto-charge visuals
+   only. Ten earlier Pass observations are retained. Save the two individual
+   outcomes and any caveats; do not repeat the accepted setups.
 2. **At this final handoff only:** ask the owner to define .26 falling aim-down.
    Auto charge .20 is implemented and automatically qualified. Do not guess .26.
    Pickup sound scope is decided: CUT every pickup fanfare, including majors/

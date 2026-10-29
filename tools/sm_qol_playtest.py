@@ -69,13 +69,28 @@ def normal_config(device='keyboard'):
 
 
 def prepare(args):
-    for case in CASES.values():
+    cases = CASES
+    if args.retest_failures:
+        if not args.notes_from:
+            raise ValueError('--retest-failures requires --notes-from')
+        notes = json.loads(args.notes_from.read_text(encoding='utf-8'))['notes']
+        cases = {key: dict(case, checks=[(check, text) for check, text in case['checks']
+                                        if notes.get(key, {}).get(check, {}).get('status') == 'Fail'])
+                 for key, case in CASES.items()}
+        cases = {key: case for key, case in cases.items() if case['checks']}
+        if not cases:
+            raise ValueError('No failed checks to prepare')
+        prompts = {'map': 'Open and close the pause screen twice, then switch Map to Equipment and back. Check that the old map never flashes during the fades. X still opens the world map.',
+                   'charge': 'Wait for a charge, then run and jump without holding Shoot. The floating cannon flare should be hidden during movement; Samus can still glow and charge audibly. Stop to see the flare return. Check tap firing and real held-fire animation.'}
+        for case in cases.values():
+            case['checks'] = [(check, prompts.get(check, text)) for check, text in case['checks']]
+    for case in cases.values():
         mod_state(case['features'])
     args.out.mkdir(parents=True, exist_ok=False)
 
     def one(key):
         game = Session(args.exe, args.rom, args.out / key,
-                       features=CASES[key]['features'], capture_profile=False)
+                       features=cases[key]['features'], capture_profile=False)
         try:
             game.boot()
             game.land()
@@ -147,10 +162,10 @@ def prepare(args):
             (args.out / key / 'config.ini').write_text(normal_config(), encoding='utf-8')
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        states = dict(pool.map(one, CASES))
+        states = dict(pool.map(one, cases))
     data = dict(exe=str(args.exe.resolve()), rom=str(args.rom.resolve()),
                 binary_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
-                cases=CASES, states=states,
+                cases=cases, states=states,
                 warning='Prepared states are current-build-only. All setups use disposable progress; native owner saves are untouched.')
     (args.out / 'manifest.json').write_text(json.dumps(data, indent=2) + '\n')
     if args.notes_from:
@@ -186,7 +201,7 @@ class Playtest:
         self.lock = threading.Lock()
 
     def launch(self, key, device):
-        if key not in CASES or device not in ('keyboard', 'gamepad'):
+        if key not in self.manifest['cases'] or device not in ('keyboard', 'gamepad'):
             raise ValueError('Unknown setup or input device')
         with self.lock:
             if self.child and self.child.poll() is None:
@@ -238,7 +253,7 @@ def serve(args):
                 self.wfile.write(raw)
             elif self.path == '/api/state':
                 notes = app.root / 'notes.json'
-                self.reply(dict(cases=CASES, notes=json.loads(notes.read_text()).get('notes', {}) if notes.exists() else {}))
+                self.reply(dict(cases=app.manifest['cases'], notes=json.loads(notes.read_text()).get('notes', {}) if notes.exists() else {}))
             else:
                 self.reply(dict(error='Not found'), 404)
 
@@ -253,16 +268,16 @@ def serve(args):
                 if self.path == '/api/launch':
                     self.reply(app.launch(data['id'], data['device']))
                 elif self.path == '/api/note':
-                    clean = {}
-                    for key, case in CASES.items():
-                        clean[key] = {}
+                    path = app.root / 'notes.json'
+                    clean = json.loads(path.read_text()).get('notes', {}) if path.exists() else {}
+                    for key, case in app.manifest['cases'].items():
+                        clean.setdefault(key, {})
                         for check, _ in case['checks']:
                             value = data['notes'].get(key, {}).get(check, {})
                             status = value.get('status', 'Unreviewed')
                             if status not in ('Unreviewed', 'Pass', 'Fail', 'Deferred'):
                                 raise ValueError('Invalid observation status')
                             clean[key][check] = dict(status=status, note=str(value.get('note', ''))[:4000])
-                    path = app.root / 'notes.json'
                     pending = app.root / 'notes.pending.json'
                     pending.write_text(json.dumps(dict(time=datetime.now(timezone.utc).isoformat(), notes=clean), indent=2) + '\n')
                     pending.replace(path)
@@ -290,6 +305,7 @@ def main():
     parser.add_argument('--device', choices=('keyboard', 'gamepad'), default='keyboard')
     parser.add_argument('--notes-from', type=Path, help='Retain observations from the prior prepared playtest')
     parser.add_argument('--jobs', type=int, choices=(1, 2), default=2)
+    parser.add_argument('--retest-failures', action='store_true', help='Prepare only failed subchecks, retaining all prior observations')
     args = parser.parse_args()
     if args.action == 'prepare':
         if not args.exe or not args.rom:

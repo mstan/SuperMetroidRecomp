@@ -85,7 +85,43 @@ int main(void) {
   assert(transform(SNES_PAD_R,&input)==SNES_PAD_R); /* native tabs still receive shoulders */
   transform(0,&input); transform(SNES_PAD_X,&input); transform(0,&input);
   assert(transform(SNES_PAD_START,&input)&SNES_PAD_START); assert(!SmMapFullScreen(test_ram));
+  assert(world_closing);
+  Put(0x998,16); Put(0x51,7);
+  Fill(0xff102030); draw_map(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  assert(frame[GUARD]==0xff03070e); Guards(0xff102030); /* same world page fades out */
+  Put(0x998,8); transform(0,&input); assert(!world_closing);
+  Put(0x998,15); Put(0x51,15);
   input.player=1; assert(transform(SNES_PAD_X,&input)==SNES_PAD_X); input.player=0;
+  /* The replacement covers every native map fade, with native brightness.
+   * Equipment, gameplay and native borders must never be covered/dimmed. */
+  world_open=false;
+  Fill(0xff102030); draw_map(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  static uint32_t full[TEST_STRIDE*TEST_HEIGHT];
+  memcpy(full,frame+GUARD,sizeof(full));
+  const unsigned phases[]={14,15,16},levels[]={0,1,7,14,15,0x80,0x8f};
+  for (unsigned s=0; s<3; ++s) for (unsigned l=0; l<7; ++l) {
+    Put(0x998,(uint16_t)phases[s]); Put(0x51,(uint16_t)levels[l]);
+    Fill(0xff102030); draw_map(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+    Guards(0xff102030);
+    unsigned level=(levels[l]&0x80) ? 0 : levels[l]&15;
+    for (unsigned y=0; y<TEST_HEIGHT; ++y) for (unsigned x=0; x<TEST_WIDTH; ++x) {
+      bool owned=y<36 || (y>=38 && y<194 && x>=8 && x<248);
+      uint32_t c=full[y*TEST_STRIDE+x],want=c;
+      if (owned) want=(c&0xff000000u)|((((c>>16)&255)*level/15)<<16)|
+                         ((((c>>8)&255)*level/15)<<8)|((c&255)*level/15);
+      assert(frame[GUARD+y*TEST_STRIDE+x]==want);
+    }
+  }
+  const unsigned other_states[]={8,12,13,17,18};
+  for (unsigned i=0; i<5; ++i) {
+    Put(0x998,(uint16_t)other_states[i]); Put(0x51,15);
+    Fill(0xff102030); draw_map(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+    for (unsigned n=0; n<sizeof(frame)/sizeof(*frame); ++n) assert(frame[n]==0xff102030);
+  }
+  Put(0x998,15); Put(0x763,1);
+  Fill(0xff102030); draw_map(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  for (unsigned n=0; n<sizeof(frame)/sizeof(*frame); ++n) assert(frame[n]==0xff102030);
+  Put(0x763,0); Put(0x51,15);
   /* A view cannot reveal an undiscovered corridor through its markers. */
   world.marker_count=1; world.markers[0]=(SmWorldMarker){0x91f8,0x920a,0xeed7,7,17,1,SM_MAP_ITEM,0,0};
   SmMapView v={0,0,128,80,8,24*16,16,0,false,false,false};

@@ -1,5 +1,12 @@
 # Current Super Metroid owner playtest, 2026-10-28
 
+2026-10-29 follow-up: the owner marked ten subchecks Pass and two Fail (map
+transition flashes and moving auto-charge flare). Both fixes are implemented and
+automatically qualified; see [visual-fix evidence](SM_VISUAL_FIXES_20261029.md).
+The current selector uses `owner-visual-retest` with just those two failed
+subchecks. Earlier Pass observations and this seven-setup profile are preserved.
+The historical seven-setup instructions and binary identity follow.
+
 Selector: <http://127.0.0.1:8786>. Open/restart each setup there and save Pass,
 Fail or Deferred plus individual notes. The first setup is the native pause map;
 press Start to play. Every launch uses a normal window and normal audio.
