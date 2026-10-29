@@ -26,25 +26,11 @@ id = "super-metroid.map-hud.pause-stats"
 
 [[feature]]
 id = "ammo-totals"
-name = "Ammo totals"
-description = "Shows missiles, super missiles and power bombs as current / maximum."
+name = "Pause ammo capacity"
+description = "Shows maximum missile, super missile and power bomb capacity on pause screens."
 group = "HUD"
 default_enabled = false
 presentation_only = true
-
-[[option]]
-feature = "ammo-totals"
-id = "where"
-label = "Show"
-description = "Only on the pause screens, or also while playing (just under the HUD bar)."
-type = "choice"
-default = "pause"
-[[option.choice]]
-value = "pause"
-label = "Pause screens"
-[[option.choice]]
-value = "always"
-label = "Always"
 
 [[plugin]]
 feature = "ammo-totals"

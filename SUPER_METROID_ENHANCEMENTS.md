@@ -30,6 +30,10 @@ and pass targeted normal/alternate, stock and affected Linux checks. See
 Follow-up uses `owner-visual-retest` and asks only those two failed subchecks;
 all ten earlier Pass results are preserved. Visual acceptance of the fixes is
 pending. Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
+The owner subsequently rejected the redundant gameplay ammo row. That mode and
+its Always control are removed; the optional pause display shows maximum
+capacities only. See `docs/validation/SM_AMMO_HUD_20261029.md`. Live owner windows
+are preserved; the replacement uses `sm-hud-build` and fresh limited states.
 The earlier seven-setup handoff used `owner-playtest-final` at localhost8786;
 see [`docs/validation/SM_OWNER_PLAYTEST_20261028.md`](docs/validation/SM_OWNER_PLAYTEST_20261028.md).
 Prior profiles and observations are preserved.
@@ -313,7 +317,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 | Bead | Feature | Status |
 |---|---|---|
 | .31 | Game time and item % on pause | Done. Overlay; uses the game's `CalcItemPercentageCount` formula. |
-| .32 | Missile/super/PB totals (pause/always) | Done. Overlay. |
+| .32 | Maximum missile/super/PB capacity on pause | Owner rejected duplicate gameplay counters. Gameplay mode and Always control removed; pause readout shows maximum capacities only. Native gameplay pixels and full WRAM match feature-off, SRAM unchanged; Windows/Linux affected tests pass. |
 | .33 | Laser sight (diagonal/always) | Done. Overlay; pose table `$91:B629` and muzzle offsets `$90:BA56`; the line stops at solid blocks. |
 | .34 | Reveal whole map (secrets option) | Done. Hooks `$80:85B1`, `$82:947F`, `$82:94EF`. |
 | .2 | SM world model (`src/mods/sm_world.c`): rooms, doors, cap colours, one-ways, items, explored bits from ROM/WRAM | Read-only model: 255 rooms, 595 door records, 310 states, 414 markers, 176 caps, all 100 items. Native Mother Brain escape spawn verified; eight headers have no physical source in any level state. Physical reciprocity preserves sand one-way arrows; eye doors are orange. Windows/Linux tests and seven actual map comparisons pass. Falcon Zero overview inspected; owner readability judgment pending. |

@@ -25,7 +25,7 @@ from test_qol_rom_removal import SOURCE, state as mod_state
 
 BASE = ['super-metroid.balance-fixes/bug-fixes']
 MAPS = ['super-metroid.map-hud/' + f for f in
-        ('pause-stats', 'ammo-totals:where=always', 'laser-sight',
+        ('pause-stats', 'ammo-totals', 'laser-sight',
          'reveal-map:secrets=shown', 'pause-map', 'world-map', 'minimap')]
 CONTROLS = ['super-metroid.controls/zero-mission', 'super-metroid.controls/radial-menu']
 MOVE = ['super-metroid.movement/' + f for f in

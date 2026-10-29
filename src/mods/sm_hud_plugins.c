@@ -7,8 +7,8 @@
  * reserve capacity / 100, missile/super/power-bomb capacity / 5, plus one per
  * collected item and beam bit in its tables ($8B:E721, $8B:E737).
  *
- * ammo-totals: missiles, super missiles and power bombs as current/maximum,
- * on the pause screens or also during play.
+ * ammo-totals: maximum missile, super missile and power bomb capacity,
+ * on the pause screens. Gameplay already has native ammo counters.
  */
 
 #include <stdbool.h>
@@ -44,7 +44,6 @@ static bool ScreenUp(const uint8_t *wram) {
 static bool Paused(const uint8_t *wram) {
   return Word(wram, kGameState) == kStatePaused && ScreenUp(wram);
 }
-static bool Playing(const uint8_t *wram) { return Word(wram, kGameState) == 8; }
 
 static int PopCount(uint16_t v) {
   int n = 0;
@@ -94,29 +93,21 @@ static void SmPauseStatsActivate(void) {
 
 /* ── ammo-totals ─────────────────────────────────────────────────────── */
 
-static bool g_ammo_in_play;
-
 static void SmAmmoTotalsDraw(uint32_t *pixels, int stride, int width, int height,
                              int stage_x, const uint8_t *wram) {
   (void)width;
-  bool paused = Paused(wram);
-  if (SmMapFullScreen(wram)) return;
-  if (!paused && !(g_ammo_in_play && Playing(wram))) return;
+  if (!Paused(wram) || SmMapFullScreen(wram)) return;
   char text[64];
-  snprintf(text, sizeof(text), "M %u/%u S %u/%u P %u/%u",
-           (unsigned)Word(wram, kMissiles), (unsigned)Word(wram, kMissilesMax),
-           (unsigned)Word(wram, kSupers), (unsigned)Word(wram, kSupersMax),
-           (unsigned)Word(wram, kPowerBombs), (unsigned)Word(wram, kPowerBombsMax));
-  /* Paused: above the L/R button bar, clear of it at any count. Playing: just
-   * under the HUD bar. */
-  Panel(pixels, stride, height, stage_x + 8, paused ? height - 42 : 34, text);
+  snprintf(text, sizeof(text), "MAX M %u S %u P %u",
+           (unsigned)Word(wram, kMissilesMax), (unsigned)Word(wram, kSupersMax),
+           (unsigned)Word(wram, kPowerBombsMax));
+  /* Above the pause screen's L/R button bar. The native gameplay HUD is kept. */
+  Panel(pixels, stride, height, stage_x + 8, height - 42, text);
 }
 
 static void SmAmmoTotalsActivate(void) {
-  SmModValue where;
-  g_ammo_in_play = !strcmp(SmModOption(&where, PACKAGE, "ammo-totals", "where", "pause"), "always");
   SmModOverlayRegisterPriority(SmAmmoTotalsDraw, 20);
-  fprintf(stderr, "[mods] ammo totals (%s)\n", g_ammo_in_play ? "always" : "pause");
+  fprintf(stderr, "[mods] pause ammo capacity\n");
 }
 
 SNES_MOD_CONSTRUCTOR(sm_register_hud_plugins) {

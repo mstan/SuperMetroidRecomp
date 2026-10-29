@@ -9,6 +9,8 @@
 static SNESModActivationCallback activate_area,activate_world,activate_mini,reset_map;
 static SNESModInputTransform transform;
 static SmModOverlayDraw draw_map;
+static SmModOverlayDraw draw_ammo;
+static SNESModActivationCallback activate_ammo;
 static bool online,pause_option=true,reveal_option;
 static unsigned transform_registrations,draw_registrations,hook_arms;
 static uint64_t test_timeline;
@@ -24,7 +26,14 @@ int snes_mod_register_activation_plugin(const char *id,SNESModActivationCallback
 int snes_mod_register_reset_callback(SNESModActivationCallback fn) { reset_map=fn; return 1; }
 int snes_mod_register_input_transform(SNESModInputTransform fn) { transform=fn; ++transform_registrations; return 1; }
 bool SmModOverlayRegister(SmModOverlayDraw fn) { draw_map=fn; ++draw_registrations; return true; }
-bool SmModOverlayRegisterPriority(SmModOverlayDraw fn,int priority) { assert(priority==10); return SmModOverlayRegister(fn); }
+bool SmModOverlayRegisterPriority(SmModOverlayDraw fn,int priority) {
+  if (priority==20) { draw_ammo=fn; return true; }
+  assert(priority==10); return SmModOverlayRegister(fn);
+}
+int snes_mod_register_presentation_plugin(const char *id,SNESModActivationCallback fn) {
+  if (strstr(id,".ammo-totals")) activate_ammo=fn;
+  return 1;
+}
 int snes_netplay_active(void) { return online; }
 bool SmPauseOptions_Visible(void) { return false; }
 int snes_mod_runtime_feature_enabled_c(const char *pkg,const char *feature) {
@@ -41,6 +50,7 @@ size_t SmModArmHooks(const char *name,const uint32_t *pcs,size_t count) {
 uint16_t SmModReadRom16(uint32_t at) { last_read=at; return adapter_probe ? 0x1234 : 0; }
 
 #include "../src/mods/sm_map_plugin.c"
+#include "../src/mods/sm_hud_plugins.c"
 
 enum { TEST_WIDTH=256, TEST_STRIDE=272, TEST_HEIGHT=224, GUARD=64 };
 static uint8_t test_ram[0x20000],ram_copy[0x20000];
@@ -163,5 +173,26 @@ int main(void) {
   Fill(0xff102030); draw_map(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
   for (unsigned i=0; i<sizeof(frame)/sizeof(*frame); ++i) assert(frame[i]==0xff102030);
   assert(transform(chord,&input)==chord);
+  /* Ammo capacity belongs on pause screens. Enabling it must leave every
+   * gameplay pixel (including the native ammo counters) untouched. */
+  assert(activate_ammo); activate_ammo(); assert(draw_ammo);
+  memset(test_ram,0,sizeof(test_ram)); Put(0x51,15); Put(0x998,8);
+  Put(0x9c6,5); Put(0x9c8,99); Put(0x9ca,2); Put(0x9cc,30); Put(0x9ce,1); Put(0x9d0,20);
+  memcpy(ram_copy,test_ram,sizeof(test_ram));
+  Fill(0xff102030); draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  for (unsigned i=0; i<sizeof(frame)/sizeof(*frame); ++i) assert(frame[i]==0xff102030);
+  assert(!memcmp(ram_copy,test_ram,sizeof(test_ram)));
+  Put(0x998,15); memcpy(ram_copy,test_ram,sizeof(test_ram));
+  Fill(0xff102030); draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  Guards(0xff102030);
+  assert(frame[GUARD+(TEST_HEIGHT-42)*TEST_STRIDE+8]!=0xff102030);
+  memcpy(full,frame+GUARD,sizeof(full));
+  assert(!memcmp(ram_copy,test_ram,sizeof(test_ram)));
+  Put(0x9c8,100); /* Only maximum capacity changes; the pause readout must react. */
+  Fill(0xff102030); draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  assert(memcmp(full,frame+GUARD,sizeof(full)));
+  Put(0x51,7);
+  Fill(0xff102030); draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  for (unsigned i=0; i<sizeof(frame)/sizeof(*frame); ++i) assert(frame[i]==0xff102030);
   puts("map input/render/freeze boundaries passed"); return 0;
 }
