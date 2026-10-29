@@ -117,6 +117,11 @@ jobs:
           EXTRA=()
           [[ -z "${SNESRECOMP_SDL3_SOURCE_DIR:-}" ]] || EXTRA+=("-DSNESRECOMP_SDL3_SOURCE_DIR=${SNESRECOMP_SDL3_SOURCE_DIR}")
           [[ "${{ runner.os }}" != macOS ]] || EXTRA+=("-DCMAKE_OSX_DEPLOYMENT_TARGET=11.0")
+          # Qualified Windows x64 presentation package. Ordinary CMake
+          # defaults stay OFF and other platforms retain their LLE floor.
+          if [[ "${{ matrix.artifact }}" == windows-x64 ]]; then
+            EXTRA+=("-DSM_RASTER_IMPL=NATIVE" "-DSM_NATIVE_ROW_PLAN=ON" "-DSM_NATIVE_CENTER_REUSE=ON")
+          fi
           cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSNESRECOMP_SETUP_HOST=OFF -DSNESRECOMP_ENABLE_TRACE=OFF \
             -DSNESRECOMP_BUILD_VERSION="$RELEASE_VERSION" \
