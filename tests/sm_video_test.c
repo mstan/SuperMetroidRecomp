@@ -87,6 +87,9 @@ static void mods_and_persistence(const char *path) {
     assert(p->package_get(p->ctx, index, &package));
     assert(p->feature_get(p->ctx, index, &feature));
     assert(!strcmp(package.id, feature.package_id));
+    assert(feature.author[0] && feature.source_name[0]);
+    assert(!strcmp(feature.source_url, "https://github.com/mstan/SuperMetroidRecomp"));
+    assert(!strcmp(package.source_url, feature.source_url));
     assert(!package.enabled && !feature.enabled);
     assert(feature.option_count == (index ? 1 : 2));
     for (int option_index = 0; option_index < feature.option_count; ++option_index) {

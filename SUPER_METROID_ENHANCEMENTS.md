@@ -1,5 +1,15 @@
 # Super Metroid enhancements: per-feature QoL mods
 
+Attribution follow-up: the owner requested author names and clickable original-mod
+links in the existing per-mod detail area, with no separate credits page. All forty
+package features now supply per-feature metadata; the two native presentation mods
+link to this repository. Ancient Chozo's author is Albert V.; its documented steering,
+instant-bomb and tractor-beam ASM contributions credit Grime. Ascent is Benox50's;
+Redux is ShadowOne333's. Specific patch authors retain their individual credits.
+The supplied Skip Ceres and ShipBugFix references have no named standalone author;
+that uncertainty is explicit. Preparing the v0.4.1 attribution fix on the same feature
+branch; no gameplay changes or main merge.
+
 Working handoff, updated 2026-10-29. Codex is working solo; the old combat agent remains stopped. It records the plan, the owner's rulings, the
 current state of every branch, the work in flight and what is left, so another
 agent (Codex or Claude) can resume without the original conversation.

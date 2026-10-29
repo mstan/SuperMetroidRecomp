@@ -32,6 +32,8 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out) {
   memset(out, 0, sizeof(*out));
   COPY(out->id, packages[i]); COPY(out->name, names[i]); COPY(out->version, "1");
   COPY(out->author, "SuperMetroidRecomp contributors");
+  COPY(out->source_name, "SuperMetroidRecomp presentation features");
+  COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]); out->enabled = enabled(i);
   return 1;
 }
@@ -43,6 +45,8 @@ static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out) {
   COPY(out->package_name, names[i]); COPY(out->package_version, "1");
   COPY(out->name, names[i]); COPY(out->group, "Presentation");
   COPY(out->author, "SuperMetroidRecomp contributors");
+  COPY(out->source_name, "SuperMetroidRecomp presentation features");
+  COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]);
   out->enabled = enabled(i); out->option_count = i ? 1 : 2;
   COPY(out->status, out->enabled ? "Enabled" : "Disabled");

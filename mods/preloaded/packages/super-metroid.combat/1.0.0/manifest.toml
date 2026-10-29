@@ -3,6 +3,8 @@ id = "super-metroid.combat"
 version = "1.0.0"
 name = "Super Metroid Combat"
 author = "SuperMetroidRecomp contributors"
+source_name = "SuperMetroidRecomp native feature packages"
+source_url = "https://github.com/mstan/SuperMetroidRecomp"
 description = "Weapon and ability tweaks. Each feature is a separate switch. Ideas from Super Metroid Redux, Ancient Chozo and Ascent, reimplemented for the stock game."
 license = "MIT"
 resolver = "declarative"
@@ -15,6 +17,9 @@ rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
 [[feature]]
 id = "shinespark-drain"
 name = "Shinespark energy drain"
+author = "SuperMetroidRecomp contributors (tester request); inspiration: Benox50 (Ascent)"
+source_name = "Super Metroid: Ascent (Benox50)"
+source_url = "https://www.romhacking.net/hacks/6347/"
 description = "A shinespark costs less or no energy while Samus flies. It still ends when she hits something."
 group = "Combat"
 default_enabled = false
@@ -40,7 +45,10 @@ id = "super-metroid.combat.shinespark-drain"
 [[feature]]
 id = "screw-attack"
 name = "Screw attack breaks blocks and frozen enemies"
-description = "Screw attack breaks shot blocks (not power bomb, super missile or door blocks) and destroys frozen enemies instead of landing on them. Frozen enemies part by Adam (Screw Attack Frozen Enemies, as in Super Metroid Redux by ShadowOne333); also in Ancient Chozo (Grime)."
+author = "Adam (Adamf/n00btube, frozen enemies); Redux: ShadowOne333"
+source_name = "Super Metroid Redux (ShadowOne333)"
+source_url = "https://www.romhacking.net/hacks/4963/"
+description = "Screw attack breaks shot blocks (not power bomb, super missile or door blocks) and destroys frozen enemies instead of landing on them. Frozen enemies part by Adam (Screw Attack Frozen Enemies, as in Super Metroid Redux by ShadowOne333); also in Albert V.'s Ancient Chozo."
 group = "Combat"
 default_enabled = false
 
@@ -75,7 +83,10 @@ id = "super-metroid.combat.screw-attack"
 [[feature]]
 id = "item-magnet"
 name = "Charge beam item magnet"
-description = "While the beam charges, item drops fly toward Samus. The tractor beam of Ancient Chozo (Grime)."
+author = "Grime (tractor-beam ASM), Albert V. (Ancient Chozo)"
+source_name = "Ancient Chozo (Albert V.)"
+source_url = "https://www.romhacking.net/hacks/4028/"
+description = "While the beam charges, item drops fly toward Samus. The tractor beam of Ancient Chozo (Albert V.; ASM contributions by Grime)."
 group = "Combat"
 default_enabled = false
 
@@ -117,6 +128,9 @@ id = "super-metroid.combat.item-magnet"
 [[feature]]
 id = "bomb-limit"
 name = "More bombs on screen"
+author = "SuperMetroidRecomp contributors (native implementation; tester request)"
+source_name = "Native bomb-limit implementation"
+source_url = "https://github.com/mstan/SuperMetroidRecomp/blob/feat/super-metroid-enhancements/src/mods/sm_combat_plugins.c"
 description = "Lay more bombs at once, and sooner after each other, than the original five bombs 16 frames apart. Requested by testers."
 group = "Combat"
 default_enabled = false
@@ -150,6 +164,9 @@ id = "super-metroid.combat.bomb-limit"
 [[feature]]
 id = "beam-combo-select"
 name = "Beam combos with Select"
+author = "ShadowOne333 (Redux)"
+source_name = "Super Metroid Redux (ShadowOne333)"
+source_url = "https://www.romhacking.net/hacks/4963/"
 description = "With the beam fully charged, press Select (item switch) to fire its combo (special beam attack) without selecting power bombs first. Costs power bombs as usual. From Super Metroid Redux (ShadowOne333)."
 group = "Combat"
 default_enabled = false
@@ -161,6 +178,9 @@ id = "super-metroid.combat.beam-combo-select"
 [[feature]]
 id = "auto-charge"
 name = "Auto charge"
+author = "SuperMetroidRecomp contributors; requested behavior: Mega Man Xtreme 2 (Capcom)"
+source_name = "Native auto-charge implementation"
+source_url = "https://github.com/mstan/SuperMetroidRecomp/blob/feat/super-metroid-enhancements/src/mods/sm_combat_plugins.c"
 description = "The Charge Beam charges automatically while idle. Tap Shoot to release the charged shot; quick repeated taps fire normal shots until it recharges. Requires the Charge Beam."
 group = "Combat"
 default_enabled = false
