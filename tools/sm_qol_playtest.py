@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -18,7 +19,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from sm_progression_qa import Session
+from sm_progression_qa import Rom, Session
 from test_qol_rom_removal import SOURCE, state as mod_state
 
 
@@ -51,6 +52,11 @@ CASES = {
                            ('reserve', 'Pause, press R for equipment, select the reserve transfer button and press A; press A again to stop. Check clarity and control.')]),
     'xray': dict(title='X-ray over a respawning item', features=BASE + ['super-metroid.balance-fixes/xray'],
                  checks=[('xray', 'Start resumes in the Morph Ball room with X-ray selected. Hold Dash to scan over the respawning item, turn, release and move again.')]),
+    'pickups': dict(title='Pickup without a jingle or pause', features=BASE +
+                    ['super-metroid.pacing/item-pickup:mute-jingle=true,no-freeze=true,skip-message=true'],
+                   checks=[('pickup', 'Press Start, then let Samus fall onto the reserve tank. Room music should continue, with no pickup jingle, message or gameplay pause. Judge whether this feels right. Restart this setup to repeat.')]),
+    'ship': dict(title='Ship save confirmation', features=BASE,
+                 checks=[('save', 'Press Start, then Down at the ship. Choose Yes and check the refill sound and Save Completed message; dismiss it and leave normally. Saving before this message and quitting at it have already passed automated checks.')]),
 }
 
 
@@ -73,6 +79,19 @@ def prepare(args):
         try:
             game.boot()
             game.land()
+            if key == 'pickups':
+                rom = Rom(args.rom)
+                base = 0x838d5a
+                game.transition(dict(pointer=base & 65535, destination=rom.word(base),
+                                     direction=rom.byte(base + 3), cap_x=rom.byte(base + 4),
+                                     cap_y=rom.byte(base + 5)))
+                for address, value in ((0xaf6, 136), (0xb10, 136), (0xafa, 136), (0xb14, 136)):
+                    game.word(address, value)
+                game.step(3, 'right')
+                game.word(0xafa, 136)
+                game.word(0xb14, 136)
+                game.step(8, 'x')
+                game.step(20)
             if key == 'xray':
                 for address, value in ((0xd820, 1), (0x79f, 1), (0x78b, 9),
                                        (0xd914, 5), (0x998, 6)):
@@ -98,6 +117,14 @@ def prepare(args):
                 game.word(0x9c0, 2)
             if key == 'xray':
                 game.word(0x9d2, 5)
+            if key == 'pickups':
+                game.word(0x9d4, 0)
+                game.word(0x9d6, 0)
+            if key == 'ship':
+                for address, value in ((0x9c2, 37), (0x9c4, 499), (0x9c6, 1), (0x9c8, 50),
+                                       (0x9ca, 1), (0x9cc, 15), (0x9ce, 0), (0x9d0, 10),
+                                       (0x9d4, 300), (0x9d6, 0)):
+                    game.word(address, value)
             game.step(2)
             game.step(8, 'start')
             for _ in range(100):
@@ -105,6 +132,9 @@ def prepare(args):
                 if game.word(0x998) == 15:
                     break
             assert game.word(0x998) == 15, game.state()
+            if key == 'pickups':
+                for address, value in ((0xaf6, 184), (0xb10, 184), (0xafa, 80), (0xb14, 80)):
+                    game.word(address, value)
             game.snapshot('ready')
             game.command('savestate 0')
             game.step(2)
@@ -116,19 +146,24 @@ def prepare(args):
             game.close()
             (args.out / key / 'config.ini').write_text(normal_config(), encoding='utf-8')
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         states = dict(pool.map(one, CASES))
     data = dict(exe=str(args.exe.resolve()), rom=str(args.rom.resolve()),
                 binary_sha256=hashlib.sha256(args.exe.read_bytes()).hexdigest(),
                 cases=CASES, states=states,
                 warning='Prepared states are current-build-only. All setups use disposable progress; native owner saves are untouched.')
     (args.out / 'manifest.json').write_text(json.dumps(data, indent=2) + '\n')
+    if args.notes_from:
+        prior = json.loads(args.notes_from.read_text(encoding='utf-8'))
+        (args.out / 'notes.json').write_text(json.dumps(prior, indent=2) + '\n', encoding='utf-8')
+        (args.out / 'notes-origin.json').write_text(json.dumps(dict(path=str(args.notes_from.resolve()),
+            previous_binary_sha256=json.loads((args.notes_from.parent/'manifest.json').read_text())['binary_sha256']), indent=2)+'\n')
     print('Prepared', len(states), 'native-paused setups:', args.out, flush=True)
 
 
 HTML = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Super Metroid playtest</title>
 <style>body{font:17px/1.5 system-ui;background:#111725;color:#edf1fa;max-width:1080px;margin:30px auto;padding:0 24px}h1{font-size:30px}button,select,textarea{font:inherit}button,select{padding:8px 14px;border:1px solid #7890af;border-radius:6px;background:#223449;color:white;cursor:pointer}button:hover{background:#34516c}section{background:#1b2638;padding:22px;margin:18px 0;border-radius:12px}label{display:block;margin:15px 0}textarea{display:block;width:95%;min-height:52px;background:#101a29;color:white;border:1px solid #63738d;padding:8px}small{color:#b6c6db}#message{min-height:28px;color:#9ef0bf}.check{border-top:1px solid #536077;padding-top:12px}a{color:#9ed9ff}.head{display:flex;gap:14px;align-items:center;flex-wrap:wrap}</style>
-<h1>Super Metroid · focused playtest</h1><p>Each setup starts in the native pause menu. Press Start to play. Switching setups restarts only the game launched by this selector. Your usual saves and settings are untouched.</p>
+<h1>Super Metroid · focused playtest</h1><p>Each setup starts in the native pause menu. Press Start to play. Switching setups restarts only the game launched by this selector. Your usual saves and settings are untouched. This build includes complete pickup-jingle removal and saving before the ship confirmation.</p>
 <div class="head"><label>Input <select id="device"><option value="keyboard">Keyboard</option><option value="gamepad">Controller 1</option></select></label><button onclick="save()">Save observations</button></div>
 <p><small>Keyboard: arrows move · Z jumps (SNES A) · A shoots (SNES X) · X dashes (SNES B) · S cancels (SNES Y) · C/V are L/R · Enter is Start · Right Shift is Select. F1 reloads this setup. Controller checks require your connected controller; physical ownership and right-stick feel need your confirmation.</small></p>
 <div id="message" role="status"></div><main id="cases"></main>
@@ -167,11 +202,16 @@ class Playtest:
                 if name.startswith(('SM_', 'SNESRECOMP_', 'SNES_NET', 'RNET_', 'RBE_', 'SDL_')):
                     env.pop(name)
             env['SM_REPLAY_RECORD'] = '0'
+            with socket.socket() as port_reservation:
+                port_reservation.bind(('127.0.0.1', 0))
+                debug_port = port_reservation.getsockname()[1]
+            env['SNESRECOMP_DEBUG_PORT'] = str(debug_port)
+            env['SNESRECOMP_CPU_TRACE_RING_ENTRIES'] = '65536'
             with (profile / 'owner-stdout.log').open('wb') as stdout, (profile / 'owner-stderr.log').open('wb') as stderr:
                 self.child = subprocess.Popen([str(exe), '--config', str(profile / 'config.ini'), '--no-launcher',
                     '--resume-state', str(profile / 'resume-once.sav'), self.manifest['rom']], cwd=profile, env=env,
                     stdout=stdout, stderr=stderr, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            (self.root / 'launched.json').write_text(json.dumps(dict(id=key, device=device, pid=self.child.pid,
+            (self.root / 'launched.json').write_text(json.dumps(dict(id=key, device=device, pid=self.child.pid, debug_port=debug_port,
                 time=datetime.now(timezone.utc).isoformat()), indent=2))
             return dict(pid=self.child.pid)
 
@@ -248,6 +288,8 @@ def main():
     parser.add_argument('--port', type=int, default=8786)
     parser.add_argument('--launch', choices=tuple(CASES))
     parser.add_argument('--device', choices=('keyboard', 'gamepad'), default='keyboard')
+    parser.add_argument('--notes-from', type=Path, help='Retain observations from the prior prepared playtest')
+    parser.add_argument('--jobs', type=int, choices=(1, 2), default=2)
     args = parser.parse_args()
     if args.action == 'prepare':
         if not args.exe or not args.rom:

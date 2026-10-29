@@ -12,7 +12,7 @@ exact Falcon Zero image are retained in
 [`docs/reference/metroid3_map.gif`](docs/reference/metroid3_map.gif).
 Auto charge is defined: charge automatically while idle, tap to release a charged shot, then fire normal successive shots until another charge is ready. The owner deferred falling aim-down clarification until the final handoff.
 
-**Current checkpoint:** earlier production source `82e17c6`, engine `e265a2be`, UI
+**Current checkpoint:** production source `b7bf82b` (cut-all pickups and ship-save), engine `e265a2be`, UI
 `7fdd3a87`, nested recomp-net `445eed76`. Windows and Linux pass all 25 title
 tests; the final all-off stock trace is unchanged and all 40 features activate.
 Actual local game peer pairs on Windows and on Linux accept matching complete settings and refuse a
@@ -23,8 +23,11 @@ doors are audited. See the current measurements, exact coverage limits and
 remaining owner judgments in
 [`docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md`](docs/validation/SM_QOL_FINAL_CHECKPOINT_20261028.md).
 Prepared owner setups use `tools/sm_qol_playtest.py`; notes are stored per check.
-The cut-all pickup jingle request is implemented and qualified in a separate
-Windows/Linux candidate, including216 matching WRAM checkpoints across hosts.
+The refreshed seven-setup handoff uses `owner-playtest-final` at localhost8786;
+see [`docs/validation/SM_OWNER_PLAYTEST_20261028.md`](docs/validation/SM_OWNER_PLAYTEST_20261028.md).
+Prior profiles and observations are preserved.
+The cut-all pickup jingle request is implemented and qualified in the combined
+Windows/Linux builds, including216 matching pickup WRAM checkpoints across hosts.
 Cinematic and isolated
 resource/combo/visor gates are qualified by QA commits `8455d24` and `d3a3159`.
 The inherited ship-save omission is corrected and qualified with four native-flow
@@ -530,7 +533,8 @@ match Windows/Linux. This is still an active
 burndown; prepared owner review does not declare the full wishlist complete.
 
 1. **Owner review:** use `tools/sm_qol_playtest.py` and the prepared native-paused
-   setups for maps, controls, movement, auto charge/reserves and X-ray. Save
+   setups for maps, controls, movement, auto charge/reserves, X-ray, pickup pacing
+   and ship saving. Save
    individual observations; retain failed/deferred caveats. Physical controller
    feel, map readability, Speed Booster sound and palette judgment remain.
 2. **At this final handoff only:** ask the owner to define .26 falling aim-down.
