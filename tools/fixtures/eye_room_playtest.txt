@@ -1,0 +1,23 @@
+# General gameplay setup: take over the attract demo, grant health/Morph Ball,
+# and enter $9E9F through the ROM's door loader. Let the loader establish both
+# the player position and the native scrolling tilemap. No post-entry warp.
+# This does not set an eye-beam or other gameplay success flag.
+wait 3200
+poke 0998 0800
+poke 0a42 95e625e7
+poke 0a60 13e9
+poke 09a2 0400
+poke 09a4 0400
+poke 09c2 e703
+poke 09c4 e703
+poke 078d 868e
+poke 0af6 f000
+poke 0afa 8000
+poke 0b10 f000
+poke 0b14 8000
+poke 0e16 0000
+poke 099c 7de1
+poke 0998 0900
+until16 0998 == 0008 1500
+wait 210
+wait 10000

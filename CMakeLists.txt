@@ -31,6 +31,14 @@ elseif(SM_RASTER_IMPL STREQUAL "LLE")
 else()
     message(FATAL_ERROR "SM_RASTER_IMPL must be LLE or NATIVE")
 endif()
+option(SM_NATIVE_ROW_PLAN "Plan full-view native Mode-1 composition per row" OFF)
+option(SM_NATIVE_CENTER_REUSE "Reuse qualified native-center pixels for discrete presentations" OFF)
+if(SM_NATIVE_CENTER_REUSE AND (NOT SM_NATIVE_ROW_PLAN OR NOT SM_RASTER_IMPL STREQUAL "NATIVE"))
+    message(FATAL_ERROR "SM_NATIVE_CENTER_REUSE requires NATIVE raster and SM_NATIVE_ROW_PLAN")
+endif()
+set_property(SOURCE src/sm_renderer_native.c src/main.c APPEND PROPERTY COMPILE_DEFINITIONS
+    SM_NATIVE_ROW_PLAN=$<BOOL:${SM_NATIVE_ROW_PLAN}>
+    SM_NATIVE_CENTER_REUSE=$<BOOL:${SM_NATIVE_CENTER_REUSE}>)
 option(SM_RASTER_TRACK_WRITES "Track VRAM writes for title-owned capture intervals" ON)
 add_compile_definitions(SM_RASTER_TRACK_WRITES=$<BOOL:${SM_RASTER_TRACK_WRITES}>)
 set_property(SOURCE src/sm_renderer.c APPEND PROPERTY COMPILE_DEFINITIONS
@@ -176,15 +184,36 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_test(NAME sm_custom_renderer
         COMMAND sm_renderer_test ${CMAKE_CURRENT_BINARY_DIR}/sm-renderer-test.capture)
     add_executable(sm_renderer_native_test tests/sm_renderer_test.c
-        src/sm_renderer_native.c src/sm_mode7.c tests/sm_renderer_ppu_stub.c)
+        tests/sm_renderer_native_variant.c src/sm_mode7.c tests/sm_renderer_ppu_stub.c)
     target_include_directories(sm_renderer_native_test PRIVATE
         src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_native_renderer
         COMMAND sm_renderer_native_test ${CMAKE_CURRENT_BINARY_DIR}/sm-renderer-native-test.capture)
     target_compile_definitions(sm_renderer_native_test PRIVATE
-        SM_RASTER_FULL_COPY=$<BOOL:${SM_RASTER_FULL_COPY}>)
+        SM_RASTER_FULL_COPY=$<BOOL:${SM_RASTER_FULL_COPY}>
+        SM_NATIVE_CENTER_REUSE=1)
     target_compile_definitions(sm_renderer_test PRIVATE
         SM_RASTER_FULL_COPY=$<BOOL:${SM_RASTER_FULL_COPY}>)
+    # Compile the new path explicitly, independent of the product default.
+    add_executable(sm_row_plan_test tests/sm_row_plan_test.c src/sm_mode7.c tests/sm_renderer_ppu_stub.c)
+    target_include_directories(sm_row_plan_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    if(MSVC)
+        target_compile_options(sm_row_plan_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(sm_row_plan_test PRIVATE -UNDEBUG)
+    endif()
+    if(NOT WIN32)
+        target_link_libraries(sm_row_plan_test PRIVATE m)
+    endif()
+    add_test(NAME sm_full_view_row_plan COMMAND sm_row_plan_test)
+    add_executable(sm_render_capture_native tools/sm_render_capture.c
+        src/sm_renderer_native.c src/sm_video.c src/sm_mode7.c
+        ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c tests/sm_renderer_ppu_stub.c)
+    target_include_directories(sm_render_capture_native PRIVATE src
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS} ${SNESRECOMP_ROOT}/runner/src/desktop)
+    if(NOT WIN32)
+        target_link_libraries(sm_render_capture_native PRIVATE m)
+    endif()
     add_executable(sm_renderer_fullcopy_test tests/sm_renderer_test.c
         tests/sm_renderer_variant.c src/sm_mode7.c)
     target_include_directories(sm_renderer_fullcopy_test PRIVATE
@@ -322,11 +351,11 @@ find_package(Git REQUIRED)
 execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     OUTPUT_VARIABLE SM_REPLAY_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
-file(GLOB SM_REPLAY_ID_INPUTS CONFIGURE_DEPENDS src/*.c src/*.h recomp/*.cfg profiles/*.json)
+file(GLOB SM_REPLAY_ID_INPUTS CONFIGURE_DEPENDS src/*.c src/*.h src/*.inc recomp/*.cfg profiles/*.json)
 list(APPEND SM_REPLAY_ID_INPUTS ${CMAKE_CURRENT_SOURCE_DIR}/CMakeLists.txt
     ${CMAKE_CURRENT_SOURCE_DIR}/framework_pins.txt ${CMAKE_CURRENT_SOURCE_DIR}/VERSION)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${SM_REPLAY_ID_INPUTS})
-set(SM_REPLAY_SOURCE_ID "${CMAKE_C_FLAGS};${CMAKE_C_FLAGS_RELEASE};${CMAKE_CXX_FLAGS};${CMAKE_CXX_FLAGS_RELEASE};activity=${SM_VIEW_ACTIVITY};raster=${SM_RASTER_IMPL};apu-time=${SNESRECOMP_APU_TIME_IMPL};crc=${SNESRECOMP_CRC32_IMPL}")
+set(SM_REPLAY_SOURCE_ID "${CMAKE_C_FLAGS};${CMAKE_C_FLAGS_RELEASE};${CMAKE_CXX_FLAGS};${CMAKE_CXX_FLAGS_RELEASE};activity=${SM_VIEW_ACTIVITY};raster=${SM_RASTER_IMPL};row-plan=${SM_NATIVE_ROW_PLAN};center-reuse=${SM_NATIVE_CENTER_REUSE};apu-time=${SNESRECOMP_APU_TIME_IMPL};crc=${SNESRECOMP_CRC32_IMPL}")
 foreach(input IN LISTS SM_REPLAY_ID_INPUTS)
     file(SHA256 ${input} input_hash)
     string(APPEND SM_REPLAY_SOURCE_ID ";${input_hash}")
