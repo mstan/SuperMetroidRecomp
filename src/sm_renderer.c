@@ -862,6 +862,7 @@ static SmBg2Object bg2_object(const SmSourceFrame *f, const SmSourceFrame *old, 
 
 typedef struct SmBackgroundLine {
   int shift, size, scroll_x, scroll_y, world_x, world_y, bpp;
+  int hud_extra;
   int room_width, room_height, camera_x, camera_y;
   unsigned layer, sc, base, low, high;
   const uint8_t *room;
@@ -945,6 +946,14 @@ static SmBackgroundLine background_line(const SnesRenderRegisters *p, const uint
 
 static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram,
                                  int x, int y, bool margin) {
+  if (b->hud_extra) {
+    int sx = x + b->hud_extra;
+    if (sx < 80) x = sx;
+    else if (sx >= 80 + b->hud_extra && sx < 208 + b->hud_extra) x = sx - b->hud_extra;
+    else if (sx >= 208 + 2 * b->hud_extra) x = sx - 2 * b->hud_extra;
+    else return (uint16_t)((b->low << 12) | (2 << 8) | SM_PIXEL_OPAQUE_BLACK);
+    margin = false;
+  }
   if (margin && b->object_canvas &&
       (x < b->canvas_x || x >= b->canvas_x + b->canvas_width ||
        y < b->canvas_y || y >= b->canvas_y + b->canvas_height)) return 0;
@@ -1883,6 +1892,47 @@ static uint32_t colour(const SnesRenderRegisters *p, const uint16_t *palette, co
   return result;
 }
 
+/* The EndHud IRQ can leave the final UI texel row on the gameplay subscreen.
+ * Identify that continuation from the preceding opaque HUD, not from colors
+ * or room IDs. A changed BG3 scroll/map instead belongs to liquid/message FX. */
+static bool hud_tail_line(const SmSourceFrame *f, unsigned y, const SnesRenderRegisters *p) {
+  if (y != 30 || (p->bgmode & 7) != 1 || (p->bgmode & 0x40) ||
+      ((p->mosaic & 4) && (p->mosaic >> 4)) ||
+      !((p->screenEnabled[0] | p->screenEnabled[1]) & 4) ||
+      (p->bgXsc[2] & 0xfc) != 0x58 || p->hScroll[2] || p->vScroll[2]) return false;
+  SnesRenderRegisters hud;
+  memcpy(&hud, f->lines[y - 1].registers, PPU_SAVESTATE_REGS_SIZE);
+  return hud.screenEnabled[0] == 4 && !hud.cgadsub && !hud.cgwsel &&
+      !((hud.mosaic & 4) && (hud.mosaic >> 4)) &&
+      hud.bgmode == p->bgmode && hud.bgXsc[2] == p->bgXsc[2] &&
+      (hud.bgTileAdr & 0xf00) == (p->bgTileAdr & 0xf00) &&
+      hud.hScroll[2] == p->hScroll[2] && hud.vScroll[2] == p->vScroll[2];
+}
+
+/* UI remains visible over the room's black side matte. Admit only its texels;
+ * world objects, backgrounds and fixed-color effects remain clipped there. */
+static void hud_tail_matte(const SnesRenderRegisters *p, const SmRasterLine *line,
+    const SmBackgroundLine backgrounds[3], int y, SmViewport view, int matte_x, int matte_y,
+    const uint8_t brightness[32], const SmWideWindow *wide, uint32_t *row) {
+  const SmBackgroundLine *ui = &backgrounds[2], *world = &backgrounds[0];
+  if (!ui->hud_extra || !world->room_width) return;
+  for (int sx = 0; sx < view.width; ++sx) {
+    int x = sx - view.extra;
+    if ((x >= 0 && x < 256) || (matte_x + x >= 0 && matte_x + x < world->room_width &&
+        matte_y + y + 1 >= 0 && matte_y + y + 1 < world->room_height)) continue;
+    uint16_t pixel = background_pixel(ui, line->vram, x, y + 1, true);
+    if (!(pixel & 255)) continue;
+    uint16_t black = 0x500 | SM_PIXEL_OPAQUE_BLACK;
+    bool window = in_window(p, 2, x, view.extra, wide);
+    bool main_ui = (p->screenEnabled[0] & 4) && (!(p->screenWindowed[0] & 4) || !window);
+    bool sub_ui = (p->screenEnabled[1] & 4) && (!(p->screenWindowed[1] & 4) || !window);
+    if (!main_ui && (!sub_ui || !(p->cgwsel & 2))) continue;
+    row[sx] = colour(p, line->palette, brightness,
+        main_ui ? pixel : black, sub_ui ? pixel : black,
+        in_window(p, 5, x, view.extra, wide));
+  }
+}
+
 #if SM_NATIVE_RASTER && SM_NATIVE_ROW_PLAN
 #include "sm_row_plan.inc"
 #endif
@@ -2019,6 +2069,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   for (int y = 0; y < 224; ++y) {
     const SmRasterLine *l = &f->lines[y];
     memcpy(&scanout, l->registers, PPU_SAVESTATE_REGS_SIZE);
+    /* Classify actual raster ownership before interpolation can round a
+     * changed liquid/message scroll back to the HUD's zero scroll. */
+    bool anchor_tail = room && hud_anchored && viewport.extra && hud_tail_line(f, y, &scanout);
     uint8_t brightness[32];
     for (unsigned c = 0; c < 32; ++c)
       brightness[c] = (uint8_t)(((c << 3) | (c >> 2)) * (scanout.inidisp & 15) / 15);
@@ -2090,6 +2143,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       if (old.bgmode == scanout.bgmode && old.bgTileAdr == scanout.bgTileAdr &&
           !memcmp(old.bgXsc, scanout.bgXsc, sizeof(old.bgXsc))) {
         for (int layer = 0; layer < (mode == 7 ? 0 : 3); ++layer) {
+          if (layer == 2 && anchor_tail) continue;
           unsigned size = (scanout.bgmode >> layer) & 0x10 ? 16 : 8;
           int dx = background_scroll_delta((int)old.hScroll[layer] - scanout.hScroll[layer],
                                             scanout.bgXsc[layer], size, false);
@@ -2108,6 +2162,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (mode == 1)
       for (unsigned layer = 0; layer < 3; ++layer)
         background_lines[layer] = background_line(&scanout, f->ram, layer, line_bg2);
+    if (anchor_tail) background_lines[2].hud_extra = viewport.extra;
     if (xray_reveal && mode == 1 && scanout.bgXsc[1] == 0x49 && scanout.windowsel == 0x8008c8) {
       background_lines[1].room = f->ram;
       background_lines[1].revealed = xray_blocks;
@@ -2116,7 +2171,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     bool reuse_center = false;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
-    reuse_center = mode == 1 && alpha >= 1 && native_centers[current][y];
+    reuse_center = mode == 1 && alpha >= 1 && native_centers[current][y] && !anchor_tail;
     if (reuse_center) ++render_stats.native_center_lines;
 #endif
     sprites(&scanout, l, y, viewport, objects, f, previous, alpha, reuse_center);
@@ -2147,6 +2202,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     bool native_layer[3] = {false, false, false};
     if (mode == 1 && !reuse_center) for (unsigned layer = 0; layer < 3; ++layer) {
       if (!(enabled & (1u << layer)) ||
+          (layer == 2 && anchor_tail) ||
           ((scanout.mosaic & (1u << layer)) && (scanout.mosaic >> 4))) continue;
       native_layer[layer] = SnesRenderRegistersMode1TileRow(&scanout, l->vram, layer,
           0, y + 1, 256, native_backgrounds[layer]);
@@ -2162,6 +2218,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           native_layer, objects, y, viewport, matte_x, matte_y, brightness,
           &native_windows, &margin_windows, reuse_center ? f->stock + y * 256 : NULL,
           out + y * viewport.width);
+      if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
+          brightness, &wide_windows[y], out + y * viewport.width);
       continue;
     }
 #endif
@@ -2246,6 +2304,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
                                             in_window(&scanout, 5, x, viewport.extra, &wide_windows[y]));
 #endif
     }
+    if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
+        brightness, &wide_windows[y], out + y * viewport.width);
   }
   return true;
 }

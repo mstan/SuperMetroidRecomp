@@ -1273,3 +1273,18 @@ source, complete current-build state/effect checks, portable qualification and
 combined original/candidate game timing remain the adoption gate; exploratory
 numbers do not certify all scenes or platforms. Central tracking and durable
 machine-readable samples: `beads-8wg.2.154`, related to `beads-2wy8.1`.
+
+### 2026-10-28: minimap border at the HUD raster boundary
+
+The final dotted minimap row uses BG3 through the gameplay color-math
+subscreen after the opaque HUD IRQ band ends. Relocating only the opaque
+band left that row at the native horizontal position. The renderer now
+recognizes the one remaining UI texel row from captured, unchanged BG3
+geometry and relocates its BG3 inputs with the existing HUD groups. It keeps
+terrain and OBJ coordinates, subsequent world rows, liquid/message scrolls
+and unanchored rendering intact. UI texels can cross the black room matte;
+world content and fixed-color effects remain clipped there. Classification
+precedes interpolation, and a recognized UI scroll is not interpolated from
+the previous frame's gameplay state. This is a presentation correctness fix;
+it changes neither guest execution nor renderer/default optimization choices.
+Tracking: `beads-8wg.6.25`.

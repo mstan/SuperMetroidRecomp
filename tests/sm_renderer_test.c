@@ -131,6 +131,90 @@ static void native_center_provider(void) {
 #endif
 }
 
+static void hud_bottom_anchor(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  for (unsigned provider=0;provider<2;++provider) for(unsigned edge=0;edge<2;++edge) {
+    ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x7a5,32);word(0x7a7,16);word(0x911,edge?256:0);
+    ppu.inidisp=15;ppu.bgmode=9;ppu.bgTileAdr=0x401;ppu.bgXsc[2]=0x5a;
+    ppu.cgram[1]=31;ppu.cgram[17]=0x7fff;
+    for(unsigned t=0;t<1024;++t)ppu.vram[t]=1;
+    for(unsigned y=0;y<8;++y)ppu.vram[0x1010+y]=255;
+    /* Last texel row of the top-four-row UI page: independent white dots.
+     * A left group marker also verifies that only the UI layer relocates. */
+    for(unsigned x=26;x<32;++x)ppu.vram[0x5800+3*32+x]=0x1002;
+    ppu.vram[0x5800+3*32+1]=0x1002;ppu.vram[0x4010+7]=0x55;
+    for(unsigned y=0;y<224;++y)for(unsigned x=0;x<256;++x)
+      stock[y*256+x]=y==30&&(x>=208||(x>=8&&x<16))&&(x&1)?0xffffff:0xff0000;
+    ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
+    BeginFixtureFrame(ram,100);
+    if(provider)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;
+      SmRendererCaptureLine(&ppu,line);
+    }
+    if(provider)SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    for(unsigned v=0;v<4;++v)for(unsigned anchored=0;anchored<2;++anchored)
+      for(unsigned phase=0;phase<2;++phase) {
+        SmViewport view=views[v];
+        assert(SmRendererDraw(output,view,anchored!=0,phase?0.5:1));
+        for(int sx=0;sx<view.width;++sx) {
+          int x=sx-view.extra;
+          bool native=x>=0&&x<256;
+          int right=208+(anchored?2:1)*view.extra;
+          int left=(anchored?0:view.extra)+8;
+          bool dot=(sx>=right&&sx<right+48&&((sx-right)&1))||
+                   (sx>=left&&sx<left+8&&((sx-left)&1));
+          /* Hardware center terrain is fixed red; room margins are black in
+           * this fixture. A right-edge matte must still admit the UI dots. */
+          assert(output[30*view.width+sx]==(dot?0xffffffu:native?0xff0000u:0));
+          assert(output[31*view.width+sx]==(native?0xff0000u:0));
+        }
+      }
+    /* A current gameplay scroll of one can round to zero between frames.
+     * It is still gameplay, even beside an unchanged opaque HUD scanline. */
+    BeginFixtureFrame(ram,101);
+    if(provider)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;
+      ppu.hScroll[2]=line<=30?0:1;
+      SmRendererCaptureLine(&ppu,line);
+    }
+    if(provider)SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    uint32_t unchanged[SM_MAX_WIDTH];
+    for(unsigned phase=1;phase<=3;++phase) {
+      SmViewport view=views[1];
+      assert(SmRendererDraw(output,view,false,phase*0.25));
+      memcpy(unchanged,output+30*view.width,view.width*sizeof(*unchanged));
+      assert(SmRendererDraw(output,view,true,phase*0.25));
+      assert(!memcmp(unchanged,output+30*view.width,view.width*sizeof(*unchanged)));
+    }
+    BeginFixtureFrame(ram,102);
+    if(provider)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;ppu.hScroll[2]=0;
+      SmRendererCaptureLine(&ppu,line);
+    }
+    if(provider)SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    SmViewport view=views[1];
+    assert(SmRendererDraw(output,view,true,1));
+    memcpy(unchanged,output+30*view.width,view.width*sizeof(*unchanged));
+    for(unsigned phase=1;phase<=3;++phase) {
+      assert(SmRendererDraw(output,view,true,phase*0.25));
+      assert(!memcmp(unchanged,output+30*view.width,view.width*sizeof(*unchanged)));
+    }
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
 static void pause_menu_fade(void) {
   /* State 16 still draws the equipment/map menu while it fades out. State
    * 17 restores gameplay graphics under forced blank; only 18 fades them in.
@@ -506,6 +590,7 @@ static void cannon_motion(void) {
 
 int main(int argc, char **argv) {
   native_center_provider();
+  hud_bottom_anchor();
   pause_menu_fade();
   hud_colour_math_margins();
   shared_hud_liquid_map();
