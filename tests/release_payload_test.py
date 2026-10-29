@@ -64,6 +64,15 @@ class ReleaseBoundaryTest(unittest.TestCase):
             payload.restore(path, payload.digest(path))
         self.assertFalse((self.root / 'escaped.c').exists())
 
+    def test_changed_native_include_rejected(self):
+        include = self.root / 'src/row_plan.inc'
+        include.write_text('original\n')
+        path = self.root / 'private.tar.gz'
+        payload.archive(self.root / 'src/gen', path)
+        include.write_text('changed\n')
+        with self.assertRaisesRegex(ValueError, 'source/profile/pins'):
+            payload.restore(path, payload.digest(path))
+
     def test_public_package_rejects_generated_sources(self):
         path = self.root / 'runtime.zip'
         with zipfile.ZipFile(path, 'w') as archive:
@@ -81,7 +90,7 @@ class ReleaseBoundaryTest(unittest.TestCase):
                     archive.writestr('runtime/' + name, 'fixture')
         make()
         payload.audit(path)
-        for name in ('another.py', 'tools/replay_diagnostic.py', 'capture.replay.config.ini',
+        for name in ('another.py', 'native-row.inc', 'tools/replay_diagnostic.py', 'capture.replay.config.ini',
                      'logs/session.log', 'crash_report_123.json', 'crash_minidump_123.dmp'):
             make(name)
             with self.assertRaises(ValueError):
