@@ -120,7 +120,11 @@ jobs:
           # Qualified Windows x64 presentation package. Ordinary CMake
           # defaults stay OFF and other platforms retain their LLE floor.
           if [[ "${{ matrix.artifact }}" == windows-x64 ]]; then
-            EXTRA+=("-DSM_RASTER_IMPL=NATIVE" "-DSM_NATIVE_ROW_PLAN=ON" "-DSM_NATIVE_CENTER_REUSE=ON")
+            EXTRA+=("-DSM_RASTER_IMPL=NATIVE" "-DSM_NATIVE_ROW_PLAN=ON" "-DSM_NATIVE_CENTER_REUSE=ON"
+                    "-DSNESRECOMP_FRAME_IMPL=HLE" "-DSNESRECOMP_APU_TIME_IMPL=NATIVE" "-DSNESRECOMP_CRC32_IMPL=SLICE8"
+                    "-DSNESRECOMP_DSP_MIX_IMPL=NATIVE" "-DSNESRECOMP_INTERP_READ_IMPL=FUSED"
+                    "-DSNESRECOMP_LEGACY_MODE7_IMPL=NATIVE" "-DSNESRECOMP_SA1_TIMER_IMPL=NATIVE"
+                    "-DSNESRECOMP_SUPERFX_IDLE_IMPL=NATIVE")
           fi
           cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSNESRECOMP_SETUP_HOST=OFF -DSNESRECOMP_ENABLE_TRACE=OFF \
