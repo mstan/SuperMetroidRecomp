@@ -1,6 +1,9 @@
 #pragma once
 #include "sm_video.h"
 #include "snes/ppu.h"
+#include "snes/hd_jobs.h"
+void SmRendererSetHdEnabled(bool enabled);
+const SnesHdFrame *SmRendererHdFrame(void);
 
 void SmRendererReset(void);
 void SmRendererSetRom(const uint8_t *rom, size_t size);

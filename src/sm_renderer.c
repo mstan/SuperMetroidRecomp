@@ -17,6 +17,13 @@
 #include <string.h>
 #include <math.h>
 #include <stddef.h>
+static bool hd_enabled;
+static SnesHdFrame *hd_frame;
+void SmRendererSetHdEnabled(bool enabled) {
+  hd_enabled = enabled;
+  if (!enabled) { SnesHdFrameDestroy(hd_frame); hd_frame = NULL; }
+}
+const SnesHdFrame *SmRendererHdFrame(void) { return hd_frame; }
 
 /* Immutable host snapshots. Presenting never invokes guest code or writes PPU,
  * WRAM, VRAM or OAM. Each visible line owns its memory image so raster DMA
@@ -399,6 +406,7 @@ static bool has_samus_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
   return false;
 }
 void SmRendererReset(void) {
+  SnesHdFrameDestroy(hd_frame); hd_frame = NULL;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
   native_center_source = NULL;
   memset(native_centers, 0, sizeof(native_centers));
@@ -1997,6 +2005,7 @@ static void hud_tail_matte(const SnesRenderRegisters *p, const SmRasterLine *lin
 #endif
 
 bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, double alpha) {
+  SnesHdFrameDestroy(hd_frame); hd_frame = NULL;
   memset(grapple_motion, 0, sizeof(grapple_motion));
   memset(&render_stats, 0, sizeof(render_stats));
   memset(object_matches, 0, sizeof(object_matches));
@@ -2013,6 +2022,20 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   memset(out, 0, (size_t)viewport.width * 224 * sizeof(*out));
   unsigned state = read16(f->ram, 0x998);
   bool room = room_state(state);
+  bool hd_rows[224] = {false};
+  bool hd_ok = true;
+  if (hd_enabled && room) {
+    for (unsigned y = 0; y < 224; ++y) {
+      SnesRenderRegisters p;
+      memcpy(&p, f->lines[y].registers, PPU_SAVESTATE_REGS_SIZE);
+      if ((p.bgmode & 7) == 7 && !(p.inidisp & 128) &&
+          !(p.setini & (64 | 8 | 1)) && !(p.cgwsel & 1) &&
+          !((p.mosaic & 1) && (p.mosaic >> 4))) {
+        hd_frame = SnesHdFrameCreate((unsigned)viewport.width, 224); break;
+      }
+    }
+  }
+  const uint16_t *hd_vram[224]; int hd_source[224]; unsigned hd_sources = 0;
   uint8_t padding_screens[256] = {0};
   uint16_t padding_fill[256] = {0};
   if (room && viewport.extra) room_padding_screens(f->ram, padding_screens, padding_fill);
@@ -2262,6 +2285,44 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (mode == 7)
       for (int sx = 0; sx < viewport.width; ++sx)
         mode7_pixels[sx] = SmMode7Sample(&transform, l->vram, sx - viewport.extra);
+    SnesHdLine hd = {0};
+    bool hd_line = hd_frame && mode == 7 && !(scanout.setini & (64 | 8 | 1)) &&
+        !(scanout.cgwsel & 1) && !((scanout.mosaic & 1) && (scanout.mosaic >> 4)) &&
+        !((scanout.cgadsub & 64) && (scanout.cgwsel >> 6));
+    if (hd_line) {
+      unsigned s;
+      for (s = 0; s < hd_sources && hd_vram[s] != l->vram; ++s) {}
+      if (s == hd_sources) {
+        hd_vram[s] = l->vram; hd_source[s] = SnesHdFrameAddPicture(hd_frame, l->vram); ++hd_sources;
+      }
+      hd_ok &= hd_source[s] >= 0;
+      hd.kind = kSnesHdAffine; hd.source = (uint16_t)hd_source[s];
+      hd.control = transform.control; hd.brightness = scanout.inidisp & 15;
+      hd.screen_left = hd.active_left = -viewport.extra;
+      hd.active_right = 256 + viewport.extra;
+      hd.affine[0] = transform.origin_x; hd.affine[1] = transform.origin_y;
+      hd.affine[2] = transform.step_x; hd.affine[3] = transform.step_y;
+      /* Interpolate the camera within a compatible raster span. IRQ mode,
+       * mosaic and flip boundaries remain discrete. */
+      SnesRenderRegisters next_registers = scanout;
+      if (y < 223) memcpy(&next_registers, f->lines[y + 1].registers, PPU_SAVESTATE_REGS_SIZE);
+      if ((next_registers.bgmode & 7) == 7 && next_registers.m7sel == scanout.m7sel &&
+          next_registers.mosaic == scanout.mosaic) {
+        SmMode7Line next = SmMode7Transform(next_registers.m7matrix, next_registers.m7sel, y + 2);
+        if (previous && alpha < 1) {
+          SnesRenderRegisters old;
+          memcpy(&old, previous->lines[y < 223 ? y + 1 : y].registers, PPU_SAVESTATE_REGS_SIZE);
+          if ((old.bgmode & 7) == 7 && old.mosaic == next_registers.mosaic)
+            next = SmMode7Interpolate(SmMode7Transform(old.m7matrix, old.m7sel, y + 2), next, alpha);
+        }
+        hd.affine[4] = next.origin_x - transform.origin_x;
+        hd.affine[5] = next.origin_y - transform.origin_y;
+        hd.affine[6] = next.step_x - transform.step_x;
+        hd.affine[7] = next.step_y - transform.step_y;
+      }
+      hd.fixed_color = scanout.fixedColor; hd.cgwsel = scanout.cgwsel; hd.cgadsub = scanout.cgadsub;
+      memcpy(hd.palette, l->palette, sizeof(hd.palette));
+    }
     unsigned enabled = scanout.screenEnabled[0] | scanout.screenEnabled[1];
 #if SM_NATIVE_RASTER
     /* The hardware center uses unmodified tilemap addressing; scene-aware
@@ -2314,6 +2375,19 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       unsigned window_mask = SnesRenderWindowMask(x < 0 || x >= 256 ? &margin_windows : &native_windows, x);
 #endif
       uint16_t backgrounds[3] = {0, 0, 0};
+      if (hd_line) {
+        unsigned mask = 0;
+        for (unsigned sub = 0; sub < 2; ++sub) for (unsigned obj = 0; obj < 2; ++obj) {
+          unsigned layer = obj ? 4 : 0;
+          if ((scanout.screenEnabled[sub] & (1u << layer)) &&
+              (!(scanout.screenWindowed[sub] & (1u << layer)) ||
+               !in_window(&scanout, layer, x, viewport.extra, &wide_windows[y])))
+            mask |= 1u << (sub + 2 * obj);
+        }
+        if (in_window(&scanout, 5, x, viewport.extra, &wide_windows[y])) mask |= 16;
+        hd.visibility[sx] = (uint8_t)mask;
+        hd.object[sx] = objects[sx]; hd.object_color[sx] = l->palette[objects[sx] & 255];
+      }
       int layers = mode == 7 ? ((scanout.setini & 64) ? 2 : 1) : 3;
       /* Tile addressing/decoding is identical on main and sub. Cache it
        * before applying each screen's independent layer/window enables. */
@@ -2381,6 +2455,18 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
         brightness, &wide_windows[y], out + y * viewport.width);
+    if (hd_line) {
+      memcpy(hd.native, out + y * viewport.width, viewport.width * 4);
+      hd_ok &= SnesHdFrameSetLine(hd_frame, (unsigned)y, &hd); hd_rows[y] = true;
+    }
+  }
+  if (hd_frame) {
+    for (unsigned y = 0; y < 224; ++y) if (!hd_rows[y]) {
+      SnesHdLine row = {0}; row.kind = kSnesHdNative;
+      memcpy(row.native, out + y * viewport.width, viewport.width * 4);
+      hd_ok &= SnesHdFrameSetLine(hd_frame, y, &row);
+    }
+    if (!hd_ok || !SnesHdFrameSeal(hd_frame)) { SnesHdFrameDestroy(hd_frame); hd_frame = NULL; }
   }
   return true;
 }

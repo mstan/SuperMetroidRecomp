@@ -225,6 +225,7 @@ static void SmPublishNativeField(uint8_t *field, unsigned number) {
 static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
                        int frame_w, int frame_h, double alpha) {
   const bool overlay = SmPauseOptions_Visible();
+  SmRendererSetHdEnabled(g_config.mode7.enabled && !g_config.frame_blend && !overlay && SmCustomRendererEnabled());
   if (!SmCustomRendererEnabled() && !overlay)
     return 0;
   SmSyncCaptureGeneration();
@@ -349,6 +350,7 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
   .publish_native_field = &SmPublishNativeField,
 #endif
   .draw_frame = &SmDrawFrame,
+  .hd_frame = &SmRendererHdFrame,
   .presentation_hz = &SmPresentationHzHook,
   .window_base_width = &SmDisplay_GetWindowBaseWidth,
   .window_base_height = &SmDisplay_GetWindowBaseHeight,

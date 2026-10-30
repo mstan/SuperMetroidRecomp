@@ -1067,6 +1067,7 @@ int main(int argc, char **argv) {
   ResetFixtureRenderer();
   /* Ceres-style mode-1 HUD -> mode-7 world split uses one captured raster.
    * Both margins must contain world texels, not centered stock fallback. */
+  SmRendererSetHdEnabled(true);
   memset(&ppu, 0, sizeof(ppu));
   ppu.inidisp = 15; ppu.bgmode = 7; ppu.screenEnabled[0] = 1;
   ppu.m7matrix[0] = ppu.m7matrix[3] = 256;
@@ -1081,6 +1082,20 @@ int main(int argc, char **argv) {
   assert(SmRendererDraw(output, view, true, 1));
   assert(output[60 * view.width] == 0x00ff00);
   assert(output[60 * view.width + view.width - 1] == 0x00ff00);
+  const SnesHdFrame *jobs = SmRendererHdFrame();
+  SnesHdView jobs_view;
+  assert(jobs && SnesHdFrameView(jobs, &jobs_view));
+  assert(jobs_view.width == (unsigned)view.width && jobs_view.height == 224);
+  assert(jobs_view.lines[0].kind == kSnesHdNative);
+  assert(jobs_view.lines[60].kind == kSnesHdAffine && jobs_view.source_count == 1);
+  uint32_t *hd = malloc((size_t)view.width * 224 * 9 * 4);
+  assert(hd && SnesHdFrameRenderRegion(jobs, 3, 0, 0, view.width * 3, 224 * 3,
+                                      hd, view.width * 3 * 4));
+  for (unsigned y = 0; y < 224; ++y) for (int x = 0; x < view.width; ++x)
+    assert(hd[(size_t)y * 3 * view.width * 3 + x * 3] == output[y * view.width + x]);
+  free(hd);
+  SmRendererSetHdEnabled(false);
+  assert(!SmRendererHdFrame());
   ResetFixtureRenderer();
 
   /* Offscreen projectile visibility follows retail instruction/flicker rules.
