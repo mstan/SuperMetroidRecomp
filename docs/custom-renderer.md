@@ -789,6 +789,34 @@ FPS runs compare against the control at the same width: the existing wider
 enemy-activation feature intentionally changes simulation state relative to 4:3.
 The control traces are retained separately and are not reported as identical.
 
+Native FPS mode publishes the captured authentic 256x224 primary field and
+composes the wider image at presentation time. This removes the former extra
+full-width draw on every simulation tick. The sampled 32:9 raster-capture
+stage decreased from 5.259 to 0.979 ms/tick; the final capture and moving-pose
+pair remained byte-identical and the complete simulation trace matched.
+Background host load differed, so these timings are route observations rather
+than a controlled whole-game speedup.
+
+Windows x64 qualification used engine `8d0b14ad`, UI `ef13e3f`, audio emulation
+with dummy output, and 4,600 simulation steps per run. All 19 existing CTests
+pass. Seven earlier gameplay captures at 4:3 and 32:9 retain identical discrete
+BMPs. The production runs additionally verify changing pixels between different
+phases of the same simulated frame, actual moving pose changes, exact WRAM
+save/load and reset/load continuation, and subsequent player movement:
+
+| Cap / simulation view | Run-ahead | Sampled gameplay presentations/s |
+| --- | --- | --- |
+| 120 / 4:3 | 0 | 118.7 |
+| 120 / 32:9 | 0 | 119.7 |
+| 144 / 4:3 | 1 | 143.3 |
+
+Run-ahead changes the workload; the 144 result is its own qualified package,
+not a performance comparison with the 120 runs. Source/binary identities,
+raw traces, present CRC/phase logs, captures and host telemetry are retained
+under `C:/temp/Codex/sm-high-fps-20261101` and indexed in `beads-8wg.6.40`.
+Qualification also exposed the pre-existing console-reset continuation bug;
+the title now registers the SDK's hardware-reset hook (`beads-8wg.6.41`).
+
 Bounds and identity checks still snap discontinuities. Unknown ownership,
 unproven shake phases, and unsupported effect lifetimes remain discrete.
 These checks do not certify every room, boss, transient effect, or target FPS.
