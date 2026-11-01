@@ -28,11 +28,13 @@ const SnesHdFrame *SmRendererHdFrame(void) { return hd_frame; }
 /* Immutable host snapshots. Presenting never invokes guest code or writes PPU,
  * WRAM, VRAM or OAM. Each visible line owns its memory image so raster DMA
  * cannot retroactively change an earlier line. */
+typedef struct SmScenePiece SmScenePiece;
 typedef struct SmRasterLine {
   uint8_t registers[PPU_SAVESTATE_REGS_SIZE];
   uint16_t palette[256], oam[256];
   uint8_t high_oam[32];
   const uint16_t *vram;
+  const SmScenePiece *scene;
 } SmRasterLine;
 typedef struct SmSourceFrame {
   SmRasterLine lines[224];
@@ -68,6 +70,11 @@ _Static_assert(offsetof(SmSourceFrame, object_state_valid) - offsetof(SmSourceFr
 _Static_assert(SM_CAPTURE_TAIL_BYTES <= sizeof(SmSourceFrame) - offsetof(SmSourceFrame, ram),
     "capture metadata fits the source frame");
 static SmSourceFrame frames[2];
+static bool scene_build(SmSourceFrame *f);
+static void scene_reset(void);
+static bool has_samus_motion(const SmSourceFrame *f, const SmSourceFrame *old);
+static bool interpolation_enabled = true;
+void SmRendererSetInterpolationEnabled(bool enabled) { interpolation_enabled = enabled; }
 /* Current and previous frames have independent allocation lifetimes. The old
  * frame remains readable by interpolation while the next frame is captured. */
 static SnesRasterSnapshotStore vram_snapshots[2];
@@ -121,10 +128,16 @@ static unsigned captured_rooms[128], captured_room_count, stable_room_key, stabl
 static bool has_edge_motion(const SmSourceFrame *f, const SmSourceFrame *old);
 static int moving_effect_slot(const SmSourceFrame *f, const SmSourceFrame *old);
 static SmRendererStats render_stats;
-static uint8_t latched_object_ram[0x20000];
+enum { SM_OBJECT_PUBLICATIONS = 3 };
+static uint8_t object_publications[SM_OBJECT_PUBLICATIONS][0x20000];
+static uint8_t displayed_object_ram[0x20000];
+static unsigned object_publication_head, object_publication_count;
+static bool displayed_object_valid;
 static bool object_state_latched;
 void SmRendererLatchObjectState(const uint8_t ram[0x20000]) {
-  memcpy(latched_object_ram, ram, sizeof(latched_object_ram));
+  memcpy(object_publications[object_publication_head], ram, 0x20000);
+  object_publication_head = (object_publication_head + 1) % SM_OBJECT_PUBLICATIONS;
+  if (object_publication_count < SM_OBJECT_PUBLICATIONS) ++object_publication_count;
   object_state_latched = true;
 }
 SmRendererStats SmRendererGetStats(void) { return render_stats; }
@@ -215,6 +228,7 @@ bool SmRendererLoadCapture(const char *path) {
       next->captured == 224 && fgetc(file) == EOF;
   fclose(file);
   capture_failed[current ^ 1] = !ok;
+  if (ok) ok = scene_build(next);
   if (ok) current ^= 1;
   else next->valid = false;
   return ok;
@@ -222,6 +236,29 @@ bool SmRendererLoadCapture(const char *path) {
 
 static unsigned read16(const uint8_t *ram, unsigned address) {
   return ram[address] | (ram[address + 1] << 8);
+}
+static bool object_publication_matches(const uint8_t *ram, const Ppu *p) {
+  /* The actual $0370/$0570 DMA upload is the publication signature. A CPU
+   * update or an NMI call alone does not prove that new OAM reached the PPU. */
+  for (unsigned i = 0; i < 256; ++i)
+    if (read16(ram, 0x370 + i * 2) != p->oam[i]) return false;
+  return !memcmp(ram + 0x570, p->highOam, 32);
+}
+static void select_object_publication(SmSourceFrame *f, const Ppu *p) {
+  const uint8_t *owner = NULL;
+  for (unsigned age = 0; age < object_publication_count; ++age) {
+    unsigned index = (object_publication_head + SM_OBJECT_PUBLICATIONS - 1 - age) % SM_OBJECT_PUBLICATIONS;
+    if (object_publication_matches(object_publications[index], p)) {
+      owner = object_publications[index]; break;
+    }
+  }
+  if (!owner && displayed_object_valid && object_publication_matches(displayed_object_ram, p))
+    owner = displayed_object_ram;
+  f->object_state_valid = owner != NULL;
+  if (!owner) return;
+  memcpy(f->object_ram, owner, sizeof(f->object_ram));
+  if (owner != displayed_object_ram) memcpy(displayed_object_ram, owner, sizeof(displayed_object_ram));
+  displayed_object_valid = true;
 }
 static bool room_state(unsigned state) {
   /* Unpausing begins with a menu fade (16), then restores room graphics
@@ -371,7 +408,7 @@ static bool enemy_piece(const SmSourceFrame *f, unsigned slot,
   }
   return false;
 }
-static bool enemy_motion(const SmSourceFrame *f, const SmSourceFrame *old,
+static bool bg2_owner_motion(const SmSourceFrame *f, const SmSourceFrame *old,
                          unsigned slot, int *dx, int *dy) {
   if (!old || !f->object_state_valid || !old->object_state_valid) return false;
   const uint8_t *e = f->object_ram + 0xf78 + slot * 64;
@@ -391,21 +428,8 @@ static bool enemy_motion(const SmSourceFrame *f, const SmSourceFrame *old,
       (int16_t)read16(f->object_ram, 0x7012 + slot * 64);
   return abs(world_dx) <= 32 && abs(world_dy) <= 32 && abs(*dx) <= 32 && abs(*dy) <= 32;
 }
-static bool has_samus_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
-  const SmRasterLine *line = &f->lines[100], *previous = &old->lines[100];
-  for (unsigned slot = 0; slot < 128; ++slot) {
-    unsigned a = previous->oam[slot * 2], b = line->oam[slot * 2];
-    unsigned attr = line->oam[slot * 2 + 1];
-    unsigned ah = previous->high_oam[slot / 4] >> ((slot % 4) * 2);
-    unsigned bh = line->high_oam[slot / 4] >> ((slot % 4) * 2);
-    if (a == b || attr != previous->oam[slot * 2 + 1] || ((ah ^ bh) & 2)) continue;
-    if (abs((int)(a & 255) - (int)(b & 255)) > 32 ||
-        abs((int)(a >> 8) - (int)(b >> 8)) > 32) continue;
-    if (samus_piece(old, a, attr, ah) && samus_piece(f, b, attr, bh)) return true;
-  }
-  return false;
-}
 void SmRendererReset(void) {
+  scene_reset();
   SnesHdFrameDestroy(hd_frame); hd_frame = NULL;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
   native_center_source = NULL;
@@ -431,6 +455,8 @@ void SmRendererReset(void) {
   memset(power_bomb_phase_observations, 0, sizeof(power_bomb_phase_observations));
   captured_room_count = stable_room_key = stable_room_frames = 0;
   object_state_latched = false;
+  object_publication_head = object_publication_count = 0;
+  displayed_object_valid = false;
 }
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number) {
   hardware_raster.tracking=false;
@@ -448,10 +474,11 @@ void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number) {
   capture_failed[current] = !SnesRasterSnapshotBegin(&vram_snapshots[current], 0x10000, 224);
   f->number = number;
   memcpy(f->ram, ram, sizeof(f->ram));
-  memcpy(f->object_ram, object_state_latched ? latched_object_ram : ram, sizeof(f->object_ram));
-  /* The fallback copy is useful for discrete inspection, but is not the
-   * pre-NMI owner state required to prove sprite interpolation. */
-  f->object_state_valid = object_state_latched;
+  unsigned latest = (object_publication_head + SM_OBJECT_PUBLICATIONS - 1) % SM_OBJECT_PUBLICATIONS;
+  memcpy(f->object_ram, object_state_latched ? object_publications[latest] : ram, sizeof(f->object_ram));
+  /* Resolve against actual uploaded OAM when raster capture begins. Pending
+   * game state cannot stand in for a held or deferred display publication. */
+  f->object_state_valid = false;
   object_state_latched = false;
 }
 void SmRendererBeginHardwareRaster(const Ppu *p) {
@@ -522,6 +549,7 @@ void SmRendererCaptureLine(const Ppu *p, unsigned line) {
       (p->bgmode & 7) == 1 && !(p->mosaic >> 4);
 #endif
   SmRasterLine *l = &f->lines[line - 1];
+  if (line == 1) select_object_publication(f, p);
   memcpy(l->registers, p, sizeof(l->registers));
   memcpy(l->palette, p->cgram, sizeof(l->palette));
   memcpy(l->oam, p->oam, sizeof(l->oam));
@@ -551,8 +579,10 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
   if (!stock || capture_failed[current] || f->captured != 224) return false;
   memcpy(f->stock, stock, sizeof(f->stock));
   f->valid = true;
+  if (!scene_build(f)) { f->valid = false; return false; }
   const char *motion_prefix = getenv("SM_CAPTURE_MOTION_PREFIX");
   const char *motion_after = getenv("SM_CAPTURE_MOTION_AFTER");
+  const char *motion_pose_change = getenv("SM_CAPTURE_MOTION_POSE_CHANGE");
   const SmSourceFrame *previous = &frames[current ^ 1];
   const char *rotation_prefix = getenv("SM_CAPTURE_ROTATION_PREFIX");
   if (rotation_prefix && !captured_rotation && continuous_frames(previous, f) &&
@@ -668,7 +698,8 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
       (!motion_after || f->number >= strtoul(motion_after, NULL, 10)) &&
       continuous_frames(previous, f) &&
       room_state(read16(f->ram, 0x998)) &&
-      read16(f->object_ram, 0xa1c) == read16(previous->object_ram, 0xa1c) &&
+      (!motion_pose_change || !atoi(motion_pose_change) ||
+       read16(f->object_ram, 0xa1c) != read16(previous->object_ram, 0xa1c)) &&
       has_samus_motion(f, previous) &&
       (read16(f->object_ram, 0xb04) != read16(previous->object_ram, 0xb04) ||
        read16(f->object_ram, 0xb06) != read16(previous->object_ram, 0xb06))) {
@@ -896,7 +927,7 @@ static SmBg2Object bg2_object(const SmSourceFrame *f, const SmSourceFrame *old, 
     int x = (int)read16(e, 2) - (int)read16(f->object_ram, 0x911);
     int y = (int)read16(e, 6) - (int)read16(f->object_ram, 0x915);
     int dx, dy;
-    if (alpha < 1 && enemy_motion(f, old, slot, &dx, &dy)) {
+    if (alpha < 1 && bg2_owner_motion(f, old, slot, &dx, &dy)) {
       x = lerp_pixel(x + dx, x, alpha); y = lerp_pixel(y + dy, y, alpha);
     }
     if (result.valid && (result.x != x || result.y != y)) return (SmBg2Object){0};
@@ -1371,19 +1402,6 @@ static bool projectile_pose(const SmSourceFrame *f, bool enemy, unsigned slot,
     project_player_position(ram, pose->identity, pose->world_x, pose->world_y, &pose->x, &pose->y);
   return pose->map >= 0x8000;
 }
-static bool projectile_motion(const SmSourceFrame *f, const SmSourceFrame *old,
-                              bool enemy, unsigned slot,
-                              SmProjectilePose *now, SmProjectilePose *before) {
-  if (!old || !f->object_state_valid || !old->object_state_valid ||
-      !projectile_pose(f, enemy, slot, now) || !projectile_pose(old, enemy, slot, before))
-    return false;
-  if (enemy && read16(f->object_ram, 0x1bd7 + slot * 2) !=
-               read16(old->object_ram, 0x1bd7 + slot * 2)) return false;
-  return now->identity == before->identity &&
-      abs(now->world_x - before->world_x) <= 32 &&
-      abs(now->world_y - before->world_y) <= 32 &&
-      abs(now->x - before->x) <= 32 && abs(now->y - before->y) <= 32;
-}
 static bool sprite_object_pose(const SmSourceFrame *f, unsigned slot, SmProjectilePose *pose) {
   const uint8_t *ram = f->object_ram;
   unsigned offset = slot * 2;
@@ -1450,148 +1468,8 @@ static bool grapple_flare_pose(const SmSourceFrame *f, SmProjectilePose *pose) {
   pose->y = pose->world_y - (int)read16(ram, 0x915);
   return pose->map >= 0x8000 && pose->y >= 0 && pose->y < 256;
 }
-static bool grapple_flare_motion(const SmSourceFrame *f, const SmSourceFrame *old,
-                                  SmProjectilePose *now, SmProjectilePose *before) {
-  return old && grapple_flare_pose(f, now) && grapple_flare_pose(old, before) &&
-      now->identity == before->identity &&
-      abs(now->world_x - before->world_x) <= 32 && abs(now->world_y - before->world_y) <= 32 &&
-      abs(now->x - before->x) <= 32 && abs(now->y - before->y) <= 32;
-}
-static bool projectile_piece_motion(const SmSourceFrame *f, const SmSourceFrame *old,
-                                     unsigned position, unsigned attr, unsigned high,
-                                     int *dx, int *dy, int *actual_x, bool *effect) {
-  bool matched = false;
-  *effect = false;
-  *dx = *dy = 0;
-  *actual_x = 0;
-  for (unsigned kind = 0; kind < 4; ++kind) {
-    for (unsigned slot = 0; slot < (kind == 3 ? 1u : kind == 2 ? 32u : kind ? 18u : 10u); ++slot) {
-      SmProjectilePose now, before;
-      bool moving = kind == 3 ? grapple_flare_motion(f, old, &now, &before)
-                    : kind == 2 ? sprite_object_motion(f, old, slot, &now, &before)
-                             : projectile_motion(f, old, kind != 0, slot, &now, &before);
-      if (!moving) continue;
-      int ax;
-      if (!map_piece(now.bank, now.map, now.x, now.y, now.palette, now.base,
-                      position, attr, high, &ax)) continue;
-      int mx = before.x - now.x, my = before.y - now.y;
-      if (matched && (*dx != mx || *dy != my || *actual_x != ax)) return false;
-      *dx = mx; *dy = my; *actual_x = ax; matched = true;
-      if (kind == 2) *effect = true;
-    }
-  }
-  return matched && (*dx || *dy);
-}
-/* OAM normally stays constant across scanlines. Cache ownership only within
- * one presentation, keyed by the current complete entry, so raster OAM changes
- * still force verification and no match can leak across snapshots. */
-static struct {
-  unsigned position, attr, high;
-  int dx, dy, actual_x;
-  bool valid, matched;
-  bool effect;
-} object_matches[128];
-static struct {
-  unsigned position, attr, high;
-  bool valid, matched;
-} samus_matches[128];
-static struct {
-  unsigned position, attr, high;
-  int dx, dy, actual_x;
-  bool valid, matched;
-} enemy_matches[128];
-static bool current_enemy_motion(unsigned slot, const SmSourceFrame *f,
-                                 const SmSourceFrame *old, unsigned position,
-                                 unsigned attr, unsigned high, int *dx, int *dy, int *actual_x) {
-  high &= 3;
-  if (enemy_matches[slot].valid && enemy_matches[slot].position == position &&
-      enemy_matches[slot].attr == attr && enemy_matches[slot].high == high) {
-    *dx = enemy_matches[slot].dx; *dy = enemy_matches[slot].dy;
-    *actual_x = enemy_matches[slot].actual_x;
-    return enemy_matches[slot].matched;
-  }
-  bool matched = false;
-  *dx = *dy = 0;
-  *actual_x = 0;
-  for (unsigned owner = 0; owner < 32; ++owner) {
-    int mx, my, ax;
-    if (!enemy_motion(f, old, owner, &mx, &my) ||
-        !enemy_piece(f, owner, position, attr, high, &ax)) continue;
-    /* Overlapping maps can describe the same OAM piece. Do not guess when
-     * those owners imply different motion. */
-    if (matched && (*dx != mx || *dy != my || *actual_x != ax)) { matched = false; break; }
-    *dx = mx; *dy = my; *actual_x = ax; matched = true;
-  }
-  matched = matched && (*dx || *dy);
-  enemy_matches[slot].position = position;
-  enemy_matches[slot].attr = attr;
-  enemy_matches[slot].high = high;
-  enemy_matches[slot].dx = *dx; enemy_matches[slot].dy = *dy;
-  enemy_matches[slot].actual_x = *actual_x;
-  enemy_matches[slot].valid = true; enemy_matches[slot].matched = matched;
-  return matched;
-}
-static bool current_samus_piece(unsigned slot, const SmSourceFrame *f,
-                                unsigned position, unsigned attr, unsigned high) {
-  high &= 3;
-  if (samus_matches[slot].valid && samus_matches[slot].position == position &&
-      samus_matches[slot].attr == attr && samus_matches[slot].high == high)
-    return samus_matches[slot].matched;
-  bool matched = samus_piece(f, position, attr, high);
-  samus_matches[slot].position = position;
-  samus_matches[slot].attr = attr;
-  samus_matches[slot].high = high;
-  samus_matches[slot].valid = true;
-  samus_matches[slot].matched = matched;
-  return matched;
-}
-static bool object_motion_match(unsigned slot, const SmSourceFrame *f,
-                                 const SmSourceFrame *old, unsigned position,
-                                 unsigned attr, unsigned high, int *dx, int *dy, int *actual_x) {
-  high &= 3;
-  if (object_matches[slot].valid && object_matches[slot].position == position &&
-      object_matches[slot].attr == attr && object_matches[slot].high == high) {
-    *dx = object_matches[slot].dx; *dy = object_matches[slot].dy;
-    *actual_x = object_matches[slot].actual_x;
-    return object_matches[slot].matched;
-  }
-  bool matched = projectile_piece_motion(f, old, position, attr, high, dx, dy, actual_x,
-                                         &object_matches[slot].effect);
-  object_matches[slot].position = position;
-  object_matches[slot].attr = attr;
-  object_matches[slot].high = high;
-  object_matches[slot].dx = *dx; object_matches[slot].dy = *dy;
-  object_matches[slot].actual_x = *actual_x;
-  object_matches[slot].valid = true;
-  object_matches[slot].matched = matched;
-  return matched;
-}
-static bool has_edge_motion(const SmSourceFrame *f, const SmSourceFrame *old) {
-  if (!f->object_state_valid || !old->object_state_valid) return false;
-  memset(enemy_matches, 0, sizeof(enemy_matches));
-  memset(object_matches, 0, sizeof(object_matches));
-  const SmRasterLine *line = &f->lines[100];
-  SnesRenderRegisters p;
-  memcpy(&p, line->registers, PPU_SAVESTATE_REGS_SIZE);
-  if (!(p.screenEnabled[0] & 16) || (p.inidisp & 128) || !(p.inidisp & 15)) return false;
-  static const int sizes[8][2] = {{8,16},{8,32},{8,64},{16,32},
-                                  {16,64},{32,64},{16,32},{16,32}};
-  for (unsigned slot = 0; slot < 128; ++slot) {
-    unsigned position = line->oam[slot * 2], attr = line->oam[slot * 2 + 1];
-    unsigned high = line->high_oam[slot / 4] >> ((slot % 4) * 2);
-    int size = sizes[p.obsel >> 5][(high >> 1) & 1];
-    int x = (position & 255) | ((high & 1) << 8);
-    if (x >= 256) x -= 512;
-    if (x + size > 0 && x < 256) continue;
-    int dx, dy, actual_x;
-    if (!current_enemy_motion(slot, f, old, position, attr, high, &dx, &dy, &actual_x) &&
-        !object_motion_match(slot, f, old, position, attr, high, &dx, &dy, &actual_x)) continue;
-    int mx = lerp_pixel(actual_x + dx, actual_x, 0.5);
-    int my = lerp_pixel((int)(position >> 8) + dy, (int)(position >> 8), 0.5);
-    if (mx < 256 && mx + size > 0 && my >= 32 && my < 224) return true;
-  }
-  return false;
-}
+#include "sm_scene.inc"
+
 static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int y,
                     SmViewport viewport, uint16_t *pixels,
                     const SmSourceFrame *f, const SmSourceFrame *previous, double alpha,
@@ -1599,13 +1477,7 @@ static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int 
   static const int sizes[8][2] = {{8,16},{8,32},{8,64},{16,32},
                                   {16,64},{32,64},{16,32},{16,32}};
   memset(pixels, 0, (size_t)viewport.width * sizeof(*pixels));
-  int samus_dx = 0, samus_dy = 0;
   bool interpolate_objects = previous && f->object_state_valid && previous->object_state_valid && alpha < 1;
-  if (interpolate_objects && read16(f->object_ram, 0xa1c) == read16(previous->object_ram, 0xa1c)) {
-    int dx = (int16_t)(uint16_t)(read16(previous->object_ram, 0xb04) - read16(f->object_ram, 0xb04));
-    int dy = (int16_t)(uint16_t)(read16(previous->object_ram, 0xb06) - read16(f->object_ram, 0xb06));
-    if (abs(dx) <= 32 && abs(dy) <= 32) { samus_dx = dx; samus_dy = dy; }
-  }
   for (int slot = 127; slot >= 0; --slot) {
     unsigned position = line->oam[slot * 2], attr = line->oam[slot * 2 + 1];
     unsigned high = line->high_oam[slot / 4] >> ((slot % 4) * 2);
@@ -1618,37 +1490,26 @@ static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int 
      * into the native area; unrecognized hidden reservations stay hidden. */
     bool native_footprint = x + size > 0 && x < 256;
     bool recovered = false;
-    int enemy_dx, enemy_dy, actual_x;
     if (interpolate_objects && grapple_motion[slot].valid &&
         grapple_motion[slot].position == position && grapple_motion[slot].attr == attr &&
         grapple_motion[slot].high == (high & 3)) {
       x = lerp_pixel(x + grapple_motion[slot].dx, x, alpha);
       sprite_y = lerp_pixel(sprite_y + grapple_motion[slot].dy, sprite_y, alpha);
       ++render_stats.matched_object_samples;
-    } else if (native_footprint && interpolate_objects && (samus_dx || samus_dy) &&
-        abs(y - sprite_y) <= size + 32 &&
-        current_samus_piece((unsigned)slot, f, position, attr, high)) {
-      /* Animate the current ROM piece at the interpolated owner origin.
-       * Prior OAM reservations and animation tile identities may differ. */
-      x = lerp_pixel(x + samus_dx, x, alpha);
-      sprite_y = lerp_pixel(sprite_y + samus_dy, sprite_y, alpha);
-      ++render_stats.matched_object_samples;
-      ++render_stats.matched_samus_samples;
-    } else if (interpolate_objects && abs(y - sprite_y) <= size + 32 &&
-        current_enemy_motion((unsigned)slot, f, previous, position, attr, high, &enemy_dx, &enemy_dy, &actual_x)) {
-      if (!native_footprint) x = actual_x;
-      recovered = true;
-      x = lerp_pixel(x + enemy_dx, x, alpha);
-      sprite_y = lerp_pixel(sprite_y + enemy_dy, sprite_y, alpha);
-      ++render_stats.matched_object_samples;
-    } else if (interpolate_objects && abs(y - sprite_y) <= size + 32 &&
-        object_motion_match((unsigned)slot, f, previous, position, attr, high, &enemy_dx, &enemy_dy, &actual_x)) {
-      if (!native_footprint) x = actual_x;
-      recovered = true;
-      x = lerp_pixel(x + enemy_dx, x, alpha);
-      sprite_y = lerp_pixel(sprite_y + enemy_dy, sprite_y, alpha);
-      ++render_stats.matched_object_samples;
-      if (object_matches[slot].effect) ++render_stats.matched_effect_samples;
+    } else if (interpolate_objects && line->scene) {
+      const SmScenePiece *piece = &line->scene[slot];
+      int dx, dy;
+      if (scene_motion(f, previous, piece->owner, &dx, &dy)) {
+        x = lerp_pixel(piece->x + dx, piece->x, alpha);
+        sprite_y = lerp_pixel(sprite_y + dy, sprite_y, alpha);
+        recovered = true;
+        if (dx || dy) {
+          ++render_stats.matched_object_samples;
+          if (piece->owner == SM_SCENE_SAMUS) ++render_stats.matched_samus_samples;
+          if (piece->owner >= SM_SCENE_EFFECTS && piece->owner < SM_SCENE_FLARE)
+            ++render_stats.matched_effect_samples;
+        }
+      }
     }
     if (!native_footprint && !recovered) continue;
     /* OBJ evaluation is one hardware line behind BG sampling. */
@@ -1745,7 +1606,7 @@ static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
     else if (frozen && (frozen >= 0x5a || (frozen & 2))) palette = 3072;
     if (read16(e, 42)) x += read16(e, 44) & 2 ? -1 : 1;
     int dx, dy;
-    if (alpha < 1 && enemy_motion(f, previous, (unsigned)slot, &dx, &dy)) {
+    if (alpha < 1 && scene_motion(f, previous, SM_SCENE_ENEMIES + (unsigned)slot, &dx, &dy)) {
       x = lerp_pixel(x + dx, x, alpha);
       sy = lerp_pixel(sy + dy, sy, alpha);
     }
@@ -1792,10 +1653,10 @@ static void enemy_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
       continue;
     int x = (int)read16(f->object_ram, 0x1a4b + offset) - (int)read16(f->object_ram, 0x911) + shake_x;
     int sy = (int)read16(f->object_ram, 0x1a93 + offset) - (int)read16(f->object_ram, 0x915) + shake_y;
-    SmProjectilePose now, before;
-    if (alpha < 1 && projectile_motion(f, previous, true, slot, &now, &before)) {
-      x = lerp_pixel(before.x, now.x, alpha);
-      sy = lerp_pixel(before.y, now.y, alpha);
+    int dx, dy;
+    if (alpha < 1 && scene_motion(f, previous, SM_SCENE_EPROJ + slot, &dx, &dy)) {
+      x = lerp_pixel(x + dx, x, alpha);
+      sy = lerp_pixel(sy + dy, sy, alpha);
     }
     if (sy < -128 || sy >= 384) continue;
     unsigned gfx = read16(f->object_ram, 0x19bb + offset);
@@ -1818,10 +1679,10 @@ static void player_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
     int sy = (int)read16(f->object_ram, 0xb78 + offset) - (int)read16(f->object_ram, 0x915);
     project_player_position(f->object_ram, type,
         (int)read16(f->object_ram, 0xb64 + offset), (int)read16(f->object_ram, 0xb78 + offset), &x, &sy);
-    SmProjectilePose now, before;
-    if (alpha < 1 && projectile_motion(f, previous, false, slot, &now, &before)) {
-      x = lerp_pixel(before.x, now.x, alpha);
-      sy = lerp_pixel(before.y, now.y, alpha);
+    int dx, dy;
+    if (alpha < 1 && scene_motion(f, previous, SM_SCENE_PPROJ + slot, &dx, &dy)) {
+      x = lerp_pixel(x + dx, x, alpha);
+      sy = lerp_pixel(sy + dy, sy, alpha);
     }
     if (sy < 0 || sy >= 256) continue;
     enemy_map(line, p, 0x93, read16(f->object_ram, 0xcb8 + offset),
@@ -1835,12 +1696,13 @@ static void sprite_objects(const SmSourceFrame *f, const SmRasterLine *line,
   /* $B4:BD32: pickup/effect spritemaps. Read the current instruction's map
    * operand only; never advance instruction timers from presentation. */
   for (unsigned slot = 0; slot < 32; ++slot) {
-    SmProjectilePose now, before;
+    SmProjectilePose now;
     if (!sprite_object_pose(f, slot, &now)) continue;
     int x = now.x, sy = now.y;
-    if (alpha < 1 && sprite_object_motion(f, previous, slot, &now, &before)) {
-      x = lerp_pixel(before.x, now.x, alpha);
-      sy = lerp_pixel(before.y, now.y, alpha);
+    int dx, dy;
+    if (alpha < 1 && scene_motion(f, previous, SM_SCENE_EFFECTS + slot, &dx, &dy)) {
+      x = lerp_pixel(x + dx, x, alpha);
+      sy = lerp_pixel(sy + dy, sy, alpha);
     }
     enemy_map(line, p, now.bank, now.map, x, sy,
               now.palette, now.base, y, viewport, pixels);
@@ -2008,9 +1870,6 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   SnesHdFrameDestroy(hd_frame); hd_frame = NULL;
   memset(grapple_motion, 0, sizeof(grapple_motion));
   memset(&render_stats, 0, sizeof(render_stats));
-  memset(object_matches, 0, sizeof(object_matches));
-  memset(samus_matches, 0, sizeof(samus_matches));
-  memset(enemy_matches, 0, sizeof(enemy_matches));
   const SmSourceFrame *f = &frames[current];
   const SmSourceFrame *previous = &frames[current ^ 1];
   if (!isfinite(alpha)) alpha = 1;
@@ -2057,7 +1916,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   bool xray_reveal = xray && SmRendererXrayBlocks(f->ram, xray_blocks);
   SmGrapplePiece grapple[17];
   bool grapple_recover_native[17] = {false};
-  SmProjectilePose flare, old_flare;
+  SmProjectilePose flare;
   bool has_flare = grapple_flare_pose(f, &flare);
   if (has_flare) {
     const SmRasterLine *line = &f->lines[64];
@@ -2070,9 +1929,10 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     has_flare = render_stats.grapple_flare_native_matches != 0;
   }
-  if (has_flare && alpha < 1 && grapple_flare_motion(f, previous, &flare, &old_flare)) {
-    flare.x = lerp_pixel(old_flare.x, flare.x, alpha);
-    flare.y = lerp_pixel(old_flare.y, flare.y, alpha);
+  int flare_dx, flare_dy;
+  if (has_flare && alpha < 1 && scene_motion(f, previous, SM_SCENE_FLARE, &flare_dx, &flare_dy)) {
+    flare.x = lerp_pixel(flare.x + flare_dx, flare.x, alpha);
+    flare.y = lerp_pixel(flare.y + flare_dy, flare.y, alpha);
   }
   unsigned grapple_count = f->object_state_valid ? SmRendererGrapplePieces(f->object_ram, grapple) : 0;
   for (unsigned i = 0; i < grapple_count; ++i) {

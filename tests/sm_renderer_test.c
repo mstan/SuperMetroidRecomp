@@ -23,10 +23,19 @@ static void ResetFixtureRenderer(void) {
   SmRendererReset(); fixture_owner_latched = false;
 }
 static void LatchFixtureState(const uint8_t *owner) {
-  SmRendererLatchObjectState(owner); fixture_owner_latched = true;
+  /* Model the actual native OAM DMA source, independently of later WRAM.
+   * The fixture PPU is the publication the simulated NMI will upload. */
+  static uint8_t publication[0x20000];
+  memcpy(publication, owner, sizeof(publication));
+  for (unsigned i = 0; i < 256; ++i) {
+    publication[0x370 + i * 2] = (uint8_t)ppu.oam[i];
+    publication[0x371 + i * 2] = (uint8_t)(ppu.oam[i] >> 8);
+  }
+  memcpy(publication + 0x570, ppu.highOam, 32);
+  SmRendererLatchObjectState(publication); fixture_owner_latched = true;
 }
 static void BeginFixtureFrame(const uint8_t *state, unsigned number) {
-  if (!fixture_owner_latched) SmRendererLatchObjectState(state);
+  if (!fixture_owner_latched) LatchFixtureState(state);
   SmRendererBeginFrame(state, number); fixture_owner_latched = false;
 }
 
@@ -1018,6 +1027,7 @@ int main(int argc, char **argv) {
   for (unsigned frame = 5; frame <= 6; ++frame) {
     unsigned x = frame == 5 ? 50 : 58;
     word(0xb04, x); word(0xb06, 60);
+    word(0xaf6, x); word(0xafa, 60);
     ppu.oam[0] = (uint16_t)(60 * 256 + x);
     LatchFixtureState(ram);
     /* Game logic has already advanced by scanout; OAM still describes the
@@ -1622,7 +1632,7 @@ int main(int argc, char **argv) {
   memset(rom + 0x91000, 0, 32);
   rom[0x91000] = 1; rom[0x91010] = 1;
   rom[0x91012] = 4; rom[0x91015] = 1; rom[0x91016] = 2;
-  for (unsigned scenario = 0; scenario < 4; ++scenario) {
+  for (unsigned scenario = 0; scenario < 6; ++scenario) {
     ResetFixtureRenderer();
     memset(ram, 0, sizeof(ram));
     memset(&ppu, 0, sizeof(ppu));
@@ -1630,15 +1640,20 @@ int main(int argc, char **argv) {
     ppu.inidisp = 15; ppu.bgmode = 1; ppu.screenEnabled[0] = 16;
     ppu.cgram[129] = 31 << 10; ppu.cgram[145] = 31 << 5;
     for (unsigned y = 0; y < 8; ++y) ppu.vram[y] = ppu.vram[16 + y] = 255;
-    unsigned new_origin = scenario == 2 ? 90 : 58;
+    unsigned new_origin = scenario == 2 ? 90 : scenario == 4 ? 54 : 58;
     unsigned current_x = new_origin + 4 + (scenario == 3 ? 1 : 0);
     for (unsigned frame = 1; frame <= 2; ++frame) {
       for (unsigned slot = 0; slot < 128; ++slot) ppu.oam[slot * 2] = 0xe000;
       word(0xb04, frame == 1 ? 50 : new_origin); word(0xb06, 60);
+      word(0xaf6, frame == 1 ? 50 : new_origin + (scenario == 4 ? 4 : 0));
+      word(0xafa, 60);
       word(0xac8, frame - 1);
-      if (scenario == 1 && frame == 2) word(0xa1c, 1);
+      if ((scenario == 1 || scenario >= 4) && frame == 2) word(0xa1c, 1);
+      if (scenario == 4 && frame == 2) word(0x911, 4);
       unsigned slot = frame == 1 ? 0 : 12;
-      ppu.oam[slot * 2] = (uint16_t)(60 * 256 + (frame == 1 ? 50 : current_x));
+      unsigned sprite_y = scenario == 5 && frame == 2 ? 64 : 60;
+      word(0xb06, sprite_y);
+      ppu.oam[slot * 2] = (uint16_t)(sprite_y * 256 + (frame == 1 ? 50 : current_x));
       ppu.oam[slot * 2 + 1] = frame == 1 ? 0 : 0x201;
       LatchFixtureState(ram);
       word(0xb04, 150);
@@ -1646,15 +1661,21 @@ int main(int argc, char **argv) {
       for (unsigned y = 1; y <= 224; ++y) SmRendererCaptureLine(&ppu, y);
       assert(SmRendererEndFrame(stock));
     }
-    assert(SmRendererDraw(output, view, true, 0.5));
-    assert((SmRendererGetStats().matched_object_samples > 0) == (scenario == 0));
-    unsigned expected_x = scenario == 0 ? 58 : current_x;
-    assert((SmRendererGetStats().matched_samus_samples > 0) == (scenario == 0));
-    assert(output[60 * view.width + view.extra + expected_x] == 0x00ff00);
-    assert(output[60 * view.width + view.extra + expected_x - 1] == 0);
-    assert(SmRendererDraw(output, view, true, 1));
-    assert(output[60 * view.width + view.extra + current_x] == 0x00ff00);
-    assert(output[60 * view.width + view.extra + current_x - 1] == 0);
+    /* Current art follows its owner through a pose change and camera motion.
+     * Nonmonotonic presentations must give the same pixels on every redraw. */
+    const double phases[] = {0, 0.25, 0.5, 0.75, 1, 0.5};
+    for (unsigned phase = 0; phase < sizeof(phases) / sizeof(phases[0]); ++phase) {
+      double alpha = phases[phase];
+      bool moving = (scenario <= 1 || scenario >= 4) && alpha < 1;
+      assert(SmRendererDraw(output, view, true, alpha));
+      assert((SmRendererGetStats().matched_object_samples > 0) == moving);
+      unsigned expected_x = moving ? 54 + (unsigned)((new_origin - 50) * alpha) : current_x;
+      assert((SmRendererGetStats().matched_samus_samples > 0) == moving);
+      unsigned expected_y = scenario == 5 ? 64 : 60;
+      assert(output[expected_y * view.width + view.extra + expected_x] == 0x00ff00);
+      assert(output[expected_y * view.width + view.extra + expected_x - 1] == 0);
+      assert(output[(expected_y - 1) * view.width + view.extra + expected_x] == 0);
+    }
   }
   /* Enemy owner motion survives reservation and animation-map changes in
    * native view, across X=256, and wholly in the reconstructed margin. */
@@ -2090,8 +2111,9 @@ int main(int argc, char **argv) {
   for (unsigned frame = 1; frame <= 5; ++frame) {
     unsigned x = 92 + frame * 8;
     word(0xb04, x); word(0xb06, 100);
+    word(0xaf6, x); word(0xafa, 100);
     ppu.oam[0] = (uint16_t)(x | (100 << 8));
-    if (frame == 3 || frame == 4) SmRendererLatchObjectState(ram);
+    if (frame == 3 || frame == 4) LatchFixtureState(ram);
     SmRendererBeginFrame(ram, frame);
     for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
     assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
@@ -2101,6 +2123,47 @@ int main(int argc, char **argv) {
       assert(output[100 * view.width + view.extra + pixel] ==
              (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
   }
+  /* A producer can finish several object updates before an OAM publication
+   * reaches the PPU. Follow the displayed owner, including a held front
+   * buffer that outlives every pending-history slot. */
+  ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(rom, 0, sizeof(rom));
+  memset(&ppu, 0, sizeof(ppu)); SmRendererSetRom(rom, sizeof(rom)); word(0x998, 8);
+  romword(0x9008d, 0x9000); romword(0x91000, 1);
+  ppu.inidisp = 15; ppu.bgmode = 1; ppu.screenEnabled[0] = 16; ppu.cgram[129] = 0x3e0;
+  for (unsigned row = 0; row < 8; ++row) ppu.vram[row] = 255;
+  const unsigned displayed_x[] = {50, 50, 58, 58, 58, 82};
+  const unsigned midpoint_x[] = {50, 50, 54, 58, 58, 70};
+  for (unsigned frame = 1; frame <= 6; ++frame) {
+    unsigned pending_x = 42 + frame * 8;
+    word(0xb04, pending_x); word(0xb06, 100);
+    word(0xaf6, pending_x); word(0xafa, 100);
+    ppu.oam[0] = (uint16_t)(pending_x | (100 << 8));
+    LatchFixtureState(ram);
+    ppu.oam[0] = (uint16_t)(displayed_x[frame - 1] | (100 << 8));
+    BeginFixtureFrame(ram, frame);
+    for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
+    for (unsigned pixel = 40; pixel < 108; ++pixel)
+      assert(output[100 * view.width + view.extra + pixel] ==
+             (pixel >= midpoint_x[frame - 1] && pixel < midpoint_x[frame - 1] + 8 ? 0x00ff00u : 0));
+  }
+  /* Enabling FPS after discrete-only frames starts a fresh motion history;
+   * it must not revive an older scene that happens to occupy the same slot. */
+  for (unsigned frame = 6; frame <= 10; ++frame) {
+    unsigned x = 92 + frame * 8;
+    SmRendererSetInterpolationEnabled(frame >= 8);
+    word(0xb04, x); word(0xb06, 100); word(0xaf6, x); word(0xafa, 100);
+    ppu.oam[0] = (uint16_t)(x | (100 << 8));
+    LatchFixtureState(ram); BeginFixtureFrame(ram, frame);
+    for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
+    unsigned expected_x = frame >= 9 ? x - 4 : x;
+    assert((SmRendererGetStats().matched_samus_samples != 0) == (frame >= 9));
+    for (unsigned pixel = x - 8; pixel < x + 12; ++pixel)
+      assert(output[100 * view.width + view.extra + pixel] ==
+             (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
+  }
+  SmRendererSetInterpolationEnabled(true);
   puts("Super Metroid room tiles and immutable raster capture checks passed.");
   return 0;
 }

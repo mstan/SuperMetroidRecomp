@@ -31,6 +31,7 @@ static void SmInitialize(void) {
 const RtlGameInfo kSuperMetroidGameInfo = {
   .title = "sm",
   .initialize = &SmInitialize,
+  .hardware_reset = &SmHardwareReset,
   .run_frame = &RunOneFrameOfGame,
   .frame_begin = &SmFrameBegin,
   .frame_end = &SmReplayEnd,

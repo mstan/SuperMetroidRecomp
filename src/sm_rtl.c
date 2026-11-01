@@ -98,6 +98,18 @@ static uint32_t g_loaded_file_state[8];
 static uint32_t g_loaded_pause_options;
 static bool g_loaded_file_state_valid;
 
+void SmHardwareReset(void) {
+  /* A console reset restarts the ROM. State loads use on_state_loaded instead
+   * and must retain their restored continuation. Presentation's on_reset is
+   * shared by both paths, so it cannot own this scheduler reset. */
+  g_game_started = false;
+  g_game_done = false;
+  g_lle_resume_pc = 0x808343u;
+  counter_global_frames = 0;
+  g_loaded_file_state_valid = false;
+  SmPauseOptions_SetActive(false);
+}
+
 const char *SmSnapshotIdentity(void) {
 #ifdef SM_SNAPSHOT_ID
   return SM_SNAPSHOT_ID;
@@ -289,7 +301,12 @@ void RunOneFrameOfGame(void) {
     return;
   uint32_t entry_pc = g_lle_resume_pc;
   if (!g_game_started) {
+    uint64_t master_cycles = g_cpu.master_cycles;
     cpu_state_init(&g_cpu, g_ram);
+    /* RtlReset keeps master time monotonic and has already anchored beam/APU
+     * clocks to it. Reset architectural registers without rewinding time. */
+    g_cpu.master_cycles = master_cycles;
+    g_cpu.coprocessor_master_cycles = master_cycles;
     g_game_started = true;
     entry_pc = 0x80841Cu;
   } else {

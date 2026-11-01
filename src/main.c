@@ -162,6 +162,7 @@ static void SmPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *fr
 static void SmBeginSimFrame(unsigned number) {
   SmSyncCaptureGeneration();
   SmPauseOptions_SyncToGuest();
+  SmRendererSetInterpolationEnabled(g_sm_video.fps_enabled);
   if (SmCustomRendererEnabled()) SmRendererBeginFrame(g_ram, number);
 }
 
@@ -186,6 +187,16 @@ static void SmPublishNativeField(uint8_t *field, unsigned number) {
   (void)number;
   g_sm_composed_ready = false;
   if (!SmCustomRendererEnabled()) return;
+  if (g_sm_video.fps_enabled && g_sm_render_valid) {
+    /* The host needs a primary native field, not an extra full-width present.
+     * Interpolated presentation will compose its own selected phase. Keep the
+     * captured authentic field for native consumers and avoid drawing both
+     * a discrete widescreen frame and an interpolated one every guest tick. */
+    const uint32_t *native = SmRendererStockFrame();
+    if (native) memcpy(field, native, 256 * 224 * sizeof(*native));
+    else if (SmRendererNativeLines()) abort();
+    return;
+  }
   if (!g_sm_render_valid ||
       !SmRendererDraw(g_sm_output, g_sm_viewport, g_sm_video.hud_anchored, 1)) {
     if (SmRendererNativeLines()) abort();
