@@ -753,3 +753,43 @@ including the strengthened per-raster-scroll mosaic cases.
 The `sm_custom_video` and `sm_custom_renderer` CTest targets keep assertions
 enabled in Release builds. Unit tests alone do not establish visual fidelity
 or unchanged guest state across a full gameplay run.
+
+## Higher-refresh scene publications (2026-11-01)
+
+The replacement separates a displayed object's identity and physical origin
+from its OAM reservation, current animation art, and presentation phase.
+It follows the `SceneFrame`/`IxFrame` design in
+[SonicAnthology at a35f1273](https://github.com/sonsegajp/SonicAnthology/blob/a35f127378ccc324bc5986514d38854d8a40cfab/game/common/sonic3_video.c).
+The SNES renderer and its existing raster/effect reconstruction remain in use.
+
+`SmRendererLatchObjectState` queues completed producers. Raster capture matches
+the actual 544-byte PPU OAM image to each producer's `$0370`/`$0570` DMA source.
+Three pending publications and a separately retained displayed publication
+handle delayed uploads without assigning future CPU state to old sprites.
+An unmatched upload has no verified object history and stays discrete.
+
+`sm_scene.inc` compiles immutable owner bindings once per captured OAM image;
+unchanged scanlines share them. Presentation keeps current art and moves the
+owner, without searching previous OAM reservations or running guest code.
+Samus uses her physical world position, retaining current pose graphics offsets.
+Native sprites and reconstructed margin pieces use the same actor motion.
+The live host skips scene compilation when the FPS mod is disabled, unless an
+explicit motion/edge diagnostic requests it. Simulation and audio clocks retain
+their existing rates; this is additional presentation, not faster gameplay.
+
+Regression fixtures cover pose and map changes, camera motion, several phases
+including nonmonotonic redraws, fixed pose graphics offsets, delayed and held
+OAM uploads, and disabling/re-enabling motion history. The production fixture
+`tools/fixtures/high_fps_scene.txt` takes over the existing attract setup,
+protects health, then exercises movement and current-build save/load/reset.
+Its travel/setup bypass is not evidence of an unassisted playthrough.
+`tools/test_custom_renderer.py --capture-pose-change --check-state-roundtrip`
+requires the corresponding real captures and continuation checks.
+FPS runs compare against the control at the same width: the existing wider
+enemy-activation feature intentionally changes simulation state relative to 4:3.
+The control traces are retained separately and are not reported as identical.
+
+Bounds and identity checks still snap discontinuities. Unknown ownership,
+unproven shake phases, and unsupported effect lifetimes remain discrete.
+These checks do not certify every room, boss, transient effect, or target FPS.
+Work and measured qualification are tracked in `beads-8wg.6.40`.

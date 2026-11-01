@@ -7,7 +7,12 @@ const SnesHdFrame *SmRendererHdFrame(void);
 
 void SmRendererReset(void);
 void SmRendererSetRom(const uint8_t *rom, size_t size);
-/* Call immediately before the next guest frame/NMI publishes OAM. */
+/* Live hosts can skip scene compilation for discrete-only rendering. The
+ * default is enabled for offline capture replay and renderer qualification. */
+void SmRendererSetInterpolationEnabled(bool enabled);
+/* Queue the completed producer before NMI. Its $0370/$0570 OAM DMA source
+ * must match the captured PPU before its owner state becomes displayable;
+ * delayed uploads retain the last verified front-buffer publication. */
 void SmRendererLatchObjectState(const uint8_t ram[0x20000]);
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number);
 bool SmRendererClaimNativeLine(const Ppu *p, unsigned line);

@@ -162,6 +162,7 @@ static void SmPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *fr
 static void SmBeginSimFrame(unsigned number) {
   SmSyncCaptureGeneration();
   SmPauseOptions_SyncToGuest();
+  SmRendererSetInterpolationEnabled(g_sm_video.fps_enabled);
   if (SmCustomRendererEnabled()) SmRendererBeginFrame(g_ram, number);
 }
 
