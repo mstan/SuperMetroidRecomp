@@ -143,7 +143,8 @@ static void native_center_provider(void) {
 static void hud_bottom_anchor(void) {
   const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
       {448,96,21.0/9,true},{682,213,32.0/9,true}};
-  for (unsigned provider=0;provider<2;++provider) for(unsigned edge=0;edge<2;++edge) {
+  for (unsigned provider=0;provider<2;++provider) for(unsigned edge=0;edge<2;++edge)
+    for(unsigned scroll=0;scroll<2;++scroll) {
     ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
     memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
     word(0x998,8);word(0x7a5,32);word(0x7a7,16);word(0x911,edge?256:0);
@@ -156,13 +157,19 @@ static void hud_bottom_anchor(void) {
     for(unsigned x=26;x<32;++x)ppu.vram[0x5800+3*32+x]=0x1002;
     ppu.vram[0x5800+3*32+1]=0x1002;ppu.vram[0x4010+7]=0x55;
     for(unsigned y=0;y<224;++y)for(unsigned x=0;x<256;++x)
-      stock[y*256+x]=y==30&&(x>=208||(x>=8&&x<16))&&(x&1)?0xffffff:0xff0000;
+      {
+        unsigned sample=(x+(scroll?7:0))&255;
+        stock[y*256+x]=y==30&&(sample>=208||(sample>=8&&sample<16))&&(sample&1)?0xffffff:0xff0000;
+      }
     ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
     BeginFixtureFrame(ram,100);
     if(provider)SmRendererBeginHardwareRaster(&ppu);
     for(unsigned line=1;line<=224;++line) {
       ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
       ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;
+      /* EndHud installs gameplay HOFS before the last minimap texel row.
+       * It still addresses the HUD page; those dots must stay with the map. */
+      ppu.hScroll[2]=line<=30?0:scroll?7:0;
       SmRendererCaptureLine(&ppu,line);
     }
     if(provider)SmRendererEndHardwareRaster();
@@ -184,14 +191,15 @@ static void hud_bottom_anchor(void) {
           assert(output[31*view.width+sx]==(native?0xff0000u:0));
         }
       }
-    /* A current gameplay scroll of one can round to zero between frames.
-     * It is still gameplay, even beside an unchanged opaque HUD scanline. */
+    /* VOFS1 moves this line beyond the HUD's four tile rows. It remains
+     * gameplay even when interpolation can round that scroll back to zero. */
     BeginFixtureFrame(ram,101);
     if(provider)SmRendererBeginHardwareRaster(&ppu);
     for(unsigned line=1;line<=224;++line) {
       ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
       ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;
       ppu.hScroll[2]=line<=30?0:1;
+      ppu.vScroll[2]=line<=30?0:1;
       SmRendererCaptureLine(&ppu,line);
     }
     if(provider)SmRendererEndHardwareRaster();
@@ -208,7 +216,7 @@ static void hud_bottom_anchor(void) {
     if(provider)SmRendererBeginHardwareRaster(&ppu);
     for(unsigned line=1;line<=224;++line) {
       ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
-      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;ppu.hScroll[2]=0;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;ppu.hScroll[2]=0;ppu.vScroll[2]=0;
       SmRendererCaptureLine(&ppu,line);
     }
     if(provider)SmRendererEndHardwareRaster();

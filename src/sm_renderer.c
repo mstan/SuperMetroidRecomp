@@ -1899,21 +1899,22 @@ static uint32_t colour(const SnesRenderRegisters *p, const uint16_t *palette, co
   return result;
 }
 
-/* The EndHud IRQ can leave the final UI texel row on the gameplay subscreen.
- * Identify that continuation from the preceding opaque HUD, not from colors
- * or room IDs. A changed BG3 scroll/map instead belongs to liquid/message FX. */
+/* EndHud can install gameplay HOFS while the final minimap texel row still
+ * addresses the HUD's fourth tile row. Identify it from the preceding opaque
+ * HUD and vertical/map ownership; horizontal motion alone does not turn those
+ * UI texels into world content. A changed VOFS/map belongs to liquid/message FX. */
 static bool hud_tail_line(const SmSourceFrame *f, unsigned y, const SnesRenderRegisters *p) {
   if (y != 30 || (p->bgmode & 7) != 1 || (p->bgmode & 0x40) ||
       ((p->mosaic & 4) && (p->mosaic >> 4)) ||
       !((p->screenEnabled[0] | p->screenEnabled[1]) & 4) ||
-      (p->bgXsc[2] & 0xfc) != 0x58 || p->hScroll[2] || p->vScroll[2]) return false;
+      (p->bgXsc[2] & 0xfc) != 0x58 || p->vScroll[2]) return false;
   SnesRenderRegisters hud;
   memcpy(&hud, f->lines[y - 1].registers, PPU_SAVESTATE_REGS_SIZE);
   return hud.screenEnabled[0] == 4 && !hud.cgadsub && !hud.cgwsel &&
       !((hud.mosaic & 4) && (hud.mosaic >> 4)) &&
       hud.bgmode == p->bgmode && hud.bgXsc[2] == p->bgXsc[2] &&
       (hud.bgTileAdr & 0xf00) == (p->bgTileAdr & 0xf00) &&
-      hud.hScroll[2] == p->hScroll[2] && hud.vScroll[2] == p->vScroll[2];
+      hud.hScroll[2] == 0 && hud.vScroll[2] == p->vScroll[2];
 }
 
 /* UI remains visible over the room's black side matte. Admit only its texels;
@@ -2124,7 +2125,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     memcpy(&scanout, l->registers, PPU_SAVESTATE_REGS_SIZE);
     /* Classify actual raster ownership before interpolation can round a
      * changed liquid/message scroll back to the HUD's zero scroll. */
-    bool anchor_tail = room && hud_anchored && viewport.extra && hud_tail_line(f, y, &scanout);
+    bool hud_tail = room && hud_tail_line(f, y, &scanout);
+    bool anchor_tail = hud_tail && hud_anchored && viewport.extra;
+    if (hud_tail) scanout.hScroll[2] = 0;
     uint8_t brightness[32];
     for (unsigned c = 0; c < 32; ++c)
       brightness[c] = (uint8_t)(((c << 3) | (c >> 2)) * (scanout.inidisp & 15) / 15);
@@ -2199,7 +2202,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       if (old.bgmode == scanout.bgmode && old.bgTileAdr == scanout.bgTileAdr &&
           !memcmp(old.bgXsc, scanout.bgXsc, sizeof(old.bgXsc))) {
         for (int layer = 0; layer < (mode == 7 ? 0 : 3); ++layer) {
-          if (layer == 2 && anchor_tail) continue;
+          if (layer == 2 && hud_tail) continue;
           unsigned size = (scanout.bgmode >> layer) & 0x10 ? 16 : 8;
           int dx = background_scroll_delta((int)old.hScroll[layer] - scanout.hScroll[layer],
                                             scanout.bgXsc[layer], size, false);
@@ -2231,7 +2234,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     bool reuse_center = false;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
-    reuse_center = mode == 1 && alpha >= 1 && native_centers[current][y] && !anchor_tail &&
+    reuse_center = mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
         !(viewport.extra && wide_windows[y].remove_clamped_edge);
     if (reuse_center) ++render_stats.native_center_lines;
 #endif
