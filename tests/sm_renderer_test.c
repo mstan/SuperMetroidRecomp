@@ -356,6 +356,61 @@ static void shared_hud_liquid_map(void) {
   ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
 }
 
+static void mother_brain_beam_margins(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  static uint32_t native[256 * 224];
+  for (unsigned fault = 0; fault < 4; ++fault) {
+    ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom));
+    memset(&ppu,0,sizeof(ppu)); SmRendererSetRom(rom,sizeof(rom));
+    word(0x998,8); word(0x7a5,32); word(0x7a7,32);
+    word(0x79b,fault == 1 ? 0x91f8 : 0xdd58);
+    word(0x18c0,0x8820); word(0x18f0,fault == 2 ? 0x84b8 : 0xe7bc);
+    word(0x8034,32); word(0x8036,96); word(0x8038,64*256); word(0x803a,100);
+    ram[0x9c00]=16; word(0x9c01,0x9c00);
+    ram[0x9c03]=16; word(0x9c04,0x9c03);
+    ram[0x9c06]=0xf0; word(0x9c07,0x9d04);
+    ram[0x9c09]=0xf4; word(0x9c0a,0x9dec);
+    romword(0x8c9d4+32*2,128); romword(0x8c9d4+96*2,1024);
+    /* Native rightward beam: upper edge advances four pixels per row,
+     * lower edge half a pixel. Outside x255, hardware can only store empty;
+     * the wider view must retain the diagonal instead of a flat cutoff. */
+    for (unsigned y=32;y<232;++y) {
+      unsigned left = y<100 ? 64+(100-y)*4 : 64+(y-100+1)/2;
+      word(0x9d04+(y-32)*2,left>255 ? 255 : left|0xff00);
+    }
+    if (fault == 3) word(0x9d04+50*2,0); /* unverified table must be rejected */
+    ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1;
+    ppu.screenEnabled[0]=1; ppu.cgadsub=1; ppu.cgwsel=0x10; /* math inside the cone */
+    ppu.windowsel=2u<<20; ppu.fixedColor=31<<10; ppu.cgram[1]=31;
+    for (unsigned row=0;row<8;++row) ppu.vram[4096+row]=255;
+    BeginFixtureFrame(ram,1);
+    for (unsigned y=1;y<=224;++y) {
+      unsigned at=0x9d04+(y>=32 ? y-32+(y>=144 ? 4 : 0) : 0)*2;
+      unsigned bounds=y<32 ? 255 : ram[at]|ram[at+1]<<8;
+      ppu.window1left=bounds&255; ppu.window1right=bounds>>8;
+      SmRendererCaptureLine(&ppu,y);
+    }
+    assert(SmRendererEndFrame(stock));
+    assert(SmRendererDraw(native,views[0],false,1));
+    for (unsigned v=0;v<4;++v) {
+      assert(SmRendererDraw(output,views[v],false,1));
+      for (unsigned y=32;y<224;++y)
+        for (unsigned x=0;x<256;++x)
+          assert(output[y*views[v].width+views[v].extra+x]==native[y*256+x]);
+      if (!fault && v) {
+        assert(output[45*views[v].width+views[v].extra+290]==0xff00ff);
+        assert(output[40*views[v].width+views[v].extra+290]==0xff0000);
+        assert(SmRendererDraw(output,views[v],false,0.5));
+        assert(output[45*views[v].width+views[v].extra+290]==0xff00ff);
+      }
+      if (fault || v) assert(SmRendererGetStats().mother_brain_lines==(fault ? 0u : 193u));
+    }
+  }
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom)); memset(&ppu,0,sizeof(ppu));
+}
+
 static void eye_beam_margins(void) {
   const SmViewport view = {342, 43, 16.0 / 9, true};
   for (unsigned fault = 0; fault < 7; ++fault) {
@@ -736,6 +791,7 @@ int main(int argc, char **argv) {
   pause_menu_fade();
   hud_colour_math_margins();
   shared_hud_liquid_map();
+  mother_brain_beam_margins();
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();

@@ -1200,6 +1200,84 @@ static bool xray_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   return true;
 }
 
+/* $AD:DE00..E395: the rainbow beam uses saturating Q8 walkers, with two
+ * fixed HUD spans followed by the table at $7E:9D04. Keep unclipped edges
+ * for margins, but require every referenced native word before trusting them. */
+static bool mother_brain_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
+  const uint8_t *ram = f->ram;
+  if (read16(ram, 0x79b) != 0xdd58) return false;
+  bool active = false;
+  for (unsigned slot = 0; slot < 6; ++slot)
+    if ((read16(ram, 0x18c0 + slot * 2) & 0xff00) == 0x8800 &&
+        read16(ram, 0x18f0 + slot * 2) == 0xe7bc) active = true;
+  const uint8_t *table = rom_bytes(0x91, 0xc9d4, 512);
+  if (!active || !table) return false;
+  unsigned a = read16(ram, 0x8034), b = read16(ram, 0x8036);
+  unsigned kind = ((a & 0xc0) >> 4) | ((b & 0xc0) >> 6);
+  int origin = read16(ram, 0x8038), apex = read16(ram, 0x803a);
+  if (a > 255 || b > 255 || apex <= 32 || apex >= 232 ||
+      (kind != 0 && kind != 1 && kind != 5 && kind != 6 &&
+       kind != 10 && kind != 12 && kind != 15)) return false;
+  int sa, sb;
+  bool up = kind == 5 || kind == 6 || kind == 10;
+  if (kind == 1) {
+    sa = read16(table, b * 2); sb = read16(table, a * 2);
+  } else if (up) {
+    sa = (b & 128) ? -(int)read16(table, ((-b) & 255) * 2) : (int)read16(table, b * 2);
+    sb = (a & 128) ? -(int)read16(table, ((-a) & 255) * 2) : (int)read16(table, a * 2);
+  } else {
+    sa = (a & 128) ? -(int)read16(table, ((-a) & 255) * 2) : (int)read16(table, a * 2);
+    sb = (b & 128) ? -(int)read16(table, ((-b) & 255) * 2) : (int)read16(table, b * 2);
+  }
+  SmWideWindow verified[200];
+  unsigned expected[200];
+  for (unsigned i = 0; i < 200; ++i) {
+    int y = (int)i + 32, l = 1, r = 0;
+    unsigned native = 255;
+    if (kind == 1 || (up ? y < apex : y >= apex)) {
+      int distance = y < apex ? apex - y : y - apex + 1;
+      int left_q8 = origin + distance * (kind == 1 && y >= apex ? sb : sa);
+      int right_q8 = origin + distance * sb;
+      l = q8_floor(left_q8);
+      r = kind == 1 ? 32768 : q8_floor(right_q8);
+      unsigned nl = left_q8 < 0 ? 0 : left_q8 > 65535 ? 255 : (unsigned)left_q8 >> 8;
+      unsigned nr = right_q8 < 0 ? 0 : right_q8 > 65535 ? 255 : (unsigned)right_q8 >> 8;
+      native = kind == 1 ? (left_q8 > 65535 ? 255 : nl | 0xff00) : nl | (nr << 8);
+      if (kind != 1 && (kind == 15 ? native == 0 : native == 0xffff)) native = 255;
+    }
+    expected[i] = native;
+    verified[i] = (SmWideWindow){true, l, r, true, false};
+  }
+  SmWideWindow projected[224] = {{0}};
+  bool extended = false;
+  /* The ROM's split streams skip table entries at their second pointer:
+   * downward beams resume at $9DE6, rightward beams at $9DEC. Follow the
+   * actual indirect HDMA program instead of assuming one table row per
+   * screen row. Upward beams repeat their final empty word; unused stale
+   * table rows must not reject that legitimate stream. */
+  unsigned scanline = 0, program = 0x9c00;
+  for (unsigned record = 0; record < 16 && scanline <= 224; ++record) {
+    unsigned count = ram[program++];
+    if (!count) break;
+    unsigned pointer = read16(ram, program); program += 2;
+    unsigned length = count & 127;
+    if (!length) length = 128;
+    for (unsigned n = 0; n < length && scanline <= 224; ++n, ++scanline) {
+      unsigned address = pointer + (count & 128 ? 2 * n : 0);
+      if (!scanline || address < 0x9d04 || address >= 0x9d04 + 400 || (address & 1)) continue;
+      unsigned i = (address - 0x9d04) / 2, native = read16(ram, address);
+      if (native != expected[i]) return false;
+      unsigned row = scanline - 1;
+      SnesRenderRegisters raster;
+      memcpy(&raster, f->lines[row].registers, PPU_SAVESTATE_REGS_SIZE);
+      if (raster.window1left != (native & 255) || raster.window1right != (native >> 8)) continue;
+      projected[row] = verified[i]; extended = true;
+    }
+  }
+  if (extended) memcpy(rows, projected, sizeof(projected));
+  return extended;
+}
+
 static bool eye_beam_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   /* $88:E987 builds the Morph Ball Eye cone with the same tangent walker
    * as X-ray, but uses enemy slot 1 and the eye HDMA object's half-width.
@@ -1913,6 +1991,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   for (unsigned y = 0; y < 224; ++y) power_bomb |= wide_windows[y].valid;
   bool xray = xray_windows(f, wide_windows);
   bool eye_beam = !xray && !power_bomb && eye_beam_windows(f, wide_windows);
+  bool mother_brain = !xray && !power_bomb && !eye_beam && mother_brain_windows(f, wide_windows);
   bool xray_reveal = xray && SmRendererXrayBlocks(f->ram, xray_blocks);
   SmGrapplePiece grapple[17];
   bool grapple_recover_native[17] = {false};
@@ -2049,6 +2128,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (wide_windows[y].valid) {
       if (xray) ++render_stats.xray_lines;
       else if (eye_beam) ++render_stats.eye_beam_lines;
+      else if (mother_brain) ++render_stats.mother_brain_lines;
       else ++render_stats.power_bomb_lines;
     }
     if (scanout.inidisp & 128) continue;

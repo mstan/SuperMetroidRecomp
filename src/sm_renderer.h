@@ -56,6 +56,7 @@ typedef struct SmRendererStats {
   unsigned power_bomb_lines;
   unsigned xray_lines;
   unsigned eye_beam_lines;
+  unsigned mother_brain_lines;
   unsigned xray_tiles_compared, xray_tiles_differ;
   unsigned grapple_native_matches, grapple_margin_pixels;
   unsigned grapple_interpolated_pieces;
