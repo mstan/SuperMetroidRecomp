@@ -212,10 +212,15 @@ if(BUILD_TESTING AND NOT ANDROID)
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_controls COMMAND sm_controls_test)
     add_executable(sm_qol_data_test tests/sm_qol_data_test.c
-        src/mods/sm_screen_shake_plugin.c src/mods/sm_station_plugins.c)
+        src/mods/sm_screen_shake_plugin.c src/mods/sm_station_plugins.c
+        src/mods/sm_cinematic_skip_plugin.c)
     target_include_directories(sm_qol_data_test PRIVATE src/mods
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_qol_data_consumers COMMAND sm_qol_data_test)
+    add_executable(sm_balance_test tests/sm_balance_test.c src/mods/sm_balance_plugins.c)
+    target_include_directories(sm_balance_test PRIVATE src/mods
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_tourian_corpse_palette COMMAND sm_balance_test)
     add_executable(sm_bugfix_test tests/sm_bugfix_test.c src/mods/sm_bugfix_plugins.c)
     target_include_directories(sm_bugfix_test PRIVATE src/mods
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})

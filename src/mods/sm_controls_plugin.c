@@ -4,9 +4,10 @@
  * guest only ever receives ordinary button presses and stays stock.
  *
  * zero-mission: Zero Mission / Fusion style shoulders.
- *   - The aim shoulder aims diagonally up while held, and diagonally down
- *     while Down is held too (Down itself is withheld so Samus does not
- *     crouch). It presses whatever the player configured as angle up/down
+ *   - The aim shoulder retains the last diagonal angle. Up/Down select its
+ *     angle while aiming, without moving/crouching; releasing those inputs
+ *     or the shoulder keeps that choice. Activation starts with up. It
+ *     presses whatever the player configured as angle up/down
  *     in the game's controller setup ($09BE/$09BC).
  *   - The missile shoulder arms missiles: "hold" selects them while held and
  *     returns to the beam on release; "toggle" switches on each press. It
@@ -65,6 +66,7 @@ typedef struct Seat {
   uint16_t pulse;
   int pulse_phase;      /* 0 idle, 2 = press this frame, 1 = release this frame */
   bool missile_held;
+  bool aim_down;        /* local input preference, independent for each seat */
 } Seat;
 /* Each feature pulses independently: both may be enabled. */
 static Seat g_zm_seats[2], g_radial_seats[2];
@@ -94,12 +96,10 @@ static uint16_t SmZeroMissionControls(uint16_t buttons, const SnesModInputContex
   bool missile = (buttons & g_missile_shoulder) != 0;
   uint16_t out = (uint16_t)(buttons & ~(g_aim_shoulder | g_missile_shoulder));
   if (aim) {
-    if (buttons & SNES_PAD_DOWN) {
-      out = (uint16_t)(out & ~SNES_PAD_DOWN);
-      out |= HostButtons(Word(wram, kCfgAimDown));
-    } else {
-      out |= HostButtons(Word(wram, kCfgAimUp));
-    }
+    if (buttons & SNES_PAD_DOWN) seat->aim_down = true;
+    else if (buttons & SNES_PAD_UP) seat->aim_down = false;
+    out = (uint16_t)(out & ~(SNES_PAD_UP | SNES_PAD_DOWN));
+    out |= HostButtons(Word(wram, seat->aim_down ? kCfgAimDown : kCfgAimUp));
   }
   if (g_missile_enabled) {
     bool armed = Word(wram, kHudItem) != 0;

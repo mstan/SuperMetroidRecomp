@@ -10,6 +10,7 @@
 uint32 SmShakeRoomOffsets(CpuState *, uint32);
 uint32 SmShakeProjectileOffsets(CpuState *, uint32);
 uint32 SmModAmmoStationMessage(CpuState *, uint32);
+uint32 SmCreditsSkipHook(CpuState *, uint32);
 
 static SNESModActivationCallback shake_activate;
 static const char *level = "half";
@@ -74,6 +75,19 @@ int main(void) {
   SmModAmmoStationMessage(&cpu, 0x858311); assert(cpu.A == 0x1234);
   Put(0x1C1F, 0x15); cpu.Y = 0x10; cpu.A = 0x3CE3;
   SmModAmmoStationMessage(&cpu, 0x858311); assert(cpu.A == 0x3CE3);
+  /* A shortened roll must not leave the staff row under the final screen.
+   * Outside the actual skip gesture, neither the map nor its guards change. */
+  memset(ram + 0x3000, 0x42, 0x800);
+  Put(0x998, 0x27); Put(0x19ff, 0x8000); Put(0x19f7, 0xd91b);
+  Put(0x8f, 0); SmCreditsSkipHook(&cpu, 0x8bd443);
+  assert(Get(0x3000) == 0x4242 && Get(0x19f7) == 0xd91b);
+  Put(0x8f, 0x1000); Put(0x998, 8); SmCreditsSkipHook(&cpu, 0x8bd443);
+  assert(Get(0x3000) == 0x4242);
+  Put(0x998, 0x27); Put(0x2ffe, 0x1234); Put(0x3800, 0x5678);
+  Put(0x1997, 0x100); SmCreditsSkipHook(&cpu, 0x8bd443);
+  for (unsigned a = 0x3000; a < 0x3800; a += 2) assert(Get(a) == 0x7f);
+  assert(Get(0x2ffe) == 0x1234 && Get(0x3800) == 0x5678);
+  assert(Get(0x19f7) == 0xdc97 && Get(0x1a03) == 0xf8);
   puts("QoL data-consumer boundaries passed");
   return 0;
 }

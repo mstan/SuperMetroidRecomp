@@ -53,6 +53,14 @@ int main(void) {
   SmZeroMissionActivate();
   assert(Step(SNES_PAD_R, 0, 0) == SNES_PAD_R);                          /* aim up */
   assert(Step(SNES_PAD_R | SNES_PAD_DOWN | SNES_PAD_X, 0, 0) == (SNES_PAD_L | SNES_PAD_X));
+  for (unsigned i = 0; i < 30; ++i)
+    assert(Step(SNES_PAD_R | SNES_PAD_X, 0, 0) == (SNES_PAD_L | SNES_PAD_X));
+  assert(Step(0, 0, 0) == 0);
+  assert(Step(SNES_PAD_R, 0, 0) == SNES_PAD_L); /* release/repress remembers down */
+  SnesModInputContext other = {1, g_wram, 0, 0, 0, 0};
+  assert(g_transform(SNES_PAD_R, &other) == SNES_PAD_R); /* independent seat */
+  assert(Step(SNES_PAD_R | SNES_PAD_UP, 0, 0) == SNES_PAD_R);
+  assert(Step(SNES_PAD_R, 0, 0) == SNES_PAD_R); /* up is also retained */
   assert(Step(SNES_PAD_DOWN, 0, 0) == SNES_PAD_DOWN);                    /* crouch kept */
   assert(Step(SNES_PAD_L, 0, 0) == SNES_PAD_SELECT);                     /* press: select */
   SetWord(kHudItem, 1);                                                  /* game armed missiles */
@@ -71,6 +79,9 @@ int main(void) {
   g_options[1][0] = "missile"; g_options[1][1] = "toggle";
   SmZeroMissionActivate();
   assert(Step(SNES_PAD_L, 0, 0) == SNES_PAD_R);                          /* L aims up */
+  assert(Step(SNES_PAD_L | SNES_PAD_DOWN, 0, 0) == SNES_PAD_L);
+  assert(Step(SNES_PAD_L, 0, 0) == SNES_PAD_L); /* mirrored shoulder also remembers */
+  assert(Step(SNES_PAD_L | SNES_PAD_UP, 0, 0) == SNES_PAD_R);
   assert(Step(SNES_PAD_R, 0, 0) == SNES_PAD_SELECT);
   SetWord(kHudItem, 1);
   assert(Step(0, 0, 0) == 0);

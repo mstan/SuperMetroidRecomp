@@ -63,6 +63,10 @@ def validate(out, rom):
     # complete shortened population, including order/count, rather than
     # rejecting an ID that the retained corpse legitimately uses.
     assert loaded == expected, "re-entry did not load exactly the corpse population"
+    palette_offset = 0x29 * 0x8000 + (0xf8a6 & 0x7fff)
+    corpse_palette = image[palette_offset:palette_offset + 32]
+    assert final[0xc3e0:0xc400] == corpse_palette, "re-entry corpse target palette is missing"
+    assert final[0xc1e0:0xc200] == corpse_palette, "re-entry corpse display palette is missing"
     dust = ram("mod", "dust_entry")
     assert word(dust, 0x1e15) == 0xa4 and word(dust, 0x1e65) == 4
     return {"natural_drain_health": 1, "stock_exit_room": "DCB1", "mod_exit_rooms": ["DC65", "DC19"],

@@ -15,9 +15,15 @@ def parse_args():
     for key in ('exe','rom','out'):parser.add_argument('--'+key,type=Path,required=True)
     parser.add_argument('--interp',action='store_true')
     parser.add_argument('--compare',type=Path)
+    parser.add_argument('--visible-staff',action='store_true',
+                        help='wait for the native staff heading before pressing Start')
     return parser.parse_args()
 
 def validate(out,compare=None):
+    control=(out/'control/final_screen.wram').read_bytes()[0x3000:0x3800]
+    for mode in ('credits','return','both'):
+        final=(out/mode/'final_screen.wram').read_bytes()[0x3000:0x3800]
+        assert final == control, (mode, 'stale credits graphics in final-screen tilemap')
     if not compare:return
     for path in out.iterdir():
         if not path.is_dir():continue
@@ -54,6 +60,18 @@ def main():
                 game.step(30);st=state();record(st)
                 if st['state']==0x27 and st['glow']&0x8000 and 0xd91b<=st['list']<0xdc97:break
                 assert st['frame']<limit,st
+            if args.visible_staff:
+                # The earliest eligible frame is still a completely blank
+                # roll. It cannot reproduce stale staff graphics. Wait for
+                # actual native text writes; never manufacture a credits row.
+                for _ in range(100):
+                    game.step(30)
+                    tiles=game.read(0x3000,0x800)
+                    count=sum(tiles[i:i+2]!=b'\x7f\x00' for i in range(0,len(tiles),2))
+                    if count>=12:break
+                else:raise AssertionError('staff heading never became visible')
+                game.step(60);st=state();record(st)
+                assert 0xd91b<=st['list']<0xdc97,st
             staff=st.copy();game.snapshot('staff_roll')
             game.step(1,'start');st=state();record(st)
             rolled=st.copy() if st['fn']==0xe0f4 else None

@@ -47,6 +47,7 @@
 enum {
   kRoom = 0x079B, kArea = 0x079F,
   kMusicTrack = 0x07C9, kMusicData = 0x07CB, kEnemyPopulation = 0x07CF,
+  kRoomState = 0x07BB, kCorpseTargetPalette = 0xC3E0,
   kPlmId = 0x1C37, kPlmArgument = 0x1DC7,
   kBossBits = 0xD828, kTourian = 5, kExitBit = 4,
 };
@@ -108,11 +109,28 @@ uint32 SmTourianStateHeaderHook(CpuState *cpu, uint32 pc24) {
   return 0;
 }
 
+/* The native Baby initializer supplies OBJ palette 7 for all these corpses
+ * ($A9:EF37, WriteColorsToTargetPalette). Re-entry deliberately omits the
+ * Baby, so initialize that shared palette with the corpses instead. Do this
+ * after room palette decompression, before the native door fade-in; writing
+ * it from LoadStateHeader is too early. The native palette/fade machinery
+ * still owns the displayed colors. No live enemy or other room is changed. */
+uint32 SmTourianCorpsePaletteHook(CpuState *cpu, uint32 pc24) {
+  (void)pc24;
+  if (!g_tourian || !InTourian(cpu) || !ExitOpen(cpu) ||
+      W(cpu, kRoom) != 0xDCB1 || W(cpu, kRoomState) != 0xDCDD ||
+      W(cpu, kEnemyPopulation) != 0xE28E)
+    return 0;
+  for (unsigned i = 0; i < 32; i += 2)
+    SetW(cpu, kCorpseTargetPalette + i, SmModReadRom16(0xA9F8A6 + i));
+  return 0;
+}
+
 static void SmTourianExitActivate(void) {
-  static const uint32_t kHooks[] = {0xA9F29A, 0x84C794, 0x8FE618, 0x82DF56};
-  size_t armed = SmModArmHooks("tourian-exit", kHooks, 4);
+  static const uint32_t kHooks[] = {0xA9F29A, 0x84C794, 0x8FE618, 0x82DF56, 0xA9DC5F};
+  size_t armed = SmModArmHooks("tourian-exit", kHooks, 5);
   g_tourian = true;
-  fprintf(stderr, "[mods] tourian exit: %zu/4 hooks\n", armed);
+  fprintf(stderr, "[mods] tourian exit: %zu/5 hooks\n", armed);
 }
 
 /* ── power-bomb-reveal ────────────────────────────────────────────────── */

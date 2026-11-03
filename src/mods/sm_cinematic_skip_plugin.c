@@ -110,6 +110,14 @@ uint32 SmCreditsSkipHook(CpuState *cpu, uint32 pc24) {
       !(RAM16(cpu, kJoypad1New) & kButtonStart))
     return 0;
   Put16(cpu, kCreditsListPtr, kCreditsEnd);
+  /* The normal roll replaces each ring-buffer row with blank credits before
+   * reaching its end. A jump to the final instruction skips those writes;
+   * the ending later reuses this BG map for the completion screen. Clear the
+   * same 32x32 map to the native blank tile. CreditsObject_Process still
+   * queues its ordinary DMA, so no VRAM writes or pose-sequence bypass are
+   * needed here. */
+  for (unsigned at = 0x3000; at < 0x3800; at += 2)
+    Put16(cpu, at, 0x007F);
   /* CreditsObject_ProcessOne steps the list once cinematic_var10 has moved
    * 8 px past the last step. */
   Put16(cpu, kCreditsLastStep, (uint16_t)(RAM16(cpu, kCinematicVar10) - 8));

@@ -324,7 +324,7 @@ definition in the decomp, so the plugin uses them as spare memory.
 ### `super-metroid.controls`
 | Bead | Feature | Status |
 |---|---|---|
-| .24/.25 | Zero Mission/Fusion shoulder aim; missile hold/toggle/off | Done. Input transforms; uses the guest config words `$09B8`–`$09BE`. |
+| .24/.25 | Zero Mission/Fusion shoulder aim; missile hold/toggle/off | Input transforms use guest config words `$09B8`–`$09BE`. November 3 update: Up/Down while aiming selects the last angle, retained through neutral input and shoulder release/repress. Each seat starts up at feature activation; this local input preference survives guest save/load. `tools/test_qol_aim.py` checks both shoulder mappings/facings, firing, off behavior and current-build restore in the built game. Physical controller review remains separate. |
 | .27 | Right-stick radial weapon menu | Done. Input transform plus ring overlay. |
 | .26 | Falling aim-down fix | Owner deferred definition until the end; ask at final playtest handoff. |
 
