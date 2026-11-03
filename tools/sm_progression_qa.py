@@ -101,7 +101,7 @@ class Rom:
 
 
 class Session:
-    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None):
+    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None):
         cache = Path(exe).resolve().parent / 'CMakeCache.txt'
         if cache.exists() and 'SNESRECOMP_ENABLE_TRACE:BOOL=OFF' in cache.read_text().splitlines():
             raise ValueError('TCP QA requires a build configured with -DSNESRECOMP_ENABLE_TRACE=ON')
@@ -124,7 +124,7 @@ class Session:
             'EnableGamepad3=false\nEnableGamepad4=false\n',
             encoding='utf-8')
         (self.output / 'sm-video.ini').write_text(
-            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect=16:9\nPresentationEnabled=0\n',
+            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect=16:9\nPresentationEnabled=0\nHudAnchored={int(hud_anchored)}\n',
             encoding='utf-8')
         if features is not None:
             from test_qol_rom_removal import SOURCE, state as mod_state
@@ -152,6 +152,8 @@ class Session:
             targets = self.output / 'interpret-targets.txt'
             targets.write_text(''.join(f'{p:06x}\n{p ^ 0x800000:06x}\n' for p in interpret_targets))
             env['SNESRECOMP_LLE_INTERP_TARGET_FILE'] = str(targets)
+        if env_overrides:
+            env.update(env_overrides)
         self.stdout = (self.output / 'stdout.log').open('wb')
         self.stderr = (self.output / 'stderr.log').open('wb')
         self.process = subprocess.Popen(
