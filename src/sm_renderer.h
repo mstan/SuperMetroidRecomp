@@ -1,10 +1,18 @@
 #pragma once
 #include "sm_video.h"
 #include "snes/ppu.h"
+#include "snes/hd_jobs.h"
+void SmRendererSetHdEnabled(bool enabled);
+const SnesHdFrame *SmRendererHdFrame(void);
 
 void SmRendererReset(void);
 void SmRendererSetRom(const uint8_t *rom, size_t size);
-/* Call immediately before the next guest frame/NMI publishes OAM. */
+/* Live hosts can skip scene compilation for discrete-only rendering. The
+ * default is enabled for offline capture replay and renderer qualification. */
+void SmRendererSetInterpolationEnabled(bool enabled);
+/* Queue the completed producer before NMI. Its $0370/$0570 OAM DMA source
+ * must match the captured PPU before its owner state becomes displayable;
+ * delayed uploads retain the last verified front-buffer publication. */
 void SmRendererLatchObjectState(const uint8_t ram[0x20000]);
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number);
 bool SmRendererClaimNativeLine(const Ppu *p, unsigned line);
@@ -15,6 +23,14 @@ void SmRendererEndHardwareRaster(void);
 void SmRendererHardwareVramChanged(void);
 bool SmRendererEndFrame(const uint32_t stock[256 * 224]);
 bool SmRendererDraw(uint32_t *output, SmViewport viewport, bool hud_anchored, double alpha);
+/* The same immutable publication/physical interpolation used by Samus' OBJ.
+ * The RAM pointer is read-only and valid until the next capture/reset. */
+typedef struct SmPlayerView {
+  const uint8_t *ram;
+  unsigned pose, movement;
+  int x, y, camera_x, camera_y;
+} SmPlayerView;
+bool SmRendererGetPlayer(double alpha, SmPlayerView *player);
 bool SmRendererRoomTile(const uint8_t ram[0x20000], int x, int y, uint16_t *entry);
 bool SmRendererRoomLayerTile(const uint8_t ram[0x20000], unsigned layer,
                             int x, int y, uint16_t *entry);
@@ -48,10 +64,12 @@ typedef struct SmRendererStats {
   unsigned power_bomb_lines;
   unsigned xray_lines;
   unsigned eye_beam_lines;
+  unsigned mother_brain_lines;
   unsigned xray_tiles_compared, xray_tiles_differ;
   unsigned grapple_native_matches, grapple_margin_pixels;
   unsigned grapple_interpolated_pieces;
   unsigned grapple_flare_native_matches;
+  unsigned native_center_lines;
 } SmRendererStats;
 SmRendererStats SmRendererGetStats(void);
 typedef struct SmRasterStats {

@@ -26,7 +26,7 @@ def inputs():
     for folder in ('src', 'recomp', 'profiles'):
         files += [p for p in (ROOT / folder).rglob('*') if p.is_file()
                   and 'gen' not in p.relative_to(ROOT).parts
-                  and p.name != 'funcs.h' and p.suffix in ('.c', '.h', '.cfg', '.json')]
+                  and p.name != 'funcs.h' and p.suffix in ('.c', '.h', '.inc', '.cfg', '.json')]
     # Git may check text out as CRLF on a Windows runner. This is the same
     # source input; generated payload files themselves remain byte-verified.
     return {p.relative_to(ROOT).as_posix(): hashlib.sha256(
@@ -102,7 +102,7 @@ def audit(archive_path):
             # This standalone support tool is intentionally shipped; no other
             # Python, game source, generated C or build tooling is public.
             support_helper = len(path.parts) == 2 and path.name == 'replay_diagnostic.py'
-            if path.suffix.lower() in ('.sfc', '.smc', '.rom', '.srm', '.sav', '.c', '.h', '.py', '.a', '.o', '.obj') and not support_helper:
+            if path.suffix.lower() in ('.sfc', '.smc', '.rom', '.srm', '.sav', '.c', '.h', '.inc', '.py', '.a', '.o', '.obj') and not support_helper:
                 raise ValueError(f'Build input or private state in package: {name}')
             if path.suffix.lower() in ('.replay', '.dmp', '.jsonl') or '.replay.' in path.name or path.name.startswith(('crash_report_', 'last_run_report')):
                 raise ValueError(f'Private diagnostics in package: {name}')

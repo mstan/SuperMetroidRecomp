@@ -23,10 +23,19 @@ static void ResetFixtureRenderer(void) {
   SmRendererReset(); fixture_owner_latched = false;
 }
 static void LatchFixtureState(const uint8_t *owner) {
-  SmRendererLatchObjectState(owner); fixture_owner_latched = true;
+  /* Model the actual native OAM DMA source, independently of later WRAM.
+   * The fixture PPU is the publication the simulated NMI will upload. */
+  static uint8_t publication[0x20000];
+  memcpy(publication, owner, sizeof(publication));
+  for (unsigned i = 0; i < 256; ++i) {
+    publication[0x370 + i * 2] = (uint8_t)ppu.oam[i];
+    publication[0x371 + i * 2] = (uint8_t)(ppu.oam[i] >> 8);
+  }
+  memcpy(publication + 0x570, ppu.highOam, 32);
+  SmRendererLatchObjectState(publication); fixture_owner_latched = true;
 }
 static void BeginFixtureFrame(const uint8_t *state, unsigned number) {
-  if (!fixture_owner_latched) SmRendererLatchObjectState(state);
+  if (!fixture_owner_latched) LatchFixtureState(state);
   SmRendererBeginFrame(state, number); fixture_owner_latched = false;
 }
 
@@ -88,6 +97,130 @@ static void raster_storage(void) {
   for(unsigned line=1;line<=224;++line)SmRendererCaptureLine(&ppu,line);
   assert(SmRendererEndFrame(stock));
   assert(SmRendererGetRasterStats().vram_capacity_bytes==storage.vram_capacity_bytes);
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
+static void native_center_provider(void) {
+#if defined(SM_NATIVE_CENTER_REUSE) && SM_NATIVE_CENTER_REUSE
+  for (unsigned scenario=0;scenario<7;++scenario) {
+    ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+    word(0x998,8); ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=1;
+    ppu.bgTileAdr=2; ppu.cgram[1]=31;
+    ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
+    g_snes_ppu_dbg_layer_mask=scenario==6?30:255;
+    for(unsigned row=0;row<8;++row)ppu.vram[0x2000+row]=0xff;
+    if(scenario==1)ppu.renderFlags=kPpuRenderFlags_NewRenderer;
+    if(scenario==3)ppu.oamaddh=0x80;
+    if(scenario==4)ppu.renderFlags=kPpuRenderFlags_NoSpriteLimits;
+    if(scenario==5)ppu.mosaic=0x20;
+    /* Constant opaque red is the independent original PPU result for this
+     * all-tile-zero / all-plane-zero-bit-set fixture. Untrusted or differently
+     * configured providers are deliberately poisoned to catch accidental use. */
+    for(unsigned pixel=0;pixel<256*224;++pixel)
+      stock[pixel]=scenario==0?0xff0000u:0x123456u;
+    BeginFixtureFrame(ram,100+scenario);
+    if(scenario!=2)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      SmRendererCaptureLine(&ppu,line);
+      if(scenario==0)assert(!SmRendererClaimNativeLine(&ppu,line));
+    }
+    SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    SmViewport view={342,43,16.0/9,true};
+    for(unsigned phase=0;phase<2;++phase) {
+      assert(SmRendererDraw(output,view,false,phase?0.5:1));
+      assert(SmRendererGetStats().native_center_lines==(!scenario&&!phase?224u:0u));
+      for(unsigned y=0;y<224;++y) for(unsigned x=0;x<256;++x)
+        assert(output[y*view.width+view.extra+x]==0xff0000u);
+    }
+  }
+  g_snes_ppu_dbg_layer_mask=255;
+  ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+#endif
+}
+
+static void hud_bottom_anchor(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  for (unsigned provider=0;provider<2;++provider) for(unsigned edge=0;edge<2;++edge) {
+    ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x7a5,32);word(0x7a7,16);word(0x911,edge?256:0);
+    ppu.inidisp=15;ppu.bgmode=9;ppu.bgTileAdr=0x401;ppu.bgXsc[2]=0x5a;
+    ppu.cgram[1]=31;ppu.cgram[17]=0x7fff;
+    for(unsigned t=0;t<1024;++t)ppu.vram[t]=1;
+    for(unsigned y=0;y<8;++y)ppu.vram[0x1010+y]=255;
+    /* Last texel row of the top-four-row UI page: independent white dots.
+     * A left group marker also verifies that only the UI layer relocates. */
+    for(unsigned x=26;x<32;++x)ppu.vram[0x5800+3*32+x]=0x1002;
+    ppu.vram[0x5800+3*32+1]=0x1002;ppu.vram[0x4010+7]=0x55;
+    for(unsigned y=0;y<224;++y)for(unsigned x=0;x<256;++x)
+      stock[y*256+x]=y==30&&(x>=208||(x>=8&&x<16))&&(x&1)?0xffffff:0xff0000;
+    ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
+    BeginFixtureFrame(ram,100);
+    if(provider)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;
+      SmRendererCaptureLine(&ppu,line);
+    }
+    if(provider)SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    for(unsigned v=0;v<4;++v)for(unsigned anchored=0;anchored<2;++anchored)
+      for(unsigned phase=0;phase<2;++phase) {
+        SmViewport view=views[v];
+        assert(SmRendererDraw(output,view,anchored!=0,phase?0.5:1));
+        for(int sx=0;sx<view.width;++sx) {
+          int x=sx-view.extra;
+          bool native=x>=0&&x<256;
+          int right=208+(anchored?2:1)*view.extra;
+          int left=(anchored?0:view.extra)+8;
+          bool dot=(sx>=right&&sx<right+48&&((sx-right)&1))||
+                   (sx>=left&&sx<left+8&&((sx-left)&1));
+          /* Hardware center terrain is fixed red; room margins are black in
+           * this fixture. A right-edge matte must still admit the UI dots. */
+          assert(output[30*view.width+sx]==(dot?0xffffffu:native?0xff0000u:0));
+          assert(output[31*view.width+sx]==(native?0xff0000u:0));
+        }
+      }
+    /* A current gameplay scroll of one can round to zero between frames.
+     * It is still gameplay, even beside an unchanged opaque HUD scanline. */
+    BeginFixtureFrame(ram,101);
+    if(provider)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;
+      ppu.hScroll[2]=line<=30?0:1;
+      SmRendererCaptureLine(&ppu,line);
+    }
+    if(provider)SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    uint32_t unchanged[SM_MAX_WIDTH];
+    for(unsigned phase=1;phase<=3;++phase) {
+      SmViewport view=views[1];
+      assert(SmRendererDraw(output,view,false,phase*0.25));
+      memcpy(unchanged,output+30*view.width,view.width*sizeof(*unchanged));
+      assert(SmRendererDraw(output,view,true,phase*0.25));
+      assert(!memcmp(unchanged,output+30*view.width,view.width*sizeof(*unchanged)));
+    }
+    BeginFixtureFrame(ram,102);
+    if(provider)SmRendererBeginHardwareRaster(&ppu);
+    for(unsigned line=1;line<=224;++line) {
+      ppu.screenEnabled[0]=line<=30?4:1;ppu.screenEnabled[1]=4;
+      ppu.cgadsub=line<=30?0:0x33;ppu.cgwsel=line<=30?0:2;ppu.hScroll[2]=0;
+      SmRendererCaptureLine(&ppu,line);
+    }
+    if(provider)SmRendererEndHardwareRaster();
+    assert(SmRendererEndFrame(stock));
+    SmViewport view=views[1];
+    assert(SmRendererDraw(output,view,true,1));
+    memcpy(unchanged,output+30*view.width,view.width*sizeof(*unchanged));
+    for(unsigned phase=1;phase<=3;++phase) {
+      assert(SmRendererDraw(output,view,true,phase*0.25));
+      assert(!memcmp(unchanged,output+30*view.width,view.width*sizeof(*unchanged)));
+    }
+  }
   ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
 }
 
@@ -223,6 +356,91 @@ static void shared_hud_liquid_map(void) {
   ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
 }
 
+static void mother_brain_beam_margins(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  static uint32_t native[256 * 224];
+  for (unsigned fault = 0; fault < 4; ++fault) {
+    ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom));
+    memset(&ppu,0,sizeof(ppu)); SmRendererSetRom(rom,sizeof(rom));
+    word(0x998,8); word(0x7a5,32); word(0x7a7,32);
+    word(0x79b,fault == 1 ? 0x91f8 : 0xdd58);
+    memset(ram + 0xcd20, 1, 4); /* open synthetic beam plane; arena mask is separate */
+    word(0x18c0,0x8820); word(0x18f0,fault == 2 ? 0x84b8 : 0xe7bc);
+    word(0x8034,32); word(0x8036,96); word(0x8038,64*256); word(0x803a,100);
+    ram[0x9c00]=16; word(0x9c01,0x9c00);
+    ram[0x9c03]=16; word(0x9c04,0x9c03);
+    ram[0x9c06]=0xf0; word(0x9c07,0x9d04);
+    ram[0x9c09]=0xf4; word(0x9c0a,0x9dec);
+    romword(0x8c9d4+32*2,128); romword(0x8c9d4+96*2,1024);
+    /* Native rightward beam: upper edge advances four pixels per row,
+     * lower edge half a pixel. Outside x255, hardware can only store empty;
+     * the wider view must retain the diagonal instead of a flat cutoff. */
+    for (unsigned y=32;y<232;++y) {
+      unsigned left = y<100 ? 64+(100-y)*4 : 64+(y-100+1)/2;
+      word(0x9d04+(y-32)*2,left>255 ? 255 : left|0xff00);
+    }
+    if (fault == 3) word(0x9d04+50*2,0); /* unverified table must be rejected */
+    ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1;
+    ppu.screenEnabled[0]=1; ppu.cgadsub=1; ppu.cgwsel=0x10; /* math inside the cone */
+    ppu.windowsel=2u<<20; ppu.fixedColor=31<<10; ppu.cgram[1]=31;
+    for (unsigned row=0;row<8;++row) ppu.vram[4096+row]=255;
+    BeginFixtureFrame(ram,1);
+    for (unsigned y=1;y<=224;++y) {
+      unsigned at=0x9d04+(y>=32 ? y-32+(y>=144 ? 4 : 0) : 0)*2;
+      unsigned bounds=y<32 ? 255 : ram[at]|ram[at+1]<<8;
+      ppu.window1left=bounds&255; ppu.window1right=bounds>>8;
+      SmRendererCaptureLine(&ppu,y);
+    }
+    assert(SmRendererEndFrame(stock));
+    assert(SmRendererDraw(native,views[0],false,1));
+    for (unsigned v=0;v<4;++v) {
+      assert(SmRendererDraw(output,views[v],false,1));
+      for (unsigned y=32;y<224;++y)
+        for (unsigned x=0;x<256;++x)
+          assert(output[y*views[v].width+views[v].extra+x]==native[y*256+x]);
+      if (!fault && v) {
+        assert(output[45*views[v].width+views[v].extra+290]==0xff00ff);
+        assert(output[40*views[v].width+views[v].extra+290]==0xff0000);
+        assert(SmRendererDraw(output,views[v],false,0.5));
+        assert(output[45*views[v].width+views[v].extra+290]==0xff00ff);
+      }
+      if (fault || v) assert(SmRendererGetStats().mother_brain_lines==(fault ? 0u : 193u));
+    }
+  }
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom)); memset(&ppu,0,sizeof(ppu));
+}
+
+static void arena_staging(void) {
+  const SmViewport views[] = {{256,0,4.0/3,true},{342,43,16.0/9,true},
+                             {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  for (unsigned arena = 0; arena < 2; ++arena) for (unsigned opened = 0; opened < 2; ++opened) {
+    ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+    word(0x998,8); word(0x79b,arena ? 0xa98d : 0xdd58);
+    word(0x7a5,arena ? 128 : 64); word(0x7a7,16);
+    int camera = arena ? 512 : 0;
+    word(0x911,camera); memset(ram+0xcd20,1,8); ram[0xcd21]=(uint8_t)opened;
+    ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1; ppu.hScroll[0]=(uint16_t)camera;
+    ppu.screenEnabled[0]=1; ppu.cgram[1]=31;
+    for (unsigned y=0;y<8;++y) ppu.vram[4096+y]=255;
+    BeginFixtureFrame(ram,1);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock));
+    for (unsigned v=0;v<4;++v) {
+      SmViewport view=views[v];
+      assert(SmRendererDraw(output,view,false,1));
+      for (int x=0;x<256;++x) assert(output[100*view.width+view.extra+x]==0xff0000);
+      if (view.extra) {
+        int x=arena ? -1 : 256;
+        assert(output[100*view.width+view.extra+x]==(opened ? 0xff0000u : 0));
+      }
+    }
+  }
+  ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+}
+
 static void eye_beam_margins(void) {
   const SmViewport view = {342, 43, 16.0 / 9, true};
   for (unsigned fault = 0; fault < 7; ++fault) {
@@ -310,6 +528,23 @@ static void eye_beam_clamped_tail(void) {
     assert(SmRendererEndFrame(stock));
     uint32_t native[256*224];
     assert(SmRendererDraw(native,views[0],false,1));
+    for (unsigned provider=0;provider<2;++provider) {
+      if (provider) {
+        /* A qualified hardware center still contains the saturated edge
+         * stripe. Wider presentation must reconstruct those rows instead
+         * of copying the otherwise trustworthy original-aspect pixels. */
+        memcpy(stock,native,sizeof(native));
+        ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
+        BeginFixtureFrame(ram,2);
+        SmRendererBeginHardwareRaster(&ppu);
+        for(unsigned y=1;y<=224;++y) {
+          unsigned b=ram[0x9100+y*2]|ram[0x9101+y*2]<<8;
+          ppu.window1left=b&255; ppu.window1right=b>>8;
+          SmRendererCaptureLine(&ppu,y);
+        }
+        SmRendererEndHardwareRaster();
+        assert(SmRendererEndFrame(stock));
+      }
     for(unsigned v=0;v<4;++v) {
       SmViewport view=views[v]; assert(SmRendererDraw(output,view,false,1));
       assert(SmRendererGetStats().eye_beam_lines==224);
@@ -327,6 +562,7 @@ static void eye_beam_clamped_tail(void) {
       int outside=mirror?266:-10,inside=mirror?290:-30;
       assert(output[223*view.width+view.extra+outside]==0xff00ff);
       assert(output[223*view.width+view.extra+inside]==0xff0000);
+    }
     }
   }
   ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
@@ -580,9 +816,13 @@ static void nonrectangular_room_padding(void) {
 }
 
 int main(int argc, char **argv) {
+  native_center_provider();
+  hud_bottom_anchor();
   pause_menu_fade();
   hud_colour_math_margins();
   shared_hud_liquid_map();
+  mother_brain_beam_margins();
+  arena_staging();
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();
@@ -874,6 +1114,7 @@ int main(int argc, char **argv) {
   for (unsigned frame = 5; frame <= 6; ++frame) {
     unsigned x = frame == 5 ? 50 : 58;
     word(0xb04, x); word(0xb06, 60);
+    word(0xaf6, x); word(0xafa, 60);
     ppu.oam[0] = (uint16_t)(60 * 256 + x);
     LatchFixtureState(ram);
     /* Game logic has already advanced by scanout; OAM still describes the
@@ -923,6 +1164,7 @@ int main(int argc, char **argv) {
   ResetFixtureRenderer();
   /* Ceres-style mode-1 HUD -> mode-7 world split uses one captured raster.
    * Both margins must contain world texels, not centered stock fallback. */
+  SmRendererSetHdEnabled(true);
   memset(&ppu, 0, sizeof(ppu));
   ppu.inidisp = 15; ppu.bgmode = 7; ppu.screenEnabled[0] = 1;
   ppu.m7matrix[0] = ppu.m7matrix[3] = 256;
@@ -937,6 +1179,37 @@ int main(int argc, char **argv) {
   assert(SmRendererDraw(output, view, true, 1));
   assert(output[60 * view.width] == 0x00ff00);
   assert(output[60 * view.width + view.width - 1] == 0x00ff00);
+  const SnesHdFrame *jobs = SmRendererHdFrame();
+  SnesHdView jobs_view;
+  assert(jobs && SnesHdFrameView(jobs, &jobs_view));
+  assert(jobs_view.width == (unsigned)view.width && jobs_view.height == 224);
+  assert(jobs_view.lines[0].kind == kSnesHdNative);
+  assert(jobs_view.lines[60].kind == kSnesHdAffine && jobs_view.source_count == 1);
+  uint32_t *hd = malloc((size_t)view.width * 224 * 9 * 4);
+  assert(hd && SnesHdFrameRenderRegion(jobs, 3, 0, 0, view.width * 3, 224 * 3,
+                                      hd, view.width * 3 * 4));
+  for (unsigned y = 0; y < 224; ++y) for (int x = 0; x < view.width; ++x)
+    assert(hd[(size_t)y * 3 * view.width * 3 + x * 3] == output[y * view.width + x]);
+  free(hd);
+  /* Planet/stars are cinematic OAM. The parked Mode-7 ship must remain
+   * outside the margins until its native approach trigger changes phase. */
+  for (unsigned approaching=0;approaching<2;++approaching) {
+    word(0x998,34); word(0x1f51,approaching ? 0xc9f9 : 0xa38f);
+    BeginFixtureFrame(ram,20+approaching);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[60*view.width+view.extra+128]==0x00ff00);
+    assert(output[60*view.width]==(approaching ? 0x00ff00u : 0));
+    jobs=SmRendererHdFrame(); assert(jobs && SnesHdFrameView(jobs,&jobs_view));
+    assert((jobs_view.lines[60].visibility[0]&1)==approaching);
+    assert(jobs_view.lines[60].visibility[view.extra+128]&1);
+    hd=malloc((size_t)view.width*224*9*4);
+    assert(hd && SnesHdFrameRenderRegion(jobs,3,0,0,view.width*3,224*3,hd,view.width*3*4));
+    assert(hd[(size_t)60*3*view.width*3]==output[60*view.width]);
+    free(hd);
+  }
+  SmRendererSetHdEnabled(false);
+  assert(!SmRendererHdFrame());
   ResetFixtureRenderer();
 
   /* Offscreen projectile visibility follows retail instruction/flicker rules.
@@ -1463,7 +1736,7 @@ int main(int argc, char **argv) {
   memset(rom + 0x91000, 0, 32);
   rom[0x91000] = 1; rom[0x91010] = 1;
   rom[0x91012] = 4; rom[0x91015] = 1; rom[0x91016] = 2;
-  for (unsigned scenario = 0; scenario < 4; ++scenario) {
+  for (unsigned scenario = 0; scenario < 6; ++scenario) {
     ResetFixtureRenderer();
     memset(ram, 0, sizeof(ram));
     memset(&ppu, 0, sizeof(ppu));
@@ -1471,15 +1744,20 @@ int main(int argc, char **argv) {
     ppu.inidisp = 15; ppu.bgmode = 1; ppu.screenEnabled[0] = 16;
     ppu.cgram[129] = 31 << 10; ppu.cgram[145] = 31 << 5;
     for (unsigned y = 0; y < 8; ++y) ppu.vram[y] = ppu.vram[16 + y] = 255;
-    unsigned new_origin = scenario == 2 ? 90 : 58;
+    unsigned new_origin = scenario == 2 ? 90 : scenario == 4 ? 54 : 58;
     unsigned current_x = new_origin + 4 + (scenario == 3 ? 1 : 0);
     for (unsigned frame = 1; frame <= 2; ++frame) {
       for (unsigned slot = 0; slot < 128; ++slot) ppu.oam[slot * 2] = 0xe000;
       word(0xb04, frame == 1 ? 50 : new_origin); word(0xb06, 60);
+      word(0xaf6, frame == 1 ? 50 : new_origin + (scenario == 4 ? 4 : 0));
+      word(0xafa, 60);
       word(0xac8, frame - 1);
-      if (scenario == 1 && frame == 2) word(0xa1c, 1);
+      if ((scenario == 1 || scenario >= 4) && frame == 2) word(0xa1c, 1);
+      if (scenario == 4 && frame == 2) word(0x911, 4);
       unsigned slot = frame == 1 ? 0 : 12;
-      ppu.oam[slot * 2] = (uint16_t)(60 * 256 + (frame == 1 ? 50 : current_x));
+      unsigned sprite_y = scenario == 5 && frame == 2 ? 64 : 60;
+      word(0xb06, sprite_y);
+      ppu.oam[slot * 2] = (uint16_t)(sprite_y * 256 + (frame == 1 ? 50 : current_x));
       ppu.oam[slot * 2 + 1] = frame == 1 ? 0 : 0x201;
       LatchFixtureState(ram);
       word(0xb04, 150);
@@ -1487,15 +1765,21 @@ int main(int argc, char **argv) {
       for (unsigned y = 1; y <= 224; ++y) SmRendererCaptureLine(&ppu, y);
       assert(SmRendererEndFrame(stock));
     }
-    assert(SmRendererDraw(output, view, true, 0.5));
-    assert((SmRendererGetStats().matched_object_samples > 0) == (scenario == 0));
-    unsigned expected_x = scenario == 0 ? 58 : current_x;
-    assert((SmRendererGetStats().matched_samus_samples > 0) == (scenario == 0));
-    assert(output[60 * view.width + view.extra + expected_x] == 0x00ff00);
-    assert(output[60 * view.width + view.extra + expected_x - 1] == 0);
-    assert(SmRendererDraw(output, view, true, 1));
-    assert(output[60 * view.width + view.extra + current_x] == 0x00ff00);
-    assert(output[60 * view.width + view.extra + current_x - 1] == 0);
+    /* Current art follows its owner through a pose change and camera motion.
+     * Nonmonotonic presentations must give the same pixels on every redraw. */
+    const double phases[] = {0, 0.25, 0.5, 0.75, 1, 0.5};
+    for (unsigned phase = 0; phase < sizeof(phases) / sizeof(phases[0]); ++phase) {
+      double alpha = phases[phase];
+      bool moving = (scenario <= 1 || scenario >= 4) && alpha < 1;
+      assert(SmRendererDraw(output, view, true, alpha));
+      assert((SmRendererGetStats().matched_object_samples > 0) == moving);
+      unsigned expected_x = moving ? 54 + (unsigned)((new_origin - 50) * alpha) : current_x;
+      assert((SmRendererGetStats().matched_samus_samples > 0) == moving);
+      unsigned expected_y = scenario == 5 ? 64 : 60;
+      assert(output[expected_y * view.width + view.extra + expected_x] == 0x00ff00);
+      assert(output[expected_y * view.width + view.extra + expected_x - 1] == 0);
+      assert(output[(expected_y - 1) * view.width + view.extra + expected_x] == 0);
+    }
   }
   /* Enemy owner motion survives reservation and animation-map changes in
    * native view, across X=256, and wholly in the reconstructed margin. */
@@ -1931,8 +2215,9 @@ int main(int argc, char **argv) {
   for (unsigned frame = 1; frame <= 5; ++frame) {
     unsigned x = 92 + frame * 8;
     word(0xb04, x); word(0xb06, 100);
+    word(0xaf6, x); word(0xafa, 100);
     ppu.oam[0] = (uint16_t)(x | (100 << 8));
-    if (frame == 3 || frame == 4) SmRendererLatchObjectState(ram);
+    if (frame == 3 || frame == 4) LatchFixtureState(ram);
     SmRendererBeginFrame(ram, frame);
     for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
     assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
@@ -1942,6 +2227,51 @@ int main(int argc, char **argv) {
       assert(output[100 * view.width + view.extra + pixel] ==
              (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
   }
+  /* A producer can finish several object updates before an OAM publication
+   * reaches the PPU. Follow the displayed owner, including a held front
+   * buffer that outlives every pending-history slot. */
+  ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(rom, 0, sizeof(rom));
+  memset(&ppu, 0, sizeof(ppu)); SmRendererSetRom(rom, sizeof(rom)); word(0x998, 8);
+  romword(0x9008d, 0x9000); romword(0x91000, 1);
+  ppu.inidisp = 15; ppu.bgmode = 1; ppu.screenEnabled[0] = 16; ppu.cgram[129] = 0x3e0;
+  for (unsigned row = 0; row < 8; ++row) ppu.vram[row] = 255;
+  const unsigned displayed_x[] = {50, 50, 58, 58, 58, 82};
+  const unsigned midpoint_x[] = {50, 50, 54, 58, 58, 70};
+  for (unsigned frame = 1; frame <= 6; ++frame) {
+    unsigned pending_x = 42 + frame * 8;
+    word(0xb04, pending_x); word(0xb06, 100);
+    word(0xaf6, pending_x); word(0xafa, 100);
+    ppu.oam[0] = (uint16_t)(pending_x | (100 << 8));
+    LatchFixtureState(ram);
+    ppu.oam[0] = (uint16_t)(displayed_x[frame - 1] | (100 << 8));
+    BeginFixtureFrame(ram, frame);
+    for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
+    for (unsigned pixel = 40; pixel < 108; ++pixel)
+      assert(output[100 * view.width + view.extra + pixel] ==
+             (pixel >= midpoint_x[frame - 1] && pixel < midpoint_x[frame - 1] + 8 ? 0x00ff00u : 0));
+  }
+  /* Enabling FPS after discrete-only frames starts a fresh motion history;
+   * it must not revive an older scene that happens to occupy the same slot. */
+  for (unsigned frame = 6; frame <= 10; ++frame) {
+    unsigned x = 92 + frame * 8;
+    SmRendererSetInterpolationEnabled(frame >= 8);
+    word(0xb04, x); word(0xb06, 100); word(0xaf6, x); word(0xafa, 100);
+    ppu.oam[0] = (uint16_t)(x | (100 << 8));
+    LatchFixtureState(ram); BeginFixtureFrame(ram, frame);
+    for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
+    unsigned expected_x = frame >= 9 ? x - 4 : x;
+    SmPlayerView player;
+    assert(SmRendererGetPlayer(0.5,&player));
+    assert(player.x==(int)expected_x && player.y==100);
+    assert(player.pose==0 && player.camera_x==0 && player.camera_y==0);
+    assert((SmRendererGetStats().matched_samus_samples != 0) == (frame >= 9));
+    for (unsigned pixel = x - 8; pixel < x + 12; ++pixel)
+      assert(output[100 * view.width + view.extra + pixel] ==
+             (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
+  }
+  SmRendererSetInterpolationEnabled(true);
   puts("Super Metroid room tiles and immutable raster capture checks passed.");
   return 0;
 }

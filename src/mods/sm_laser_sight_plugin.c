@@ -11,7 +11,10 @@
  * the game treats as solid to a horizontal collision check (block types in
  * kBlockColl_Horiz_CheckColl, $94:9515: slopes, solid/shot/grapple, door,
  * spike, special, bomb), reading the room's level data ($7F:0002) and
- * following extension blocks through their BTS ($7F:6402).
+ * following extension blocks through their BTS ($7F:6402). With custom
+ * presentation, use the displayed immutable pose and its physical interpolation
+ * instead of the next live simulation pose. A centered three-pixel footprint
+ * stays on that native shot axis; each edge pixel also respects walls/HUD.
  */
 
 #include <stdbool.h>
@@ -21,6 +24,8 @@
 #include "mod_runtime.h"
 #include "sm_mod_overlay.h"
 #include "sm_mod_support.h"
+#include "sm_display.h"
+#include "sm_renderer.h"
 
 #define PACKAGE "super-metroid.map-hud"
 
@@ -69,26 +74,35 @@ static bool Solid(const uint8_t *wram, int x, int y) {
 static void SmLaserSightDraw(uint32_t *pixels, int stride, int width, int height,
                              int stage_x, const uint8_t *wram) {
   if (!g_rom || Word(wram, kGameState) != 8) return;
-  uint16_t pose = Word(wram, kPose);
+  SmPlayerView player;
+  bool presented = SmDisplay_GetPlayer(&player);
+  if (presented) wram = player.ram;
+  uint16_t pose = presented ? (uint16_t)player.pose : Word(wram, kPose);
   if (pose > 0xFC) return;
   const uint8_t *params = PoseParams(pose);
   int dir = params[3];
   if (dir >= 10) return;
   bool diagonal = dir == 1 || dir == 3 || dir == 6 || dir == 8;
   if (!diagonal && !g_always) return;
-  bool alt = pose == 0x75 || pose == 0x76 || wram[kMovementType] == 1;
-  int x = (int16_t)(Word(wram, kSamusX) - Word(wram, kLayer1X)) +
+  bool alt = pose == 0x75 || pose == 0x76 || (presented ? player.movement : wram[kMovementType]) == 1;
+  int x = (presented ? player.x : (int16_t)(Word(wram, kSamusX) - Word(wram, kLayer1X))) +
           (alt ? kOrigin4X : kOrigin3X)[dir] + stage_x;
-  int y = (int16_t)(Word(wram, kSamusY) - Word(wram, kLayer1Y)) +
+  int y = (presented ? player.y : (int16_t)(Word(wram, kSamusY) - Word(wram, kLayer1Y))) +
           (alt ? kOrigin4Y : kOrigin3Y)[dir] - params[4];
   /* Room position of screen pixel (stage_x, 0). */
-  int room_x = Word(wram, kLayer1X) - stage_x, room_y = Word(wram, kLayer1Y);
+  int room_x = (presented ? player.camera_x : Word(wram, kLayer1X)) - stage_x;
+  int room_y = presented ? player.camera_y : Word(wram, kLayer1Y);
   /* Dotted: 3 lit, 2 dark, starting a little ahead of the muzzle. */
   for (int i = 6; i < 512; ++i) {
     int px = x + kStepX[dir] * i, py = y + kStepY[dir] * i;
     if (px < 0 || px >= width || py < 32 || py >= height) break;   /* not over the HUD */
     if (Solid(wram, room_x + px, room_y + py)) break;
-    if (i % 5 < 3) pixels[py * stride + px] = 0xFFFF3030u;
+    if (i % 5 < 3) for (int oy = -1; oy <= 1; ++oy) for (int ox = -1; ox <= 1; ++ox) {
+      if (ox * ox + oy * oy > 1) continue;
+      int sx = px + ox, sy = py + oy;
+      if (sx >= 0 && sx < width && sy >= 32 && sy < height &&
+          !Solid(wram, room_x + sx, room_y + sy)) pixels[sy * stride + sx] = 0xFFFF3030u;
+    }
   }
 }
 
