@@ -244,7 +244,7 @@ static bool object_publication_matches(const uint8_t *ram, const Ppu *p) {
     if (read16(ram, 0x370 + i * 2) != p->oam[i]) return false;
   return !memcmp(ram + 0x570, p->highOam, 32);
 }
-static void select_object_publication(SmSourceFrame *f, const Ppu *p) {
+static const uint8_t *find_object_publication(const Ppu *p) {
   const uint8_t *owner = NULL;
   for (unsigned age = 0; age < object_publication_count; ++age) {
     unsigned index = (object_publication_head + SM_OBJECT_PUBLICATIONS - 1 - age) % SM_OBJECT_PUBLICATIONS;
@@ -254,6 +254,10 @@ static void select_object_publication(SmSourceFrame *f, const Ppu *p) {
   }
   if (!owner && displayed_object_valid && object_publication_matches(displayed_object_ram, p))
     owner = displayed_object_ram;
+  return owner;
+}
+static void select_object_publication(SmSourceFrame *f, const Ppu *p) {
+  const uint8_t *owner = find_object_publication(p);
   f->object_state_valid = owner != NULL;
   if (!owner) return;
   memcpy(f->object_ram, owner, sizeof(f->object_ram));
@@ -1548,18 +1552,28 @@ static bool grapple_flare_pose(const SmSourceFrame *f, SmProjectilePose *pose) {
 }
 #include "sm_scene.inc"
 
+static void player_from_ram(const uint8_t *ram, SmPlayerView *player) {
+  int x = (int)read16(ram, 0xaf6) - (int)read16(ram, 0x911);
+  int y = (int)read16(ram, 0xafa) - (int)read16(ram, 0x915);
+  project_player_position(ram, 0, read16(ram, 0xaf6), read16(ram, 0xafa), &x, &y);
+  *player = (SmPlayerView){ram, read16(ram, 0xa1c), ram[0xa1f], x, y,
+                         (int16_t)read16(ram, 0x911), (int16_t)read16(ram, 0x915)};
+}
+bool SmRendererGetNativePlayer(const Ppu *ppu, SmPlayerView *player) {
+  const uint8_t *ram = ppu ? find_object_publication(ppu) : NULL;
+  if (!ram || !player || read16(ram, 0x998) != 8) return false;
+  player_from_ram(ram, player);
+  return true;
+}
 bool SmRendererGetPlayer(double alpha, SmPlayerView *player) {
   const SmSourceFrame *f = &frames[current], *previous = &frames[current ^ 1];
   if (!player || !f->valid || !f->object_state_valid || read16(f->ram, 0x998) != 8) return false;
-  const SmSceneActor *actor = &scenes[current].actors[SM_SCENE_SAMUS];
-  if (!actor->valid) return false;
   if (!isfinite(alpha)) alpha = 1;
   if (alpha < 0) alpha = 0;
   if (alpha > 1) alpha = 1;
   if (!continuous_frames(previous, f)) previous = NULL;
   const uint8_t *ram = f->object_ram;
-  *player = (SmPlayerView){ram, read16(ram, 0xa1c), ram[0xa1f], actor->pose.x, actor->pose.y,
-                         (int16_t)read16(ram, 0x911), (int16_t)read16(ram, 0x915)};
+  player_from_ram(ram, player);
   int dx, dy;
   if (alpha < 1 && scene_motion(f, previous, SM_SCENE_SAMUS, &dx, &dy)) {
     player->x = lerp_pixel(player->x + dx, player->x, alpha);

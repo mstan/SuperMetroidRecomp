@@ -2272,6 +2272,13 @@ int main(int argc, char **argv) {
              (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
   }
   SmRendererSetInterpolationEnabled(true);
+  ResetFixtureRenderer();
+  LatchFixtureState(ram); /* Native renderer: OAM ownership without a raster capture. */
+  SmPlayerView native_player;
+  assert(SmRendererGetNativePlayer(&ppu,&native_player));
+  assert(native_player.x==(int)(ram[0xaf6]|ram[0xaf7]<<8) && native_player.y==100);
+  ppu.oam[0]^=1;
+  assert(!SmRendererGetNativePlayer(&ppu,&native_player));
   puts("Super Metroid room tiles and immutable raster capture checks passed.");
   return 0;
 }

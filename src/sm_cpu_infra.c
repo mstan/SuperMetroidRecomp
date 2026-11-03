@@ -5,13 +5,15 @@
 #include "sm_video.h"
 #include "sm_renderer.h"
 #include "sm_activity.h"
+#include "mods/sm_mod_overlay.h"
 
 static bool SmFrameBegin(uint32_t *inputs) {
   if (!SmActivityFrameBegin()) return false;
   if (!SmReplayBegin(inputs)) return false;
   /* Playback may restore a checkpoint and change presentation at this exact
    * boundary, so latch objects after those changes. */
-  if (g_sm_video.enhanced || g_sm_video.fps_enabled || SmActivityNetworkWide()) SmRendererLatchObjectState(g_ram);
+  if (g_sm_video.enhanced || g_sm_video.fps_enabled || SmActivityNetworkWide() || SmModOverlayActive())
+    SmRendererLatchObjectState(g_ram);
   return true;
 }
 

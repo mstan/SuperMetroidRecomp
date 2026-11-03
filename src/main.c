@@ -101,7 +101,8 @@ static bool SmCustomRendererEnabled(void) {
 bool SmDisplay_IsWidescreenActive(void) { return g_sm_viewport.enhanced; }
 int SmDisplay_GetCurrentFrameWidth(void) { return snesrecomp_desktop_frame_width(); }
 bool SmDisplay_GetPlayer(SmPlayerView *player) {
-  return SmCustomRendererEnabled() && SmRendererGetPlayer(g_sm_present_alpha, player);
+  if (SmCustomRendererEnabled() && SmRendererGetPlayer(g_sm_present_alpha, player)) return true;
+  return g_snes && SmRendererGetNativePlayer(g_snes->ppu, player);
 }
 
 static void SmAfterConfig(void) {

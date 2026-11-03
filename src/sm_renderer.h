@@ -31,6 +31,7 @@ typedef struct SmPlayerView {
   int x, y, camera_x, camera_y;
 } SmPlayerView;
 bool SmRendererGetPlayer(double alpha, SmPlayerView *player);
+bool SmRendererGetNativePlayer(const Ppu *ppu, SmPlayerView *player);
 bool SmRendererRoomTile(const uint8_t ram[0x20000], int x, int y, uint16_t *entry);
 bool SmRendererRoomLayerTile(const uint8_t ram[0x20000], unsigned layer,
                             int x, int y, uint16_t *entry);
