@@ -365,6 +365,7 @@ static void mother_brain_beam_margins(void) {
     memset(&ppu,0,sizeof(ppu)); SmRendererSetRom(rom,sizeof(rom));
     word(0x998,8); word(0x7a5,32); word(0x7a7,32);
     word(0x79b,fault == 1 ? 0x91f8 : 0xdd58);
+    memset(ram + 0xcd20, 1, 4); /* open synthetic beam plane; arena mask is separate */
     word(0x18c0,0x8820); word(0x18f0,fault == 2 ? 0x84b8 : 0xe7bc);
     word(0x8034,32); word(0x8036,96); word(0x8038,64*256); word(0x803a,100);
     ram[0x9c00]=16; word(0x9c01,0x9c00);
@@ -409,6 +410,35 @@ static void mother_brain_beam_margins(void) {
   }
   ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom)); memset(&ppu,0,sizeof(ppu));
+}
+
+static void arena_staging(void) {
+  const SmViewport views[] = {{256,0,4.0/3,true},{342,43,16.0/9,true},
+                             {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  for (unsigned arena = 0; arena < 2; ++arena) for (unsigned opened = 0; opened < 2; ++opened) {
+    ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+    word(0x998,8); word(0x79b,arena ? 0xa98d : 0xdd58);
+    word(0x7a5,arena ? 128 : 64); word(0x7a7,16);
+    int camera = arena ? 512 : 0;
+    word(0x911,camera); memset(ram+0xcd20,1,8); ram[0xcd21]=(uint8_t)opened;
+    ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1; ppu.hScroll[0]=(uint16_t)camera;
+    ppu.screenEnabled[0]=1; ppu.cgram[1]=31;
+    for (unsigned y=0;y<8;++y) ppu.vram[4096+y]=255;
+    BeginFixtureFrame(ram,1);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock));
+    for (unsigned v=0;v<4;++v) {
+      SmViewport view=views[v];
+      assert(SmRendererDraw(output,view,false,1));
+      for (int x=0;x<256;++x) assert(output[100*view.width+view.extra+x]==0xff0000);
+      if (view.extra) {
+        int x=arena ? -1 : 256;
+        assert(output[100*view.width+view.extra+x]==(opened ? 0xff0000u : 0));
+      }
+    }
+  }
+  ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
 }
 
 static void eye_beam_margins(void) {
@@ -792,6 +822,7 @@ int main(int argc, char **argv) {
   hud_colour_math_margins();
   shared_hud_liquid_map();
   mother_brain_beam_margins();
+  arena_staging();
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();
@@ -1160,6 +1191,23 @@ int main(int argc, char **argv) {
   for (unsigned y = 0; y < 224; ++y) for (int x = 0; x < view.width; ++x)
     assert(hd[(size_t)y * 3 * view.width * 3 + x * 3] == output[y * view.width + x]);
   free(hd);
+  /* Planet/stars are cinematic OAM. The parked Mode-7 ship must remain
+   * outside the margins until its native approach trigger changes phase. */
+  for (unsigned approaching=0;approaching<2;++approaching) {
+    word(0x998,34); word(0x1f51,approaching ? 0xc9f9 : 0xa38f);
+    BeginFixtureFrame(ram,20+approaching);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[60*view.width+view.extra+128]==0x00ff00);
+    assert(output[60*view.width]==(approaching ? 0x00ff00u : 0));
+    jobs=SmRendererHdFrame(); assert(jobs && SnesHdFrameView(jobs,&jobs_view));
+    assert((jobs_view.lines[60].visibility[0]&1)==approaching);
+    assert(jobs_view.lines[60].visibility[view.extra+128]&1);
+    hd=malloc((size_t)view.width*224*9*4);
+    assert(hd && SnesHdFrameRenderRegion(jobs,3,0,0,view.width*3,224*3,hd,view.width*3*4));
+    assert(hd[(size_t)60*3*view.width*3]==output[60*view.width]);
+    free(hd);
+  }
   SmRendererSetHdEnabled(false);
   assert(!SmRendererHdFrame());
   ResetFixtureRenderer();

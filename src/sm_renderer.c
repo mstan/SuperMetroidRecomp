@@ -1940,6 +1940,29 @@ static void hud_tail_matte(const SnesRenderRegisters *p, const SmRasterLine *lin
   }
 }
 
+/* These arenas use red scroll cells to close their staging areas. Mother
+ * Brain closes screen 1 at $A9:8829; Crocomire closes screens 0/1 at
+ * $A4:8A5A and opens them during its authored defeat sequence. Follow the
+ * live room data, including those transitions, rather than a viewport-sized
+ * rectangle. Scroll permissions in ordinary rooms are not visibility rules. */
+static void arena_staging_matte(const uint8_t *ram, SmViewport view, int y,
+                                int camera_x, int camera_y, uint32_t *row) {
+  unsigned room = read16(ram, 0x79b);
+  if (!view.extra || (room != 0xdd58 && room != 0xa98d)) return;
+  unsigned w = read16(ram, 0x7a5), h = read16(ram, 0x7a7);
+  if (!w || !h || (w & 15) || (h & 15) || w > 256 || h > 256) return;
+  int wy = camera_y + y + 1;
+  if (wy < 0 || wy >= (int)h * 16) return;
+  for (int sx = 0; sx < view.width; ++sx) {
+    int x = sx - view.extra;
+    if (x >= 0 && x < 256) continue;
+    int wx = camera_x + x;
+    if (wx < 0 || wx >= (int)w * 16) continue;
+    unsigned cell = (unsigned)(wy / 256) * (w / 16) + (unsigned)(wx / 256);
+    if (ram[0xcd20 + cell] == 0) row[sx] = 0;
+  }
+}
+
 #if SM_NATIVE_RASTER && SM_NATIVE_ROW_PLAN
 #include "sm_row_plan.inc"
 #endif
@@ -1959,6 +1982,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   memset(out, 0, (size_t)viewport.width * 224 * sizeof(*out));
   unsigned state = read16(f->ram, 0x998);
   bool room = room_state(state);
+  /* $8B:C7CA parks the Mode-7 ship outside the native view while the planet
+   * title/stars (OBJ) play. $8B:C9C7 starts its authored approach by changing
+   * the cinematic function from nullsub_120 to $C9F9. Extra background pixels
+   * before that trigger expose the parked ship. Keep the hardware center and
+   * all cinematic OAM, and admit margins when the approach really starts. */
+  bool parked_intro_ship = state == 34 && read16(f->ram, 0x1f51) == 0xa38f;
   bool hd_rows[224] = {false};
   bool hd_ok = true;
   if (hd_enabled && room) {
@@ -2224,7 +2253,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       enemy_map(l, &scanout, flare.bank, flare.map, flare.x, flare.y, 0, 0, y, viewport, objects);
     if (mode == 7)
       for (int sx = 0; sx < viewport.width; ++sx)
-        mode7_pixels[sx] = SmMode7Sample(&transform, l->vram, sx - viewport.extra);
+        mode7_pixels[sx] = parked_intro_ship && (sx < viewport.extra || sx >= viewport.extra + 256) ? 0 :
+            SmMode7Sample(&transform, l->vram, sx - viewport.extra);
     SnesHdLine hd = {0};
     bool hd_line = hd_frame && mode == 7 && !(scanout.setini & (64 | 8 | 1)) &&
         !(scanout.cgwsel & 1) && !((scanout.mosaic & 1) && (scanout.mosaic >> 4)) &&
@@ -2290,6 +2320,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           out + y * viewport.width);
       if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
           brightness, &wide_windows[y], out + y * viewport.width);
+      arena_staging_matte(f->ram, viewport, (int)y, matte_x, matte_y, out + y * viewport.width);
       continue;
     }
 #endif
@@ -2319,6 +2350,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
         unsigned mask = 0;
         for (unsigned sub = 0; sub < 2; ++sub) for (unsigned obj = 0; obj < 2; ++obj) {
           unsigned layer = obj ? 4 : 0;
+          if (!obj && parked_intro_ship && (x < 0 || x >= 256)) continue;
           if ((scanout.screenEnabled[sub] & (1u << layer)) &&
               (!(scanout.screenWindowed[sub] & (1u << layer)) ||
                !in_window(&scanout, layer, x, viewport.extra, &wide_windows[y])))
@@ -2395,6 +2427,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
         brightness, &wide_windows[y], out + y * viewport.width);
+    if (mode == 1)
+      arena_staging_matte(f->ram, viewport, (int)y, matte_x, matte_y, out + y * viewport.width);
     if (hd_line) {
       memcpy(hd.native, out + y * viewport.width, viewport.width * 4);
       hd_ok &= SnesHdFrameSetLine(hd_frame, (unsigned)y, &hd); hd_rows[y] = true;
