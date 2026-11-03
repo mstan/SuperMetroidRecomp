@@ -30,8 +30,20 @@ def scenarios():
     mod = base + ("until16 79b == dc65 1200\ndump dust_entry\n"
         "poke af6 b001\npoke b10 b001\npress right 8\npress right+a 12\n"
         "press right+x 60\npress right+a 60\nwait 120\ndump dust_exit\n"
-        "until16 79b == dc19 1200\npoke 99c 7de1\npoke 78d 2caa\npoke 998 0900\n"
-        "until16 79b == dcb1 3000\nuntil16 998 == 8 3000\nwait 120\ndump big_reentry\nquit\n")
+        "until16 79b == dc19 1200\nuntil16 998 == 8 3000\n"
+        # Position near each left door; normal shots/movement must trigger
+        # both reverse transitions. No return door-loader/room-state writes.
+        "forcepoke 18a8 ff7f\npoke af6 4000\npoke b10 4000\npoke afa ab00\npoke b14 ab00\n"
+        "press left+x 8\npress left+x+a 80\nwait 120\n"
+        "until16 79b == dc65 1200\nuntil16 998 == 8 3000\ndump dust_return\n"
+        # This room's left grey door also requires the native Torizo corpse
+        # to crumble. Walk/fire across the room to trigger that interaction;
+        # positioning directly at the door would bypass its prerequisite.
+        "press left+x 180\nwait 600\ndump dust_crumbled\n"
+        "press left+x+a 80\nwait 120\n"
+        "until16 79b == dcb1 1200\nuntil16 998 == 8 3000\nwait 120\ndump big_reentry\n"
+        "savestate 5\nwait 1\ndump reentry_saved\nwait 60\nloadstate 5\nwait 1\ndump reentry_restored\n"
+        "press right 12\ndump reentry_continued\nquit\n")
     result.append(("mod", ["super-metroid.balance-fixes/tourian-exit"], mod, PROBE))
     return result
 
@@ -46,9 +58,17 @@ def validate(out, rom):
     assert word(ram("stock", "big_exit"), 0x79b) == 0xdcb1
     assert word(ram("mod", "big_exit"), 0x79b) == 0xdc65
     assert word(ram("mod", "dust_exit"), 0x79b) == 0xdc19
+    assert word(ram("mod", "dust_return"), 0x79b) == 0xdc65
     final = ram("mod", "big_reentry")
     assert word(final, 0x79b) == 0xdcb1 and word(final, 0x998) == 8 and word(final, 0x9c2) > 0
     assert word(final, 0x7bb) == 0xdcdd and word(final, 0x7cf) == 0xe28e
+    restored=ram('mod','reentry_restored')
+    assert restored==ram('mod','reentry_saved'),'current-build re-entry restore changed WRAM'
+    for ext in ('sram.bin','vram.bin','cgram.bin','oam.bin','fb.bgrx'):
+        assert (out/'mod'/('reentry_saved.'+ext)).read_bytes()==(out/'mod'/('reentry_restored.'+ext)).read_bytes(),ext
+    continued=ram('mod','reentry_continued')
+    assert word(continued,0x998)==8 and word(continued,0x9c2)>0
+    assert word(continued,0xaf6)!=word(restored,0xaf6),'no movement after current-build restore'
     assert word(final, 0x7cb) == 0x1e and word(final, 0x7c9) == 5
     image = rom.read_bytes()
     offset = (0x21 * 0x8000) + (0xe26e & 0x7fff)
@@ -72,7 +92,7 @@ def validate(out, rom):
     return {"natural_drain_health": 1, "stock_exit_room": "DCB1", "mod_exit_rooms": ["DC65", "DC19"],
             "reentry": {"room": "DCB1", "state": "DCDD", "population": "E28E", "music": "1E/5", "alive": True},
             "removed_enemy_ids": removed, "loaded_enemy_ids": loaded,
-            "setup_bypasses": ["room positioning", "health restored after natural drain", "door-load teleport for re-entry"]}
+            "setup_bypasses": ["room positioning", "health restored after natural drain", "positioning and invulnerability at Blue Hopper return door; native corpse interaction and reverse collision transitions required"]}
 
 
 def main():

@@ -17,6 +17,8 @@ def parse_args():
     parser.add_argument('--compare',type=Path)
     parser.add_argument('--visible-staff',action='store_true',
                         help='wait for the native staff heading before pressing Start')
+    parser.add_argument('--restore',action='store_true',
+                        help='repeat the credits skip after reset/current-build slot restore')
     return parser.parse_args()
 
 def validate(out,compare=None):
@@ -73,6 +75,8 @@ def main():
                 game.step(60);st=state();record(st)
                 assert 0xd91b<=st['list']<0xdc97,st
             staff=st.copy();game.snapshot('staff_roll')
+            if args.restore and mode=='credits':
+                game.command('savestate 6');game.step(1)
             game.step(1,'start');st=state();record(st)
             rolled=st.copy() if st['fn']==0xe0f4 else None
             if rolled:game.snapshot('roll_end')
@@ -104,8 +108,43 @@ def main():
             else:assert end['state']==0x27,(mode,end)
             assert saved==game.command('read_sram 0 8192')['hex']
             game.snapshot('after_final_start')
+            restored=None
+            if args.restore and mode=='credits':
+                # Reset is a supported production script command, not a TCP
+                # debugger command. Exercise it in a fresh isolated process
+                # with the same current-build slot and committed mod settings.
+                from test_qol_rom_removal import run_case
+                script=('wait 2\nreset\nwait 5\nloadstate 6\nwait 1\ndump loaded\n'
+                        'press start 1\nwait 1\nuntil16 1f51 == e7ba 10000\n'
+                        # $E7BA is shared by earlier pose waits. Wait for
+                        # Func148 to scroll the final message to its native
+                        # stopping position before comparing the final map.
+                        'until16 1997 == ffb0 10000\nwait 300\ndump final\nquit\n')
+                # The final message types its last letters after it reaches
+                # its stopping position. Match the complete input/timing
+                # sequence in a direct-load control and a reset/load case.
+                run_case(('direct',mods,script.replace('reset\nwait 5\n',''),
+                    '0998:2,19F7:2,1F51:2'),build=args.exe.parent,rom=args.rom,out=out/mode,
+                    interp_targets=game.output/'interpret-targets.txt' if args.interp else None,
+                    seed_state=game.output/'saves/save6.sav',seed_slot=6)
+                _,identity=run_case(('restored',mods,script,'0998:2,19F7:2,1F51:2'),
+                    build=args.exe.parent,rom=args.rom,out=out/mode,
+                    interp_targets=game.output/'interpret-targets.txt' if args.interp else None,
+                    seed_state=game.output/'saves/save6.sav',seed_slot=6)
+                loaded=(out/mode/'restored/loaded.wram.bin').read_bytes()
+                word=lambda data,at:int.from_bytes(data[at:at+2],'little')
+                assert word(loaded,0x998)==0x27 and 0xd91b<=word(loaded,0x19f7)<0xdc97
+                final_ram=(out/mode/'restored/final.wram.bin').read_bytes()
+                control_ram=(out/mode/'direct/final.wram.bin').read_bytes()
+                assert final_ram==control_ram,'reset/load ending differs from matched direct load'
+                for ext in ('sram.bin','vram.bin','cgram.bin','oam.bin','fb.bgrx'):
+                    assert (out/mode/'restored'/('final.'+ext)).read_bytes()==(out/mode/'direct'/('final.'+ext)).read_bytes(),ext
+                assert bytes.fromhex(saved)==(out/mode/'restored/final.sram.bin').read_bytes()
+                # Execution identity is retained in restored/identity.json;
+                # only deterministic behavior belongs in parity comparisons.
+                restored=dict(loaded_list=word(loaded,0x19f7),final_fn=word(final_ram,0x1f51))
             result=dict(initial=initial,staff=staff,rolled=rolled,final=final,end=end,events=events,post_final_states=seen,
-                        post_roll_frames=final['frame']-origin,prerequisite='Game state26 starts native ending; final battle explicitly bypassed, no credits pointer/pose/result flags written')
+                        restored=restored,post_roll_frames=final['frame']-origin,prerequisite='Game state26 starts native ending; final battle explicitly bypassed, no credits pointer/pose/result flags written')
             (out/mode/'result.json').write_text(json.dumps(result,indent=2));return mode,result
         finally:game.close()
     with ThreadPoolExecutor(max_workers=2) as pool:results=dict(pool.map(run,('control','credits','return','both')))

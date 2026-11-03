@@ -76,7 +76,8 @@ def read_rows(path):
                 for r in csv.DictReader(f)]
 
 
-def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None, env_overrides=None):
+def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None, env_overrides=None,
+             seed_state=None, seed_slot=0):
     exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
     config = (SOURCE / "config.ini").read_text(encoding="utf8")
     config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
@@ -86,6 +87,10 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
     (profile / "config.ini").write_text(config, encoding="utf8")
     shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
     (profile / "mods/preloaded/state.toml").write_text(state(features), encoding="utf8")
+    if seed_state:
+        assert 0 <= seed_slot <= 11
+        (profile / 'saves').mkdir()
+        shutil.copyfile(seed_state,profile / 'saves' / f'save{seed_slot}.sav')
     env = dict(os.environ)
     # Offline cases must not inherit another session's networking/test knobs.
     # A peer fixture supplies its explicit local setup through env_overrides.
@@ -96,7 +101,8 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
                 "SNESRECOMP_SCREENSHOT", "SNESRECOMP_SCREENSHOT_FRAME", "SNESRECOMP_SCREENSHOT_DIR",
                 "SNESRECOMP_SCREENSHOT_FROM", "SNESRECOMP_SCREENSHOT_TO"):
         env.pop(key, None)
-    env.update(SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy", SNESRECOMP_NO_LAUNCHER="1",
+    env.update(SDL_VIDEODRIVER="dummy", SDL_VIDEO_DRIVER="dummy",
+               SDL_AUDIODRIVER="dummy", SDL_AUDIO_DRIVER="dummy", SNESRECOMP_NO_LAUNCHER="1",
                SM_REPLAY_RECORD="0", SM_STATE_TRACE=str(profile / "state.csv"),
                SM_WRAM_PROBE=str(profile / "wram.csv"), SM_WRAM_PROBE_ADDRS=fields)
     # TRACE builds bind a debugger even for scripted runs. Use a private port

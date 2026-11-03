@@ -28,6 +28,9 @@ class ReviewGame:
         self.root=root
         self.manifest=json.loads((root/'manifest.json').read_text())
         self.runtime=root/'runtime';self.runtime.mkdir(exist_ok=True)
+        if self.manifest.get('mods_root'):
+            mods=Path(self.manifest['mods_root'])
+            shutil.copytree(mods,self.runtime/'mods',dirs_exist_ok=True)
         (self.runtime/'saves').mkdir(exist_ok=True)
         (self.runtime/'notes').mkdir(exist_ok=True)
         self.player=root/'player';self.player.mkdir(exist_ok=True)
@@ -68,13 +71,14 @@ class ReviewGame:
         with socket.socket() as s:
             s.bind(('127.0.0.1',0));port=s.getsockname()[1]
         config=(f'[General]\nAutosave=0\nRunAhead=0\nSkipLauncher=1\nDisableFrameDelay={int(self.headless)}\n'
-                '[Graphics]\nFullscreen=0\nWindowSize=Auto\nWindowScale=3\nRenderer=auto\nVSync=0\nNewRenderer=1\nNoSpriteLimits=1\n'
+                '[Graphics]\nFullscreen=0\nWindowSize=960x540\nWindowScale=3\nRenderer=auto\nVSync=0\nNewRenderer=1\nNoSpriteLimits=1\n'
                 f'[Sound]\nEnableAudio=1\nVolume={0 if self.headless else 100}\nAudioFreq=32000\nAudioChannels=2\nAudioSamples=512\n'
                 f'[Controller]\nSourceP1={source}\nSourceP2=0\nSourceP3=0\nSourceP4=0\n'
                 '[GamepadMap]\nEnableGamepad1=true\nEnableGamepad2=false\nEnableGamepad3=false\nEnableGamepad4=false\n'
                 '[KeyMap]\nPause=Shift+p\nPauseDimmed=p\n[Rewind]\nEnabled=0\n')
         (self.runtime/'config.ini').write_text(config,encoding='utf-8')
-        (self.runtime/'sm-video.ini').write_text('[SuperMetroidVideo]\nEnhancedRenderer=1\nAspect=16:9\nPresentationEnabled=1\nPresentationFPS=120\n'
+        aspect=self.manifest.get('aspect','16:9')
+        (self.runtime/'sm-video.ini').write_text(f'[SuperMetroidVideo]\nEnhancedRenderer=1\nAspect={aspect}\nPresentationEnabled=1\nPresentationFPS=120\n'
             f"HudAnchored={int(case['hud'])}\n",encoding='utf-8')
         env=os.environ.copy()
         for key in list(env):
@@ -184,7 +188,8 @@ def run_ui(root):
 
     def describe(case):
         title.set(case['title']);steps.set(case['steps']);expected.set(case['expected'])
-        clip.set('Original clip: clip_1,793,140,'+case['clip']+'.mp4 | 16:9, 120 FPS presentation | '+('HUD at edges' if case['hud'] else 'Centered HUD'))
+        clip.set(case.get('reference','Original clip: clip_1,793,140,'+case.get('clip','')+'.mp4')+
+                 ' | '+game.manifest.get('aspect','16:9')+', 120 FPS presentation | '+('HUD at edges' if case['hud'] else 'Centered HUD'))
         row=notes['scenarios'].get(case['id'],{});events=row.get('observations',[])
         history.set('Not reviewed yet.' if not events else 'Saved observations: '+str(len(events))+' | Latest: '+events[-1]['status']+' | Earlier failures remain in history.')
 
