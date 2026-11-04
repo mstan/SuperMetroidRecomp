@@ -49,15 +49,25 @@ static void Cell(Canvas c,const SmWorld *world,const SmWorldRoom *room,const uin
   if (x+s<c.v.x || x>=c.v.x+c.v.width || y+s<c.v.y || y>=c.v.y+c.v.height) return;
   uint32_t color=SmMapAreaColor(room->area);
   if (!SmWorldExplored(ram,room->area,mx,my)) color=Dim(color,150);
-  Rect(c,x,y,s,s,color);
+  bool donor=c.v.art && c.v.art->ready && s>=8;
+  if (!donor) Rect(c,x,y,s,s,color);
   /* The fine, low-contrast screen grid stays distinct from room walls. */
-  if (s>=6) { Rect(c,x,y,1,1,Dim(color,170)); Rect(c,x+s/2,y+s/2,1,1,Dim(color,205)); }
+  if (!donor && s>=6) { Rect(c,x,y,1,1,Dim(color,170)); Rect(c,x+s/2,y+s/2,1,1,Dim(color,205)); }
   const int dx[]={-1,1,0,0},dy[]={0,0,-1,1};
+  unsigned walls=0;
   for (unsigned side=0; side<4; ++side) {
     const SmWorldRoom *neighbor=SmWorldCellRoom(world,room->area,mx+dx[side],my+dy[side]);
     if (neighbor==room && Known(c,world,ram,room->area,mx+dx[side],my+dy[side])) continue;
-    if (side<2) Rect(c,x+(side?s-1:0),y,1,s,0xffbcd1e4);
-    else Rect(c,x,y+(side==3?s-1:0),s,1,0xffbcd1e4);
+    walls|=1u<<side;
+    if (!donor) {
+      if (side<2) Rect(c,x+(side?s-1:0),y,1,s,0xffbcd1e4);
+      else Rect(c,x,y+(side==3?s-1:0),s,1,0xffbcd1e4);
+    }
+  }
+  if (donor) {
+    unsigned tile=SmMapArtRoomTile(walls),palette=SmWorldExplored(ram,room->area,mx,my)?2:1;
+    for (int py=0;py<s;++py) for (int px=0;px<s;++px)
+      Rect(c,x+px,y+py,1,1,SmMapArtPixel(c.v.art,tile,(unsigned)(px*8/s),(unsigned)(py*8/s),palette));
   }
 }
 static void Base(const SmWorld *world,const int16_t layout[SM_WORLD_ROOMS][2],const SmWorldRoom *room,
@@ -154,7 +164,14 @@ static void Markers(Canvas c,const SmWorld *world,const int16_t layout[SM_WORLD_
       Arrow(c,x,y,0,1,0xffffffff);
     } else if (m->kind<=SM_MAP_AMMO) {
       const char symbols[]={'?','S','M','E','R'};
-      if (s>=8 && x-3>=c.v.x && y-3>=c.v.y && x+5<c.v.x+c.v.width && y+5<c.v.y+c.v.height)
+      if (c.v.art && c.v.art->ready && s>=8 && (m->kind==SM_MAP_SAVE || m->kind==SM_MAP_MAP)) {
+        unsigned tile=m->kind==SM_MAP_SAVE?0xc7:0xc6;
+        /* Keep SM's room walls and cap colours; import the native S/M glyph. */
+        for (unsigned py=1;py<7;++py) for (unsigned px=1;px<7;++px) {
+          unsigned index=(c.v.art->tiles[tile*32+py*4+px/2]>>(4*(px&1)))&15;
+          if (index==7) Rect(c,x-4+(int)px,y-4+(int)py,1,1,SmMapArtPixel(c.v.art,tile,px,py,2));
+        }
+      } else if (s>=8 && x-3>=c.v.x && y-3>=c.v.y && x+5<c.v.x+c.v.width && y+5<c.v.y+c.v.height)
         snes_ovl_draw_char(c.p,c.stride,c.height,x-3,y-3,symbols[m->kind],0xffffee80,1);
       else Rect(c,x,y,2,2,0xffffee80);
     }

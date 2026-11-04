@@ -104,16 +104,28 @@ id = "super-metroid.map-hud.reveal-map"
 [[feature]]
 id = "pause-map"
 name = "Clear pause map"
-author = "Map inspiration: DC, Scyzer, sylandro, Falcon Zero; Redux: ShadowOne333"
+author = "Map inspiration: DC, Scyzer, sylandro, Falcon Zero; Redux: ShadowOne333; optional Zero Mission art: Nintendo R&D1"
 source_name = "Super Metroid Redux (ShadowOne333)"
 source_url = "https://www.romhacking.net/hacks/4963/"
-description = "Door weapon colours and symbols, one-way arrows, station labels and uncollected-item rings on a dense grid. D-pad scrolls; L/R keep the normal pause tabs. Inspired by Zero Mission and Falcon Zero's complete Zebes map."
+description = "Door weapon colours and symbols, one-way arrows, station labels and uncollected-item rings on a dense grid. Optional original Zero Mission tiles use your GBA ROM. D-pad scrolls; L/R keep the normal pause tabs. Map reference: Falcon Zero."
 group = "Map"
 default_enabled = false
 
 [[plugin]]
 feature = "pause-map"
 id = "super-metroid.map-hud.pause-map"
+
+[[resource]]
+feature = "pause-map"
+id = "zero-mission"
+label = "Zero Mission map art (optional)"
+description = "Select your Metroid: Zero Mission USA GBA ROM to use its original room tiles, palette and S/M station icons. Nintendo graphics are read only; the ROM is never modified or included."
+shared_key = "metroid.zero-mission-us"
+normalized_sha256 = "fc94f65380b65b870a30b9b04b39cca1dc63d6e46a4a373d3904adc0912ebc37"
+size = 8388608
+file_patterns = "*.gba"
+file_description = "Metroid: Zero Mission (USA)"
+required = false
 
 [[feature]]
 id = "world-map"
@@ -128,6 +140,18 @@ default_enabled = false
 [[plugin]]
 feature = "world-map"
 id = "super-metroid.map-hud.world-map"
+
+[[resource]]
+feature = "world-map"
+id = "zero-mission"
+label = "Zero Mission map art (optional)"
+description = "Uses the same donor as Clearer pause map. Native map tiles appear at detailed zoom levels; compact views retain legible symbols."
+shared_key = "metroid.zero-mission-us"
+normalized_sha256 = "fc94f65380b65b870a30b9b04b39cca1dc63d6e46a4a373d3904adc0912ebc37"
+size = 8388608
+file_patterns = "*.gba"
+file_description = "Metroid: Zero Mission (USA)"
+required = false
 
 [[feature]]
 id = "minimap"

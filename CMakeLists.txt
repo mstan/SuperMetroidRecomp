@@ -264,7 +264,8 @@ if(BUILD_TESTING AND NOT ANDROID)
     target_include_directories(sm_world_test PRIVATE src/mods)
     add_test(NAME sm_world_model COMMAND sm_world_test)
     add_executable(sm_map_test tests/sm_map_test.c src/mods/sm_world.c
-        src/mods/sm_map_view.c ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
+        src/mods/sm_map_view.c src/mods/sm_map_art.c
+        ${SNESRECOMP_ROOT}/runner/src/sha256.c ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
     target_include_directories(sm_map_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_map_views COMMAND sm_map_test)
     add_executable(sm_quit_test tests/sm_quit_test.c src/mods/sm_return_to_title_plugin.c)
@@ -365,6 +366,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_bugfix_plugins.c
     src/mods/sm_world.c
     src/mods/sm_map_view.c
+    src/mods/sm_map_art.c
     src/mods/sm_map_plugin.c
 )
 

@@ -77,12 +77,20 @@ def main():
     for name in ("build", "rom", "out"): ap.add_argument("--" + name, type=Path, required=True)
     ap.add_argument("--interp-targets", type=Path)
     ap.add_argument("--compare", type=Path)
+    ap.add_argument("--donor", type=Path, help="owned Zero Mission USA GBA resource")
     a = ap.parse_args(); a.out = a.out.resolve(); a.out.mkdir(parents=True, exist_ok=False)
     assert hashlib.sha256(a.rom.read_bytes()).hexdigest() == ROM_SHA
     def run(c): return run_case(c, build=a.build.resolve(), rom=a.rom.resolve(), out=a.out,
-                               interp_targets=a.interp_targets, screenshot_frame=10400)
+                               interp_targets=a.interp_targets, screenshot_frame=10400,
+                               shared_resources=({'metroid.zero-mission-us':str(a.donor.resolve())} if a.donor else None))
     with ThreadPoolExecutor(max_workers=2) as pool: identities = dict(pool.map(run, scenarios()))
     result = {"observations": validate(a.out, identities), "identities": identities}
+    if a.donor:
+        for name,features,_,_ in scenarios():
+            loaded='[mods] Zero Mission donor map tiles/palette loaded read-only' in (a.out/name/'stderr.log').read_text(errors='replace')
+            expected=any('/pause-map' in f or '/world-map' in f for f in features)
+            assert loaded==expected,(name,'donor activation',loaded,expected)
+        result['donor_sha256']=hashlib.sha256(a.donor.read_bytes()).hexdigest()
     if a.compare:
         original = json.loads((a.compare / "results.json").read_text())
         differences = {}

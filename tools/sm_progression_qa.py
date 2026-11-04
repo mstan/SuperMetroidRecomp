@@ -101,7 +101,7 @@ class Rom:
 
 
 class Session:
-    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None):
+    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None, shared_resources=None):
         cache = Path(exe).resolve().parent / 'CMakeCache.txt'
         if cache.exists() and 'SNESRECOMP_ENABLE_TRACE:BOOL=OFF' in cache.read_text().splitlines():
             raise ValueError('TCP QA requires a build configured with -DSNESRECOMP_ENABLE_TRACE=ON')
@@ -129,7 +129,7 @@ class Session:
         if features is not None:
             from test_qol_rom_removal import SOURCE, state as mod_state
             shutil.copytree(SOURCE / 'mods/preloaded/packages', self.output / 'mods/preloaded/packages')
-            (self.output / 'mods/preloaded/state.toml').write_text(mod_state(features), encoding='utf-8')
+            (self.output / 'mods/preloaded/state.toml').write_text(mod_state(features,shared_resources), encoding='utf-8')
         env = os.environ.copy()
         for key in list(env):
             if key.startswith(('SM_', 'SNESRECOMP_', 'SNES_NET', 'RNET_', 'RBE_')):

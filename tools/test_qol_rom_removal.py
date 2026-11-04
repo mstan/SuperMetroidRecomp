@@ -33,7 +33,7 @@ STOCK_TRACE = ("66976992eb0baea5b7c6696cd6f8e0def597797cb8880497204a58ac93cfc947
                "63bf723ed7e919aad7df7cac4004ecff2b4943f94d1626cf77e110b2881cced5")
 
 
-def state(features):
+def state(features, shared_resources=None):
     catalog = {}
     for path in sorted((SOURCE / "mods/preloaded/packages").glob("*/1.0.0/manifest.toml")):
         package = tomllib.loads(path.read_text(encoding="utf8"))
@@ -57,6 +57,8 @@ def state(features):
             for option in options.split(","):
                 key, value = option.split("=", 1)
                 lines += [f'{key} = "{value}"\n']
+    for key,path in (shared_resources or {}).items():
+        lines += ['[[shared_resource]]\nid = '+json.dumps(key)+'\npath = '+json.dumps(str(path))+'\n']
     return "\n".join(lines)
 
 
@@ -77,7 +79,7 @@ def read_rows(path):
 
 
 def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None, env_overrides=None,
-             seed_state=None, seed_slot=0):
+             seed_state=None, seed_slot=0, shared_resources=None):
     exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
     config = (SOURCE / "config.ini").read_text(encoding="utf8")
     config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
@@ -86,7 +88,7 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
     profile = out / tag; profile.mkdir()
     (profile / "config.ini").write_text(config, encoding="utf8")
     shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
-    (profile / "mods/preloaded/state.toml").write_text(state(features), encoding="utf8")
+    (profile / "mods/preloaded/state.toml").write_text(state(features,shared_resources), encoding="utf8")
     if seed_state:
         assert 0 <= seed_slot <= 11
         (profile / 'saves').mkdir()

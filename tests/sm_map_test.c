@@ -35,6 +35,9 @@ int snes_mod_register_presentation_plugin(const char *id,SNESModActivationCallba
   return 1;
 }
 int snes_netplay_active(void) { return online; }
+int snes_mod_runtime_resource_path_c(const char *pkg,const char *feature,const char *resource,char *out,uint32_t cap) {
+  (void)pkg; (void)feature; (void)resource; if (cap) out[0]=0; return 0;
+}
 bool SmPauseOptions_Visible(void) { return false; }
 int snes_mod_runtime_feature_enabled_c(const char *pkg,const char *feature) {
   assert(!strcmp(pkg,"super-metroid.map-hud") && !strcmp(feature,"reveal-map")); return reveal_option;
@@ -74,7 +77,29 @@ static void Guards(uint32_t color) {
   for (unsigned y=0; y<TEST_HEIGHT; ++y) for (unsigned x=TEST_WIDTH; x<TEST_STRIDE; ++x)
     assert(frame[GUARD+y*TEST_STRIDE+x]==color);
 }
-int main(void) {
+int main(int argc,char **argv) {
+  assert(argc<=2);
+  SmMapArt donor;
+  assert(!SmMapArtLoad(&donor,NULL) && !donor.ready);
+  donor.ready=true; donor.palette[0]=31; donor.palette[1]=31<<5;
+  donor.tiles[0]=0x10;
+  assert(SmMapArtPixel(&donor,0,0,0,0)==0xffff0000u);
+  assert(SmMapArtPixel(&donor,0,1,0,0)==0xff00ff00u);
+  assert(SmMapArtPixel(&donor,0x400,6,0,0)==0xff00ff00u);
+  assert(SmMapArtPixel(&donor,0x800,1,7,0)==0xff00ff00u);
+  assert(!SmMapArtPixel(&donor,384,0,0,0) && !SmMapArtPixel(&donor,0,8,0,0));
+  if (argc==2) {
+    assert(SmMapArtLoad(&donor,argv[1]) && donor.ready);
+    /* Actual Nintendo tile bytes must implement all 16 room boundaries.
+     * This optional owned-donor check keeps copyrighted fixtures out of Git. */
+    for (unsigned walls=0;walls<16;++walls) {
+      unsigned tile=SmMapArtRoomTile(walls);
+      assert(SmMapArtPixel(&donor,tile,0,4,2)==(walls&1?0xffffffffu:SmMapArtPixel(&donor,tile,4,4,2)));
+      assert(SmMapArtPixel(&donor,tile,7,4,2)==(walls&2?0xffffffffu:SmMapArtPixel(&donor,tile,4,4,2)));
+      assert(SmMapArtPixel(&donor,tile,4,0,2)==(walls&4?0xffffffffu:SmMapArtPixel(&donor,tile,4,4,2)));
+      assert(SmMapArtPixel(&donor,tile,4,7,2)==(walls&8?0xffffffffu:SmMapArtPixel(&donor,tile,4,4,2)));
+    }
+  }
   adapter_probe=true;
   assert(Read(NULL,0xc0ffff)==0x12 && last_read==0xc0fffe);
   assert(Read(NULL,0xc18000)==0x34 && last_read==0xc18000);
@@ -134,7 +159,7 @@ int main(void) {
   Put(0x763,0); Put(0x51,15);
   /* A view cannot reveal an undiscovered corridor through its markers. */
   world.marker_count=1; world.markers[0]=(SmWorldMarker){0x91f8,0x920a,0xeed7,7,17,1,SM_MAP_ITEM,0,0};
-  SmMapView v={0,0,128,80,8,24*16,16,0,false,false,false};
+  SmMapView v={0,0,128,80,8,24*16,16,0,false,false,false,NULL};
   uint32_t hidden[128*80],clean[128*80],known[128*80];
   SmMapViewDraw(hidden,128,80,&world,layout,Read,NULL,test_ram,v);
   world.marker_count=0;

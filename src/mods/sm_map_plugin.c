@@ -17,6 +17,7 @@
 
 #define PACKAGE "super-metroid.map-hud"
 static SmWorld world;
+static SmMapArt map_art;
 static int16_t layout[SM_WORLD_ROOMS][2];
 static bool ready,failed,area_enabled,world_enabled,mini_enabled;
 static bool world_open,world_closing,mini_open,mini_pause,registered;
@@ -169,7 +170,7 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
   bool reveal,secrets; Visibility(&reveal,&secrets);
   if (mini_enabled && mini_open && W(ram,0x998)==8) {
     int x,y; SmMapPlayerPoint(&world,layout,ram,false,&x,&y);
-    SmMapView v={stage_x+248-mini_width,54,mini_width,88,6,x,y,W(ram,0x79f),reveal,secrets,true};
+    SmMapView v={stage_x+248-mini_width,54,mini_width,88,6,x,y,W(ram,0x79f),reveal,secrets,true,&map_art};
     SmMapViewDraw(pixels,stride,height,&world,layout,Read,NULL,ram,v);
     snes_ovl_stroke_rect(pixels,stride,height,v.x,v.y,v.width,v.height,0xff58758d);
     Text(pixels,stride,height,v.x+4,v.y+4,Frozen(ram)?"MAP - PAUSED":"MAP - LIVE",0xfff1e6ad);
@@ -178,7 +179,7 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
   }
   if (world_open || world_closing) {
     snes_ovl_fill_rect(pixels,stride,height,0,0,width,height,0xff080f1e);
-    SmMapView v={4,40,width-8,height-68,scales[zoom],center_x16,center_y16,-1,reveal,secrets,false};
+    SmMapView v={4,40,width-8,height-68,scales[zoom],center_x16,center_y16,-1,reveal,secrets,false,&map_art};
     SmMapViewDraw(pixels,stride,height,&world,layout,Read,NULL,ram,v);
     Text(pixels,stride,height,8,4,"ZEBES",0xfff0e2b2);
     const char *area=SmMapAreaName(W(ram,0x79f));
@@ -199,7 +200,7 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
     Text(pixels,stride,height,stage_x+32,24,"S",0xff7dff50);
     Text(pixels,stride,height,stage_x+56,24,"PB",0xffffe64c);
     Text(pixels,stride,height,stage_x+96,24,"> ONE-WAY",0xffd2dce6);
-    SmMapView v={stage_x+8,38,240,156,8,(128+sx)*2,(116+sy)*2,W(ram,0x79f),reveal,secrets,false};
+    SmMapView v={stage_x+8,38,240,156,8,(128+sx)*2,(116+sy)*2,W(ram,0x79f),reveal,secrets,false,&map_art};
     SmMapViewDraw(pixels,stride,height,&world,layout,Read,NULL,ram,v);
     /* Only our opaque rectangles: native borders/footer are already faded. */
     FadeMap(pixels,stride,width,height,stage_x,0,256,36,ram);
@@ -216,8 +217,14 @@ static void Register(void) {
   if (registered) return;
   registered=true; snes_mod_register_input_transform(Input); SmModOverlayRegisterPriority(Draw,10);
 }
-static void AreaActivate(void) { area_enabled=true; Register(); }
-static void WorldActivate(void) { world_enabled=true; Register(); }
+static void LoadArt(const char *feature) {
+  char path[4096];
+  if (map_art.ready || !snes_mod_runtime_resource_path_c(PACKAGE,feature,"zero-mission",path,sizeof(path))) return;
+  if (SmMapArtLoad(&map_art,path)) fprintf(stderr,"[mods] Zero Mission donor map tiles/palette loaded read-only\n");
+  else fprintf(stderr,"[mods] Zero Mission map donor unavailable; using standard map symbols\n");
+}
+static void AreaActivate(void) { area_enabled=true; LoadArt("pause-map"); Register(); }
+static void WorldActivate(void) { world_enabled=true; LoadArt("world-map"); Register(); }
 static void MiniActivate(void) {
   SmModValue value; mini_enabled=true;
   mini_pause=!strcmp(SmModOption(&value,PACKAGE,"minimap","background","live"),"paused");
@@ -228,6 +235,7 @@ static void MiniActivate(void) {
 static void Reset(void) {
   ready=failed=area_enabled=world_enabled=mini_enabled=world_open=world_closing=mini_open=mini_pause=registered=false;
   previous=0; pan_tick=0; zoom=1; free(backdrop); backdrop=NULL; backdrop_count=0; backdrop_width=backdrop_height=0;
+  memset(&map_art,0,sizeof(map_art));
   timeline=RtlStateGeneration();
 }
 SNES_MOD_CONSTRUCTOR(sm_register_map_plugins) {

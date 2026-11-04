@@ -1,11 +1,13 @@
 #pragma once
 #include "sm_world.h"
+#include "sm_map_art.h"
 
 typedef struct SmMapView {
   int x, y, width, height, cell;
   int center_x16, center_y16; /* sixteenth-cell units */
   int area; /* -1 for the whole-world layout */
   bool reveal, secrets, transparent;
+  const SmMapArt *art; /* optional donor; compact views retain semantic glyphs */
 } SmMapView;
 
 void SmMapViewDraw(uint32_t *pixels, int stride, int height, const SmWorld *world,
