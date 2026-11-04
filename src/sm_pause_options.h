@@ -25,13 +25,17 @@
  *   - SmPauseOptions_GuestTick() is the only guest-facing part. It runs at
  *     the entry of GameState_15_Paused_Async ($82:90E8, see
  *     HleSmGameState_15_Paused_Async), before the ROM's own routine, in both
- *     execution modes. While the panel is up the guest stays on its own Map
- *     screen (menu_index 0) and every button but Start is removed from the
- *     pad, so the ROM sees only Start (unpause).
- *   - Leaving is the ROM's own: R/B/"Back to map" start PauseMenu_5's
- *     fade-out to the Map, L starts PauseMenu_2's to Equipment, Start the
- *     unpause fade. The panel stays up through the fade, dimmed with the
- *     screen, and closes when the guest reaches the next state.
+ *     execution modes. No-pin model: the guest stays on whichever pause tab
+ *     it was on (Map menu_index 0 or Equipment 1) and every button but Start
+ *     is removed from the pad, so the ROM sees only Start (unpause).
+ *   - Opening rides the ROM's tab-change effects on the screen it opens over:
+ *     the 0x38 SFX and a host-driven screen fade (fast out, black, slow in)
+ *     that reproduces the native tab-change effect byte for byte.
+ *   - Leaving is the ROM's own: R/B/"Back to map" start the tab change the
+ *     pause screen makes itself (PauseMenu_2's fade-out to Equipment,
+ *     PauseMenu_5's to the Map), which the panel then rides, dimmed with the
+ *     screen, and closes on. A same-tab shoulder is the ROM's total no-op and
+ *     just closes the panel.
  *
  * Whether the panel is up changes what the guest does next frame, so it is
  * part of every snapshot (SmStateSaveExtra / SmExecStateSave). Whether it is
@@ -43,8 +47,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/* One paused frame: read joypad1_newkeys, drive the panel, and open or close
- * it on L/R. Must run before the ROM's ReleaseButtonsFilter for the frame. */
+/* One paused frame: read joypad1_newkeys, step the host's own enter fade
+ * (a phase marker in the guest's screen_fade_delay word), drive the panel,
+ * and open or close it on the shoulder presses. Must run before the ROM's
+ * ReleaseButtonsFilter for the frame. */
 void SmPauseOptions_GuestTick(void);
 
 /* Opening resets the cursor to the first row; closing hides the panel. */
@@ -64,5 +70,6 @@ void SmPauseOptions_SyncToGuest(void);
 /* Whether to composite the panel over this frame. */
 bool SmPauseOptions_Visible(void);
 
-/* Composite the panel over an ARGB8888 frame. stride is in pixels. */
+/* Composite the panel over an ARGB8888 frame, dimmed with the screen's
+ * current brightness. stride is in pixels. */
 void SmPauseOptions_Render(uint32_t *dst, int stride, int width, int height);

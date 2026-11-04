@@ -47,7 +47,11 @@ def main():
         session.step(120)
         assert session.state()['state'] == 15
         tap('l')
-        session.step(8)
+        # The open rides the host's native-style enter fade: 15 fast dim steps
+        # to force-blank, 15 slow steps back, full 45 frames after the press,
+        # with the panel hidden through the down phase and dimmed through the
+        # up phase. Wait it out before expecting panel pixels.
+        session.step(48)
         assert cursor('opened') == 0
         tap('down')
         tap('right')
