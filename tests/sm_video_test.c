@@ -9,7 +9,9 @@
 static void geometry(void) {
   SmVideoSettings s;
   SmVideoDefaults(&s);
-  assert(!s.enhanced && !s.fps_enabled && s.hud_anchored && s.aspect == SM_ASPECT_FIT);
+  assert(s.enhanced && !s.fps_enabled && s.hud_anchored && s.aspect == SM_ASPECT_FIT);
+  assert(SmCalculateViewport(&s, 5120, 1440).width == 682);
+  s.enhanced = false;
   assert(SmCalculateViewport(&s, 5120, 1440).width == 256);
   s.enhanced = true;
   const int widths[] = {256,342,448,682};
@@ -80,6 +82,9 @@ static void mods_and_persistence(const char *path) {
   const RecompLauncherCModProvider *p=SmModsProvider(&s,path);
   assert(p->feature_count(p->ctx) == 2);
   assert(p->package_count(p->ctx) == 2);
+  RecompLauncherCModFeature initial;
+  assert(p->feature_get(p->ctx,0,&initial) && initial.enabled);
+  assert(p->feature_enable(p->ctx,"sm-widescreen","widescreen",0));
   assert(!strcmp(p->archive_extension, ".snesmod"));
   for (int index = 0; index < 2; ++index) {
     RecompLauncherCModPackage package;

@@ -90,7 +90,7 @@ class ReleaseBoundaryTest(unittest.TestCase):
                     archive.writestr('runtime/' + name, 'fixture')
         make()
         payload.audit(path)
-        for name in ('another.py', 'native-row.inc', 'tools/replay_diagnostic.py', 'capture.replay.config.ini',
+        for name in ('another.py', 'native-row.inc', 'donor.gba', 'assets/donor.gba', 'tools/replay_diagnostic.py', 'capture.replay.config.ini',
                      'logs/session.log', 'crash_report_123.json', 'crash_minidump_123.dmp'):
             make(name)
             with self.assertRaises(ValueError):

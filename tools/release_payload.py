@@ -102,7 +102,7 @@ def audit(archive_path):
             # This standalone support tool is intentionally shipped; no other
             # Python, game source, generated C or build tooling is public.
             support_helper = len(path.parts) == 2 and path.name == 'replay_diagnostic.py'
-            if path.suffix.lower() in ('.sfc', '.smc', '.rom', '.srm', '.sav', '.c', '.h', '.inc', '.py', '.a', '.o', '.obj') and not support_helper:
+            if path.suffix.lower() in ('.sfc', '.smc', '.gba', '.rom', '.srm', '.sav', '.c', '.h', '.inc', '.py', '.a', '.o', '.obj') and not support_helper:
                 raise ValueError(f'Build input or private state in package: {name}')
             if path.suffix.lower() in ('.replay', '.dmp', '.jsonl') or '.replay.' in path.name or path.name.startswith(('crash_report_', 'last_run_report')):
                 raise ValueError(f'Private diagnostics in package: {name}')
