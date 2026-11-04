@@ -10,10 +10,11 @@ static const char *path;
 static char error[128];
 static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps"};
 static const char *const features[] = {"widescreen", "presentation-fps"};
-static const char *const names[] = {"Widescreen", "Presentation FPS"};
+static const char *const names[] = {"Widescreen", "Higher FPS"};
+static const char *const versions[] = {"1", "2"};
 static const char *const descriptions[] = {
   "Render a wider room view and keep enemies active throughout it, with optional HUD anchoring.",
-  "Interpolate rendered motion at your display rate while keeping game timing unchanged."
+  "Smooth object and camera motion at your display rate while keeping game timing unchanged."
 };
 static const char *const aspects[] = {"Fit", "16:9", "21:9", "32:9"};
 static const char *const rates[] = {"Auto", "60", "90", "120", "144", "165", "240", "360"};
@@ -30,8 +31,10 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out) {
   (void)ctx;
   if (!out || i < 0 || i >= 2) return 0;
   memset(out, 0, sizeof(*out));
-  COPY(out->id, packages[i]); COPY(out->name, names[i]); COPY(out->version, "1");
+  COPY(out->id, packages[i]); COPY(out->name, names[i]); COPY(out->version, versions[i]);
   COPY(out->author, "SuperMetroidRecomp contributors");
+  COPY(out->source_name, "SuperMetroidRecomp presentation features");
+  COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]); out->enabled = enabled(i);
   return 1;
 }
@@ -40,9 +43,11 @@ static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out) {
   if (!out || i < 0 || i >= 2) return 0;
   memset(out, 0, sizeof(*out));
   COPY(out->id, features[i]); COPY(out->package_id, packages[i]);
-  COPY(out->package_name, names[i]); COPY(out->package_version, "1");
+  COPY(out->package_name, names[i]); COPY(out->package_version, versions[i]);
   COPY(out->name, names[i]); COPY(out->group, "Presentation");
   COPY(out->author, "SuperMetroidRecomp contributors");
+  COPY(out->source_name, "SuperMetroidRecomp presentation features");
+  COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]);
   out->enabled = enabled(i); out->option_count = i ? 1 : 2;
   COPY(out->status, out->enabled ? "Enabled" : "Disabled");

@@ -1,6 +1,8 @@
 # Diagnostic attract takeover, Morph Ball/health grants and a ROM door-loader
 # jump into $9E9F. The eye itself activates and builds its HDMA table normally.
 # Samus is held near the eye; these writes do not set an effect/success flag.
+# Effect-only fixture: the post-entry warp does not stream terrain. Use
+# eye_room_playtest.txt for general gameplay/terrain checks or handoff states.
 wait 3200
 poke 0998 0800
 poke 0a42 95e625e7

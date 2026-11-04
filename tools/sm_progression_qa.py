@@ -102,7 +102,10 @@ class Rom:
 
 
 class Session:
-    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True):
+    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None, shared_resources=None):
+        cache = Path(exe).resolve().parent / 'CMakeCache.txt'
+        if cache.exists() and 'SNESRECOMP_ENABLE_TRACE:BOOL=OFF' in cache.read_text().splitlines():
+            raise ValueError('TCP QA requires a build configured with -DSNESRECOMP_ENABLE_TRACE=ON')
         with socket.socket() as reservation:
             reservation.bind(('127.0.0.1', port))
             port = reservation.getsockname()[1]
@@ -122,11 +125,15 @@ class Session:
             'EnableGamepad3=false\nEnableGamepad4=false\n',
             encoding='utf-8')
         (self.output / 'sm-video.ini').write_text(
-            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect=16:9\nPresentationEnabled=0\n',
+            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect=16:9\nPresentationEnabled=0\nHudAnchored={int(hud_anchored)}\n',
             encoding='utf-8')
+        if features is not None:
+            from test_qol_rom_removal import SOURCE, state as mod_state
+            shutil.copytree(SOURCE / 'mods/preloaded/packages', self.output / 'mods/preloaded/packages')
+            (self.output / 'mods/preloaded/state.toml').write_text(mod_state(features,shared_resources), encoding='utf-8')
         env = os.environ.copy()
         for key in list(env):
-            if key.startswith(('SM_', 'SNESRECOMP_')):
+            if key.startswith(('SM_', 'SNESRECOMP_', 'SNES_NET', 'RNET_', 'RBE_')):
                 env.pop(key)
         # Never show a window: SDL2 and SDL3 spell the video driver hint
         # differently, so set both.
@@ -146,6 +153,8 @@ class Session:
             targets = self.output / 'interpret-targets.txt'
             targets.write_text(''.join(f'{p:06x}\n{p ^ 0x800000:06x}\n' for p in interpret_targets))
             env['SNESRECOMP_LLE_INTERP_TARGET_FILE'] = str(targets)
+        if env_overrides:
+            env.update(env_overrides)
         self.stdout = (self.output / 'stdout.log').open('wb')
         self.stderr = (self.output / 'stderr.log').open('wb')
         self.process = subprocess.Popen(
@@ -653,6 +662,13 @@ class Session:
                 except (OSError, ValueError, RuntimeError) as error:
                     self.final_execution['tier2_dump_error'] = str(error)
         if process is not None and process.poll() is None:
+            # Release our paused Linux host after saving the final evidence,
+            # so SDL can handle the normal quit request before escalation.
+            if os.name != 'nt' and self.sock is not None:
+                try:
+                    self.command('continue')
+                except (OSError, ValueError, RuntimeError):
+                    pass
             process.terminate()
             try:
                 process.wait(timeout=10)

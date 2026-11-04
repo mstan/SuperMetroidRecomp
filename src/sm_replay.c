@@ -16,6 +16,9 @@
 #include "snes/cart.h"
 #include "snes/apu.h"
 #include "snes_runahead.h"
+#if SNESRECOMP_ENABLE_MODS
+#include "mod_runtime.h"
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -167,6 +170,7 @@ static bool evict_segment(void) {
   history_sizes[oldest%SEGMENTS]=0; ++oldest;
   return true;
 }
+static unsigned mods_identity(void);
 static bool start_segment(void) {
   close_segment();
   if(failed)return false;
@@ -179,8 +183,9 @@ static bool start_segment(void) {
   segment_bytes=0;
   snprintf(path,sizeof(path),"%s-%06u.replay",stem,segment);
   char header[512];
-  snprintf(header,sizeof(header),"SMREPLAY 2\nBUILD %s %s %s %s\nROM %08x\nMODE lle\n",
-      SNESRECOMP_BUILD_VERSION,SM_REPLAY_REVISION,SM_REPLAY_ENGINE,SM_REPLAY_TARGET,rom_identity);
+  snprintf(header,sizeof(header),"SMREPLAY 3\nBUILD %s %s %s %s\nROM %08x\nMODS %08x\nMODE lle\n",
+      SNESRECOMP_BUILD_VERSION,SM_REPLAY_REVISION,SM_REPLAY_ENGINE,SM_REPLAY_TARGET,rom_identity,
+      mods_identity());
   if(!SnesReplayWriterBegin(writer,path,header,config_path,"mods/preloaded/state.toml",
       "Super Metroid presentation mods and effective renderer settings are recorded in every input record.\n")) {
     error(SnesReplayWriterError(writer));return false;
@@ -219,12 +224,29 @@ static bool replay_floor_active(void) {
   return snesrecomp_execution_publishes_floor(snesrecomp_execution_policy()) ||
       snesrecomp_execution_optimization_count() == 0;
 }
+/* Gameplay mods change the simulation, so a recording only replays under the
+ * same effective set (presentation-only features are excluded from it). The
+ * state.toml sidecar names the set; this identity enforces it. */
+static unsigned mods_identity(void) {
+#if SNESRECOMP_ENABLE_MODS
+  char set[8192];
+  int size=snes_mod_runtime_effective_set_c(set,sizeof(set));
+  if(size<=0)return 0;
+  if(size>=(int)sizeof(set))return 0xffffffffu; /* too large to name: matches nothing */
+  return hash(set,(size_t)size);
+#else
+  return 0;
+#endif
+}
 static bool load_playback(void) {
   char line[512], version[80], revision[80], engine[80], target[80], tail;
-  unsigned rom;
-  if(!fgets(line,sizeof(line),stream) || strcmp(line,"SMREPLAY 2\n") ||
+  unsigned rom, mods=0;
+  bool with_mods=false;
+  if(!fgets(line,sizeof(line),stream) ||
+      (strcmp(line,"SMREPLAY 2\n") && !(with_mods=!strcmp(line,"SMREPLAY 3\n"))) ||
       !fgets(line,sizeof(line),stream) || sscanf(line,"BUILD %79s %79s %79s %79s %c",version,revision,engine,target,&tail)!=4 ||
       !fgets(line,sizeof(line),stream) || sscanf(line,"ROM %x %c",&rom,&tail)!=1 ||
+      (with_mods && (!fgets(line,sizeof(line),stream) || sscanf(line,"MODS %x %c",&mods,&tail)!=1)) ||
       !fgets(line,sizeof(line),stream) || strcmp(line,"MODE lle\n")) {
     error("invalid or truncated replay header");return false;
   }
@@ -233,6 +255,9 @@ static bool load_playback(void) {
     error("different runtime build or target; use the recording's exact release and platform");return false;
   }
   if(!g_snes || !g_snes->cart || rom!=rom_identity) {error("different source ROM");return false;}
+  if(mods!=mods_identity()) {
+    error("different gameplay mods; enable the recording's set (its state.toml sidecar)");return false;
+  }
   if(!replay_floor_active() || snes_runahead_active()) {
     error("replay requires faithful guest execution and run-ahead disabled");return false;
   }

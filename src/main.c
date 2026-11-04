@@ -15,12 +15,16 @@
  *   - the door-transition pacing rule: those frames may repay wall-time debt
  *     so the guest-driven audio queue stays fed while Samus has no control;
  *   - the presentation Mods page (sm_mods.c);
- *   - SM_AUDIO_PROBE, a per-frame audio/doorway measurement.
+ *   - SM_AUDIO_PROBE, a per-frame audio/doorway measurement, and
+ *     SM_WRAM_PROBE, a per-frame log of chosen WRAM values.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef SM_NATIVE_RASTER
+#define SM_NATIVE_RASTER 0
+#endif
 
 #ifndef __ANDROID__
 #define SDL_MAIN_HANDLED 1
@@ -54,6 +58,7 @@
 #include "sm_activity.h"
 #if defined(RECOMP_LAUNCHER)
 #include "sm_mods.h"
+#include "mods/sm_mod_overlay.h"
 #endif
 
 #ifndef SNESRECOMP_BUILD_VERSION
@@ -67,7 +72,13 @@ extern uint8_t g_ram[0x20000];
 static const char *kSmVideoConfig = SM_VIDEO_CONFIG_FILE;
 static SmViewport g_sm_viewport;
 static uint32_t g_sm_output[SM_MAX_WIDTH * SM_HEIGHT];
+static double g_sm_present_alpha = 1;
 static uint64_t g_sm_capture_generation;
+#if SM_NATIVE_RASTER
+static bool g_sm_composed_ready, g_sm_render_valid;
+static SmViewport g_sm_composed_view;
+static bool g_sm_composed_hud;
+#endif
 
 /* The shared generation changes on visible timeline jumps and is preserved
  * across speculative rollback. A rollback's on_state_loaded hook must not
@@ -76,6 +87,9 @@ static void SmSyncCaptureGeneration(void) {
   uint64_t generation = RtlStateGeneration();
   if (generation != g_sm_capture_generation) {
     SmRendererReset();
+#if SM_NATIVE_RASTER
+    g_sm_composed_ready = false;
+#endif
     g_sm_capture_generation = generation;
   }
 }
@@ -86,6 +100,10 @@ static bool SmCustomRendererEnabled(void) {
 
 bool SmDisplay_IsWidescreenActive(void) { return g_sm_viewport.enhanced; }
 int SmDisplay_GetCurrentFrameWidth(void) { return snesrecomp_desktop_frame_width(); }
+bool SmDisplay_GetPlayer(SmPlayerView *player) {
+  if (SmCustomRendererEnabled() && SmRendererGetPlayer(g_sm_present_alpha, player)) return true;
+  return g_snes && SmRendererGetNativePlayer(g_snes->ppu, player);
+}
 
 static void SmAfterConfig(void) {
   if (SmReplayPlaying()) {
@@ -120,6 +138,9 @@ static void SmOnRomLoaded(const uint8_t *rom, size_t size) {
 
 static void SmOnReset(void) {
   SmRendererReset();
+#if SM_NATIVE_RASTER
+  g_sm_composed_ready = false;
+#endif
   /* The host also sends this notification after loading a snapshot. Keep
    * the panel flag restored by SmOnStateLoaded when the guest is paused;
    * ordinary gameplay and actual reset states close it through this sync. */
@@ -148,12 +169,19 @@ static void SmPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *fr
 static void SmBeginSimFrame(unsigned number) {
   SmSyncCaptureGeneration();
   SmPauseOptions_SyncToGuest();
+  SmRendererSetInterpolationEnabled(g_sm_video.fps_enabled);
   if (SmCustomRendererEnabled()) SmRendererBeginFrame(g_ram, number);
 }
 
 static void SmEndSimFrame(const uint8_t *field, unsigned number) {
+#if SM_NATIVE_RASTER
+  g_sm_render_valid = false;
+  if (SmCustomRendererEnabled())
+    g_sm_render_valid = SmRendererEndFrame((const uint32_t *)field);
+#else
   if (SmCustomRendererEnabled())
     SmRendererEndFrame((const uint32_t *)field);
+#endif
   SmReplayRendered();
   const char *capture_frame = getenv("SM_CAPTURE_FRAME");
   const char *capture_path = getenv("SM_CAPTURE_PATH");
@@ -161,14 +189,75 @@ static void SmEndSimFrame(const uint8_t *field, unsigned number) {
     SmRendererSaveCapture(capture_path);
 }
 
+#if SM_NATIVE_RASTER
+static void SmPublishNativeField(uint8_t *field, unsigned number) {
+  (void)number;
+  g_sm_composed_ready = false;
+  if (!SmCustomRendererEnabled()) return;
+  if (g_sm_video.fps_enabled && g_sm_render_valid) {
+    /* The host needs a primary native field, not an extra full-width present.
+     * Interpolated presentation will compose its own selected phase. Keep the
+     * captured authentic field for native consumers and avoid drawing both
+     * a discrete widescreen frame and an interpolated one every guest tick. */
+    const uint32_t *native = SmRendererStockFrame();
+    if (native) memcpy(field, native, 256 * 224 * sizeof(*native));
+    else if (SmRendererNativeLines()) abort();
+    return;
+  }
+  if (!g_sm_render_valid ||
+      !SmRendererDraw(g_sm_output, g_sm_viewport, g_sm_video.hud_anchored, 1)) {
+    if (SmRendererNativeLines()) abort();
+    return;
+  }
+  g_sm_composed_view = g_sm_viewport;
+  g_sm_composed_hud = g_sm_video.hud_anchored;
+  g_sm_composed_ready = true;
+#if defined(SM_NATIVE_CENTER_REUSE) && SM_NATIVE_CENTER_REUSE
+  /* One selected discrete frame proves which provider the built game used.
+   * Opt-in diagnostics do not enter the guest snapshot or match identity. */
+  static bool report_initialized;
+  static const char *report_path;
+  static unsigned report_frame;
+  if (!report_initialized) {
+    report_initialized = true;
+    report_path = getenv("SM_NATIVE_CENTER_REPORT");
+    const char *selected = getenv("SM_CAPTURE_FRAME");
+    report_frame = selected ? (unsigned)strtoul(selected, NULL, 10) : 0;
+  }
+  if (report_path && number == report_frame) {
+    SmRendererStats stats = SmRendererGetStats();
+    FILE *report = fopen(report_path, "w");
+    if (report) {
+      fprintf(report, "{\"frame\":%u,\"width\":%d,\"native_center_lines\":%u,\"custom_lines\":%u}\n",
+          number, g_sm_viewport.width, stats.native_center_lines, stats.custom_lines);
+      fclose(report);
+    }
+  }
+#endif
+  for (unsigned y = 0; y < 224; ++y)
+    memcpy((uint32_t *)field + y * 256,
+        g_sm_output + y * g_sm_viewport.width + g_sm_viewport.extra, 256 * 4);
+}
+#endif
+
 static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
                        int frame_w, int frame_h, double alpha) {
+  g_sm_present_alpha = alpha;
   const bool overlay = SmPauseOptions_Visible();
-  if (!SmCustomRendererEnabled() && !overlay)
+  const bool mod_overlay = SmModOverlayActive();
+  SmRendererSetHdEnabled(g_config.mode7.enabled && !g_config.frame_blend && !overlay && SmCustomRendererEnabled());
+  if (!SmCustomRendererEnabled() && !overlay && !mod_overlay)
     return 0;
   SmSyncCaptureGeneration();
   int drew = 0;
-  if (SmCustomRendererEnabled())
+#if SM_NATIVE_RASTER
+  drew = g_sm_composed_ready && alpha >= 1 &&
+      g_sm_composed_view.width == g_sm_viewport.width &&
+      g_sm_composed_view.extra == g_sm_viewport.extra &&
+      g_sm_composed_hud == g_sm_video.hud_anchored;
+  g_sm_composed_ready = false;
+#endif
+  if (!drew && SmCustomRendererEnabled())
     drew = SmRendererDraw(g_sm_output, g_sm_viewport, g_sm_video.hud_anchored, alpha);
   if (!drew) {
     memset(g_sm_output, 0, sizeof(g_sm_output));
@@ -176,6 +265,8 @@ static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
       memcpy(g_sm_output + y * frame_w + g_sm_viewport.extra,
              field + y * 256 * 4, 256 * 4);
   }
+  if (mod_overlay)
+    SmModOverlayRender(g_sm_output, frame_w, frame_w, frame_h, g_sm_viewport.extra);
   if (overlay)
     SmPauseOptions_Render(g_sm_output, frame_w, frame_w, frame_h);
   RtlWidescreenPresent(dst, pitch, (const uint8_t *)g_sm_output, frame_w, frame_h);
@@ -189,6 +280,23 @@ static double SmPresentationHzHook(double display_refresh) {
   if (!SmCustomRendererEnabled() || !g_sm_video.fps_enabled)
     return 0;
   return SmPresentationHz(g_sm_video.fps, display_refresh > 0 ? display_refresh : 60);
+}
+
+/* A mod may paint over the completed CPU picture after the immutable HD job
+ * was sealed. Keep that frame on the native presenter when its pixels differ;
+ * otherwise the GPU would reconstruct the world over the laser/map/readouts.
+ * Unchanged frames retain HD, including cinematics with registered but idle
+ * overlays. No RGB transparency guess or guest state is involved. */
+static const SnesHdFrame *SmHdFrame(void) {
+  const SnesHdFrame *frame = SmRendererHdFrame();
+  if (frame && SmModOverlayActive()) {
+    SnesHdView view;
+    if (!SnesHdFrameView(frame, &view) || view.width != (unsigned)g_sm_viewport.width ||
+        view.height != SM_HEIGHT) return NULL;
+    for (unsigned y = 0; y < view.height; ++y)
+      if (memcmp(view.lines[y].native, g_sm_output + y * view.width, view.width * 4)) return NULL;
+  }
+  return frame;
 }
 
 #if defined(RECOMP_LAUNCHER)
@@ -208,10 +316,60 @@ static void SmCloseAudioProbe(void) {
   if (g_audio_probe) fclose(g_audio_probe);
   g_audio_probe = NULL;
 }
+/* SM_WRAM_PROBE=<csv> with SM_WRAM_PROBE_ADDRS=<hex addr>[:<1|2>],...: the
+ * listed WRAM bytes/words after every guest frame, from the first frame on,
+ * for gameplay measurements (Samus pose, speeds, timers). Read-only. */
+enum { kWramProbeMax = 32 };
+static FILE *g_wram_probe;
+static unsigned g_wram_probe_addr[kWramProbeMax], g_wram_probe_width[kWramProbeMax];
+static int g_wram_probe_count;
+static void SmCloseWramProbe(void) {
+  if (g_wram_probe) fclose(g_wram_probe);
+  g_wram_probe = NULL;
+}
+static void SmOpenWramProbe(void) {
+  const char *path = getenv("SM_WRAM_PROBE");
+  const char *spec = getenv("SM_WRAM_PROBE_ADDRS");
+  if (!path || !spec) return;
+  while (*spec && g_wram_probe_count < kWramProbeMax) {
+    char *end;
+    unsigned long addr = strtoul(spec, &end, 16), width = 1;
+    if (end == spec || addr + 1 >= 0x20000) break;
+    if (*end == ':') width = strtoul(end + 1, &end, 10) == 2 ? 2 : 1;
+    g_wram_probe_addr[g_wram_probe_count] = (unsigned)addr;
+    g_wram_probe_width[g_wram_probe_count++] = (unsigned)width;
+    spec = *end == ',' ? end + 1 : end;
+    if (*end != ',') break;
+  }
+  g_wram_probe = fopen(path, "w");
+  if (!g_wram_probe) return;
+  setvbuf(g_wram_probe, NULL, _IOFBF, 1024 * 1024);
+  fprintf(g_wram_probe, "frame");
+  for (int i = 0; i < g_wram_probe_count; ++i)
+    fprintf(g_wram_probe, ",%04x", g_wram_probe_addr[i]);
+  fprintf(g_wram_probe, "\n");
+  atexit(SmCloseWramProbe);
+}
+static void SmWriteWramProbe(void) {
+  fprintf(g_wram_probe, "%d", snes_frame_counter);
+  for (int i = 0; i < g_wram_probe_count; ++i) {
+    unsigned a = g_wram_probe_addr[i];
+    unsigned v = g_ram[a] | (g_wram_probe_width[i] == 2 ? g_ram[a + 1] << 8 : 0);
+    fprintf(g_wram_probe, g_wram_probe_width[i] == 2 ? ",%04x" : ",%02x", v);
+  }
+  fprintf(g_wram_probe, "\n");
+}
+
 static void SmAfterRunFrame(const SnesDesktopHostFrameStats *st) {
   if (SmReplayPlaying() && (SmReplayFinished() || SmReplayFailed())) {
     SDL_Event quit = {0}; quit.type = SDL_QUIT; SDL_PushEvent(&quit);
   }
+  static int wram_probe_checked;
+  if (!wram_probe_checked) {
+    wram_probe_checked = 1;
+    SmOpenWramProbe();
+  }
+  if (g_wram_probe) SmWriteWramProbe();
   static int probe_checked;
   if (!probe_checked) {
     probe_checked = 1;
@@ -277,7 +435,11 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
   .prepare_frame = &SmPrepareFrame,
   .begin_sim_frame = &SmBeginSimFrame,
   .end_sim_frame = &SmEndSimFrame,
+#if SM_NATIVE_RASTER
+  .publish_native_field = &SmPublishNativeField,
+#endif
   .draw_frame = &SmDrawFrame,
+  .hd_frame = &SmHdFrame,
   .presentation_hz = &SmPresentationHzHook,
   .window_base_width = &SmDisplay_GetWindowBaseWidth,
   .window_base_height = &SmDisplay_GetWindowBaseHeight,
@@ -288,6 +450,13 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
 #endif
 int main(int argc, char **argv) {
   SmStartupLogging();
+  fprintf(stderr, "SM renderer: native=%d row-plan=%d\n", SM_NATIVE_RASTER,
+#if defined(SM_NATIVE_ROW_PLAN) && SM_NATIVE_RASTER
+          SM_NATIVE_ROW_PLAN
+#else
+          0
+#endif
+  );
   for (int i = 1; i < argc; ++i) {
     if (!strcmp(argv[i], "--config") && i + 1 < argc)
       SmReplaySetConfigPath(argv[i + 1]);

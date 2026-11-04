@@ -69,6 +69,16 @@ class ReplayInspectorTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "simulation viewport"):
                 replay.inspect(self.path)
 
+    def test_mods_identity(self):
+        self.header = self.header.replace("SMREPLAY 1", "SMREPLAY 3").replace(
+            "MODE lle", "MODS 0badf00d\nMODE lle")
+        self.write(self.input.rstrip() + " 0\n" + self.complete)
+        replay.inspect(self.path)
+        self.header = self.header.replace("MODS 0badf00d\n", "")
+        self.write(self.input.rstrip() + " 0\n" + self.complete)
+        with self.assertRaisesRegex(ValueError, "header"):
+            replay.inspect(self.path)
+
 
 if __name__ == "__main__":
     unittest.main()

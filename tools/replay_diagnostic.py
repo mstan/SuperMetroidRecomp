@@ -24,12 +24,16 @@ def inspect(path):
     if path.stat().st_size > 2 * 1024 * 1024:
         raise ValueError("oversized replay segment")
     lines = path.read_text(encoding="utf-8").splitlines()
-    if (len(lines) < 4 or lines[0] not in ("SMREPLAY 1", "SMREPLAY 2") or
+    # Format 3 adds a MODS line: the gameplay-mod set's identity.
+    mods = lines[0] == "SMREPLAY 3"
+    header = 5 if mods else 4
+    if (len(lines) < header or lines[0] not in ("SMREPLAY 1", "SMREPLAY 2", "SMREPLAY 3") or
             len(lines[1].split()) != 5 or not lines[1].startswith("BUILD ") or
             len(lines[2].split()) != 2 or not lines[2].startswith("ROM ") or
-            lines[3] != "MODE lle"):
+            (mods and (len(lines[3].split()) != 2 or not lines[3].startswith("MODS "))) or
+            lines[header - 1] != "MODE lle"):
         raise ValueError("unsupported or truncated replay header")
-    activity = lines[0] == "SMREPLAY 2"
+    activity = lines[0] in ("SMREPLAY 2", "SMREPLAY 3")
     if not 0 <= int(lines[2].split()[1], 16) <= 0xffffffff:
         raise ValueError("invalid ROM identity")
     state_path = path.with_name(path.name + ".sav")
@@ -39,7 +43,7 @@ def inspect(path):
     pending = raster_pending = checkpoint = False
     next_frame = None
     with state_path.open("rb") as states:
-        for number, line in enumerate(lines[4:], 5):
+        for number, line in enumerate(lines[header:], header + 1):
             fields = line.split()
             try:
                 if fields[0] == "S" and len(fields) == 4 and not pending and not raster_pending:

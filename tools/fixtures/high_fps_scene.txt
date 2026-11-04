@@ -1,0 +1,38 @@
+# Reuse the established attract takeover: restore ordinary player handlers
+# without warping position or changing streamed terrain. Setup bypasses travel.
+wait 3200
+poke 0998 0800
+poke 0a42 95e625e7
+poke 0a60 13e9
+# Health protects this rendering fixture from unrelated enemy damage.
+poke 09c2 e703
+poke 09c4 e703
+wait 2
+press right 120
+press left 90
+press down 8
+press right+b 24
+press right 60
+press left 60
+press down 8
+press up 8
+press y 8
+wait 5
+# Compare a restored frame with the same continuation immediately after save.
+savestate 7
+wait 1
+dump expected-load
+press right 60
+wait 1
+loadstate 7
+wait 1
+dump actual-load
+# Reset must discard scene history before a current-build reload.
+reset
+wait 5
+loadstate 7
+wait 1
+dump reset-load
+press right 24
+dump continued-input
+wait 200

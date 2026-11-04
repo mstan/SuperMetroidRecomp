@@ -26,7 +26,7 @@ def inputs():
     for folder in ('src', 'recomp', 'profiles'):
         files += [p for p in (ROOT / folder).rglob('*') if p.is_file()
                   and 'gen' not in p.relative_to(ROOT).parts
-                  and p.name != 'funcs.h' and p.suffix in ('.c', '.h', '.cfg', '.json')]
+                  and p.name != 'funcs.h' and p.suffix in ('.c', '.h', '.inc', '.cfg', '.json')]
     # Git may check text out as CRLF on a Windows runner. This is the same
     # source input; generated payload files themselves remain byte-verified.
     return {p.relative_to(ROOT).as_posix(): hashlib.sha256(
@@ -102,7 +102,7 @@ def audit(archive_path):
             # This standalone support tool is intentionally shipped; no other
             # Python, game source, generated C or build tooling is public.
             support_helper = len(path.parts) == 2 and path.name == 'replay_diagnostic.py'
-            if path.suffix.lower() in ('.sfc', '.smc', '.rom', '.srm', '.sav', '.c', '.h', '.py', '.a', '.o', '.obj') and not support_helper:
+            if path.suffix.lower() in ('.sfc', '.smc', '.gba', '.rom', '.srm', '.sav', '.c', '.h', '.inc', '.py', '.a', '.o', '.obj') and not support_helper:
                 raise ValueError(f'Build input or private state in package: {name}')
             if path.suffix.lower() in ('.replay', '.dmp', '.jsonl') or '.replay.' in path.name or path.name.startswith(('crash_report_', 'last_run_report')):
                 raise ValueError(f'Private diagnostics in package: {name}')
@@ -111,6 +111,17 @@ def audit(archive_path):
             if any(part in ('toolchain', 'src', 'recomp', 'recomp-ui', 'snesrecomp', 'saves') for part in path.parts[1:]):
                 raise ValueError(f'Build tree or state in package: {name}')
         root = next(iter(roots)) + '/'
+        catalog = ROOT / 'mods/preloaded'
+        if catalog.is_dir():
+            expected = {p.relative_to(ROOT).as_posix(): p
+                        for p in catalog.rglob('*') if p.is_file()}
+            shipped = {n[len(root):] for n in names
+                       if n.startswith(root + 'mods/') and not n.endswith('/')}
+            if shipped != set(expected):
+                raise ValueError('Runtime mod catalog differs from tracked packages')
+            for name, source in expected.items():
+                if archive.read(root + name).replace(b'\r\n', b'\n') != source.read_bytes().replace(b'\r\n', b'\n'):
+                    raise ValueError(f'Runtime mod package differs from source: {name}')
         for required in ('VERSION', 'framework_pins.txt', 'release-profile.json', 'config.ini', 'README.md', 'replay_diagnostic.py'):
             if root + required not in names:
                 raise ValueError(f'Missing package file: {required}')

@@ -1240,3 +1240,57 @@ coverage work without downgrading it to the earlier qualification base.
 Evidence: `sm-harvest-qualified`, `sm-harvest-fit-qualified`,
 `sm-harvest-ceres-qualified` and `sm-harvest-*.log` in the private bundle's
 `current-main` directory. No new current-main performance estimate is claimed.
+
+## Native runtime campaign (2026-10-27)
+
+Isolated `perf/native-runtime-20261026`, starting at `00779950`, consumes shared
+native APU spans and adds selectable `SM_RASTER_IMPL=LLE|NATIVE` (currently
+LLE by default). The native compositor uses framework Mode-1 tile rows and
+window plans. It claims supported ordinary scene lines, retains live PPU
+status work, and uses the framework's deferred reference-image service with
+independent current/previous lifetimes. HUD, unsupported modes, mosaic and
+extra surfaces retain their established raster behavior. Presentation reuses
+the already composed current frame; interpolated presentations still compose
+from captured data. Real timeline changes invalidate the cached image.
+
+Shared engine jobs own generic operations; room reconstruction, scene/effect
+eligibility and interpolation remain here. No guest object allocation, native
+save layout, gameplay or asset formats change. Replay/snapshot identities
+include the selected raster, APU-time and CRC implementations.
+
+The renderer's reference/full-copy/native scene tests and framework actual-PPU
+comparisons pass. Exploratory five-pair wide tile-only and tile+image packages
+showed 9.06% and 14.53% median process-CPU reductions against the same APU-only
+control, with matching per-frame WRAM/CPU traces and final images. These are
+overlapping packages, not additive savings, and used full diagnostic traces.
+Window-only results were mixed and are neutral/inconclusive. Portable block
+CRC showed about 5.96% wide savings in a separate five-pair final-frame-only
+state-check workload; it does not remove production checks or rewind.
+
+Two later color-cache candidates trended slower in four of five longer pairs
+and were removed. No graphics asset conversion is retained. Final committed
+source, complete current-build state/effect checks, portable qualification and
+combined original/candidate game timing remain the adoption gate; exploratory
+numbers do not certify all scenes or platforms. Central tracking and durable
+machine-readable samples: `beads-8wg.2.154`, related to `beads-2wy8.1`.
+
+### 2026-10-28: minimap border at the HUD raster boundary
+
+The final dotted minimap row uses BG3 through the gameplay color-math
+subscreen after the opaque HUD IRQ band ends. Relocating only the opaque
+band left that row at the native horizontal position. The renderer now
+recognizes the one remaining UI texel row from captured, unchanged BG3
+geometry and relocates its BG3 inputs with the existing HUD groups. It keeps
+terrain and OBJ coordinates, subsequent world rows, liquid/message scrolls
+and unanchored rendering intact. UI texels can cross the black room matte;
+world content and fixed-color effects remain clipped there. Classification
+precedes interpolation, and a recognized UI scroll is not interpolated from
+the previous frame's gameplay state. This is a presentation correctness fix;
+it changes neither guest execution nor renderer/default optimization choices.
+Tracking: `beads-8wg.6.25`.
+
+## 2026-10-29: approved current-main optimization integration
+
+Engine PR221/222 and title PR45 are merged. Owner conversation accepted the presented final Metroid minimap and gameplay/rewind handoff; no saved selector launch trace exists. Exact automated/independent candidate40660be1 and paired binary evidence are retained in central Beads beads-8wg.2.172. Current main preserves the released wall, eye, lava and padding fixes. Widened clamped-eye rows bypass native-center reuse, and planned composition applies the same unused-screen matte as the reference. Camera behavior is unchanged; simple clamps remain deferred for transition discontinuities.
+
+Stable0.3.19 pins the merged engine and explicitly enables qualified row/center options for Windows x64 releases. Source defaults remain OFF, custom presentation stays opt-in, and other platforms retain their fallbacks. Regenerate immutable identity for the final pin/version; generated inputs stay private.

@@ -125,15 +125,23 @@ Screenshots supplied by the project owner from the custom-renderer build.
 
 ## Releases
 
+The v0.4.2 release includes forty configurable gameplay, movement, combat, map,
+HUD and pacing features under **Mods**. Elective enhancements start disabled;
+correctness fixes start enabled. See the [release notes](docs/releases/v0.4.2.md)
+for the latest fixes and [enhancement notes](docs/releases/v0.4.0.md) for feature groups. Each mod's detail area names its authors
+and links to its source project. Maximum ammo capacity appears only
+on pause; gameplay uses the native HUD counters.
+
 Download the precompiled ZIP for Windows x64, Linux x64, macOS arm64 or macOS
 x64 from this repository's Releases page. Extract the entire folder and start
 the executable (on Linux, start `Launch.sh`). Select your own unmodified Super
 Metroid (Japan, USA) ROM and play. No compiler, Python, Rust, CMake, source or
 toolchain download is needed. No ROM or saved progress is included.
 
-Open **Mods** in the launcher to enable **Widescreen** (Fit, 16:9, 21:9 or 32:9)
+Open **Mods** in the launcher to configure **Widescreen** (Fit, 16:9, 21:9 or 32:9)
 and choose edge-anchored or centered HUD placement. **Presentation FPS** is a
-separate mod with Auto and fixed frame-rate targets. Both are off by default;
+separate mod with Auto and fixed frame-rate targets. Fresh installs enable
+Widescreen with adaptive Fit; Presentation FPS starts off. Saved choices are preserved;
 turning both off uses stock rendering. Game logic retains its native timing.
 These features are experimental: full-game visual fidelity is not certified,
 and achievable FPS depends on hardware and the scene.

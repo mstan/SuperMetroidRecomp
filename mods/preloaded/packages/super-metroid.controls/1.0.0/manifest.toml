@@ -1,0 +1,74 @@
+format_version = 1
+id = "super-metroid.controls"
+version = "1.0.0"
+name = "Super Metroid Controls"
+author = "SuperMetroidRecomp contributors"
+source_name = "SuperMetroidRecomp native feature packages"
+source_url = "https://github.com/mstan/SuperMetroidRecomp"
+description = "Controller remaps and shortcuts. They only press the game's own buttons for you; each is a separate switch."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "supermetroid-jpn"
+rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
+
+[[feature]]
+id = "zero-mission"
+name = "Zero Mission shoulders"
+author = "SuperMetroidRecomp contributors; design references: Zero Mission/Fusion (Nintendo)"
+source_name = "Native zero-mission implementation"
+source_url = "https://github.com/mstan/SuperMetroidRecomp/blob/feat/super-metroid-enhancements/src/mods/sm_controls_plugin.c"
+description = "One shoulder aims diagonally: Up or Down selects an angle, retained when released and next time you aim. The other shoulder arms missiles, as in Metroid: Zero Mission and Fusion. Uses your in-game button setup for aiming and item select/cancel."
+group = "Controls"
+default_enabled = false
+
+[[option]]
+feature = "zero-mission"
+id = "aim-shoulder"
+label = "Aim shoulder"
+description = "The shoulder that aims diagonally. The other one arms missiles."
+type = "choice"
+default = "R"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "L"
+label = "L"
+
+[[option]]
+feature = "zero-mission"
+id = "missile"
+label = "Missile button"
+description = "Hold: missiles while held. Toggle: each press switches between missiles and the beam. Off: the shoulder keeps its normal job."
+type = "choice"
+default = "hold"
+[[option.choice]]
+value = "hold"
+label = "Hold"
+[[option.choice]]
+value = "toggle"
+label = "Toggle"
+[[option.choice]]
+value = "off"
+label = "Off"
+
+[[plugin]]
+feature = "zero-mission"
+id = "super-metroid.controls.zero-mission"
+
+[[feature]]
+id = "radial-menu"
+name = "Right-stick weapon select"
+author = "SuperMetroidRecomp contributors (native implementation; tester request)"
+source_name = "Native radial-menu implementation"
+source_url = "https://github.com/mstan/SuperMetroidRecomp/blob/feat/super-metroid-enhancements/src/mods/sm_controls_plugin.c"
+description = "Point the right stick to select a weapon: up missiles, right super missiles, down power bombs, left grapple, up-left X-ray."
+group = "Controls"
+default_enabled = false
+
+[[plugin]]
+feature = "radial-menu"
+id = "super-metroid.controls.radial-menu"

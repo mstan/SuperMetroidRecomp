@@ -1,0 +1,245 @@
+format_version = 1
+id = "super-metroid.movement"
+version = "1.0.0"
+name = "Super Metroid Movement"
+author = "SuperMetroidRecomp contributors"
+source_name = "SuperMetroidRecomp native feature packages"
+source_url = "https://github.com/mstan/SuperMetroidRecomp"
+description = "Movement features inspired by Ancient Chozo (Albert V.; ASM by Grime), Ascent (Benox50), Project Base (begrimed) and Redux (ShadowOne333), implemented natively with separate switches."
+license = "MIT"
+resolver = "declarative"
+save_compatibility = "shared"
+
+[[target]]
+game_id = "supermetroid-jpn"
+rom_sha256 = "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72"
+
+[[feature]]
+id = "respin"
+name = "Respin"
+author = "begrimed (Project Base), Albert V. (Ancient Chozo), Benox50 (Ascent)"
+source_name = "Project Base (begrimed)"
+source_url = "https://metroidconstruction.com/hack.php?id=307"
+description = "Press jump while falling, or after the top of a normal jump, to spin again. Samus keeps her vertical speed: no extra height. From Project Base (Begrimed), Ancient Chozo and Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[plugin]]
+feature = "respin"
+id = "super-metroid.movement.respin"
+
+[[feature]]
+id = "shinespark-steering"
+name = "Shinespark steering"
+author = "Grime (steering ASM), Albert V. (Ancient Chozo), Benox50 (Ascent)"
+source_name = "Ancient Chozo (Albert V.)"
+source_url = "https://www.romhacking.net/hacks/4028/"
+description = "Steer a shinespark slightly with the D-pad: up and down for a sideways or diagonal spark, left and right for an upward one. From Ancient Chozo (Albert V.; ASM contributions by Grime) and Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[option]]
+feature = "shinespark-steering"
+id = "strength"
+label = "Strength"
+description = "How far the D-pad moves Samus each frame of the spark."
+type = "choice"
+default = "normal"
+[[option.choice]]
+value = "weak"
+label = "Weak (half a pixel)"
+[[option.choice]]
+value = "normal"
+label = "Normal (1 pixel)"
+[[option.choice]]
+value = "strong"
+label = "Strong (2 pixels)"
+
+[[plugin]]
+feature = "shinespark-steering"
+id = "super-metroid.movement.shinespark-steering"
+
+[[option]]
+feature = "shinespark-steering"
+id = "down-to-morph"
+label = "Down cancels into morph ball"
+description = "Press Down during a shinespark to stop and fall as a morph ball. Requires the Morph Ball. Disable this to keep Down available for steering. Inspired by Ascent (Benox50)."
+type = "boolean"
+default = false
+
+[[option]]
+feature = "shinespark-steering"
+id = "jump-to-cancel"
+label = "Jump cancels the shinespark"
+description = "Press jump again during a shinespark to stop and fall normally. Inspired by Ascent (Benox50)."
+type = "boolean"
+default = false
+
+[[feature]]
+id = "landing-momentum"
+name = "Keep momentum on landing"
+author = "Benox50 (Ascent)"
+source_name = "Super Metroid: Ascent (Benox50)"
+source_url = "https://www.romhacking.net/hacks/6347/"
+description = "Landing while still holding the direction keeps Samus' running speed. From Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[option]]
+feature = "landing-momentum"
+id = "speed-booster"
+label = "Keep the Speed Booster"
+description = "Landing from a spin jump while holding run and the direction keeps the speed boost, as in Ascent and Ancient Chozo."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "landing-momentum"
+id = "super-metroid.movement.landing-momentum"
+
+[[feature]]
+id = "speed-ball"
+name = "Speed booster in morph ball"
+author = "Albert V. (Ancient Chozo), Benox50 (Ascent); foundation: begrimed"
+source_name = "Ancient Chozo (Albert V.)"
+source_url = "https://www.romhacking.net/hacks/4028/"
+description = "With the Speed Booster, the rolling morph ball keeps and builds running speed. From Ancient Chozo's speed ball and Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[option]]
+feature = "speed-ball"
+id = "hold-run"
+label = "Hold run"
+description = "The ball builds speed only while the run button is held."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "speed-ball"
+id = "super-metroid.movement.speed-ball"
+
+[[feature]]
+id = "quick-morph"
+name = "Quick morph"
+author = "Albert V. (Ancient Chozo), Benox50 (Ascent); foundation: begrimed"
+source_name = "Ancient Chozo (Albert V.)"
+source_url = "https://www.romhacking.net/hacks/4028/"
+description = "Hold Down while crouching to morph, and hold item cancel and press Down to morph at once. From Ancient Chozo and Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[option]]
+feature = "quick-morph"
+id = "hold-frames"
+label = "Hold Down for (frames)"
+description = "Frames Down must be held while crouched before Samus morphs. 0 turns hold-to-morph off."
+type = "integer"
+default = 12
+min = 0
+max = 60
+step = 1
+
+[[option]]
+feature = "quick-morph"
+id = "item-cancel"
+label = "Item cancel + Down"
+description = "Morph at once by pressing Down while holding item cancel, standing, running or crouched."
+type = "boolean"
+default = true
+
+[[plugin]]
+feature = "quick-morph"
+id = "super-metroid.movement.quick-morph"
+
+[[option]]
+feature = "quick-morph"
+id = "air-morph"
+label = "L + Down in the air"
+description = "Hold the physical L shoulder and press Down while jumping or falling to morph. Works with shoulder remapping. Inspired by Ancient Chozo (Albert V.; ASM contributions by Grime)."
+type = "boolean"
+default = false
+
+[[feature]]
+id = "space-jump"
+name = "Easier space jump"
+author = "Benox50 (Ascent)"
+source_name = "Super Metroid: Ascent (Benox50)"
+source_url = "https://www.romhacking.net/hacks/6347/"
+description = "The space jump triggers at any falling speed, not only in the original narrow window. From Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[option]]
+feature = "space-jump"
+id = "window"
+label = "Jump allowed"
+description = "When a new jump press space jumps again."
+type = "choice"
+default = "falling"
+[[option.choice]]
+value = "falling"
+label = "While falling"
+[[option.choice]]
+value = "anytime"
+label = "Any time"
+
+[[plugin]]
+feature = "space-jump"
+id = "super-metroid.movement.space-jump"
+
+[[feature]]
+id = "bomb-control"
+name = "Instant bombs"
+author = "Grime (instant bombs), Albert V. (Ancient Chozo), Benox50, ShadowOne333"
+source_name = "Ancient Chozo (Albert V.)"
+source_url = "https://www.romhacking.net/hacks/4028/"
+description = "Hold Down while laying a bomb on the ground to make it explode at once, and hold Down to avoid the bomb jump. Normal bombs are unchanged. From Ancient Chozo (Albert V.; ASM contributions by Grime), Super Metroid Redux and Ascent (Benox50)."
+group = "Movement"
+default_enabled = false
+
+[[option]]
+feature = "bomb-control"
+id = "mode"
+label = "Down held"
+description = "What holding Down does with bombs."
+type = "choice"
+default = "instant"
+[[option.choice]]
+value = "instant"
+label = "Instant explosion, no bomb jump"
+[[option.choice]]
+value = "no-jump"
+label = "No bomb jump only"
+
+[[plugin]]
+feature = "bomb-control"
+id = "super-metroid.movement.bomb-control"
+
+[[feature]]
+id = "store-shinespark"
+name = "Store a shinespark"
+author = "ocesse (Redux widescreen bonus patches); Redux: ShadowOne333"
+source_name = "Super Metroid Redux (ShadowOne333)"
+source_url = "https://www.romhacking.net/hacks/4963/"
+description = "Charge a second shinespark before the first one runs out and the charge is kept until used, in this room or a later one. From the Store Shinespark bonus patch in ocesse's Super Metroid Redux widescreen release."
+group = "Movement"
+default_enabled = false
+
+[[plugin]]
+feature = "store-shinespark"
+id = "super-metroid.movement.store-shinespark"
+
+[[feature]]
+id = "heavy-physics"
+name = "Heavy physics"
+author = "begrimed (Project Base), ShadowOne333 (GBA Style/Redux)"
+source_name = "Super Metroid Redux (ShadowOne333)"
+source_url = "https://www.romhacking.net/hacks/4963/"
+description = "GBA-style heavier physics: stronger gravity and jumps, faster falls and air control, with bomb timing and the demos adjusted to match. Heavy Physics from Project Base and Super Metroid: GBA Style, as shipped with Super Metroid Redux (ShadowOne333)."
+group = "Movement"
+default_enabled = false
+
+[[plugin]]
+feature = "heavy-physics"
+id = "super-metroid.movement.heavy-physics"

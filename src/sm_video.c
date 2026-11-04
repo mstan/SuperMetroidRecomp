@@ -16,7 +16,7 @@ static const char *const aspect_names[] = {"4:3", "16:9", "21:9", "32:9", "Fit"}
 SmVideoSettings g_sm_video;
 
 void SmVideoDefaults(SmVideoSettings *s) {
-  *s = (SmVideoSettings){.aspect = SM_ASPECT_FIT, .hud_anchored = true};
+  *s = (SmVideoSettings){.enhanced = true, .aspect = SM_ASPECT_FIT, .hud_anchored = true};
 }
 
 const char *SmAspectName(SmAspect aspect) {

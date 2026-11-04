@@ -7,6 +7,7 @@
 /* Per-frame host orchestration for Super Metroid (see sm_rtl.c). */
 void SmDrawPpuFrame(void);
 void RunOneFrameOfGame(void);
+void SmHardwareReset(void);
 
 /* File snapshot extension for the default LLE scheduler (no host pointers). */
 void SmStateSaveExtra(struct SaveLoadInfo *sli);

@@ -64,6 +64,15 @@ class ReleaseBoundaryTest(unittest.TestCase):
             payload.restore(path, payload.digest(path))
         self.assertFalse((self.root / 'escaped.c').exists())
 
+    def test_changed_native_include_rejected(self):
+        include = self.root / 'src/row_plan.inc'
+        include.write_text('original\n')
+        path = self.root / 'private.tar.gz'
+        payload.archive(self.root / 'src/gen', path)
+        include.write_text('changed\n')
+        with self.assertRaisesRegex(ValueError, 'source/profile/pins'):
+            payload.restore(path, payload.digest(path))
+
     def test_public_package_rejects_generated_sources(self):
         path = self.root / 'runtime.zip'
         with zipfile.ZipFile(path, 'w') as archive:
@@ -81,11 +90,40 @@ class ReleaseBoundaryTest(unittest.TestCase):
                     archive.writestr('runtime/' + name, 'fixture')
         make()
         payload.audit(path)
-        for name in ('another.py', 'tools/replay_diagnostic.py', 'capture.replay.config.ini',
+        for name in ('another.py', 'native-row.inc', 'donor.gba', 'assets/donor.gba', 'tools/replay_diagnostic.py', 'capture.replay.config.ini',
                      'logs/session.log', 'crash_report_123.json', 'crash_minidump_123.dmp'):
             make(name)
             with self.assertRaises(ValueError):
                 payload.audit(path)
+
+    def test_public_package_requires_the_exact_tracked_mod_catalog(self):
+        name = 'mods/preloaded/packages/example/1.0.0/manifest.toml'
+        source = self.root / name
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b'id = "example"\n')
+        path = self.root / 'runtime.zip'
+        required = ['VERSION', 'framework_pins.txt', 'release-profile.json',
+                    'config.ini', 'README.md', 'replay_diagnostic.py',
+                    'assets/boxart.tga', 'SuperMetroidSNESRecomp']
+        def make(manifest=None, extra=False):
+            with zipfile.ZipFile(path, 'w') as archive:
+                for item in required:
+                    archive.writestr('runtime/' + item, 'fixture')
+                if manifest is not None:
+                    archive.writestr('runtime/' + name, manifest)
+                if extra:
+                    archive.writestr('runtime/mods/profile.ini', 'private profile')
+        make()
+        with self.assertRaisesRegex(ValueError, 'catalog'):
+            payload.audit(path)
+        make(source.read_bytes().replace(b'\n', b'\r\n'))
+        payload.audit(path)
+        make(b'id = "stale"\n')
+        with self.assertRaisesRegex(ValueError, 'differs from source'):
+            payload.audit(path)
+        make(source.read_bytes(), extra=True)
+        with self.assertRaisesRegex(ValueError, 'catalog'):
+            payload.audit(path)
 
 
 if __name__ == '__main__':

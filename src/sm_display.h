@@ -9,6 +9,8 @@ extern "C" {
 
 bool SmDisplay_IsWidescreenActive(void);
 int SmDisplay_GetCurrentFrameWidth(void);
+struct SmPlayerView;
+bool SmDisplay_GetPlayer(struct SmPlayerView *player);
 
 typedef struct SmDisplayViewport {
   int x, y, width, height;

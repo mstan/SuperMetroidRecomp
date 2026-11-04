@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated stock/wide/FPS determinism runs using a caller-supplied verified ROM.
+"""Isolated stock/wide controls for FPS determinism with a verified owned ROM.
 
 No source-tree saves/configs are used. Artifacts are retained in a new directory.
 WRAM CRC and sampled CPU registers are a regression probe, not a full oracle.
@@ -7,6 +7,7 @@ WRAM CRC and sampled CPU registers are a regression probe, not a full oracle.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -54,6 +55,66 @@ def require_rotation_capture(directory: Path) -> dict:
     return dict(previous=frames[0], current=frames[1])
 
 
+def require_pose_change_capture(directory: Path) -> dict:
+    frames = []
+    for name in ('previous', 'current'):
+        data = (directory / f'pose-change.{name}.capture').read_bytes()
+        if len(data) != 15422488 or struct.unpack_from('<III', data) != (0x534d5243, 2, 15422476):
+            raise RuntimeError(f'{directory}: invalid pose-change capture')
+        ram = 12 + 224 * 66656
+        objects = ram + 0x20000 + 256 * 224 * 4 + 9
+        word = lambda address: struct.unpack_from('<H', data, objects + address)[0]
+        frames.append(dict(frame=struct.unpack_from('<I', data, ram + 0x20000 + 256 * 224 * 4)[0],
+                           pose=word(0xa1c), x=word(0xaf6), y=word(0xafa),
+                           camera_x=word(0x911), camera_y=word(0x915),
+                           graphics_x=word(0xb04), graphics_y=word(0xb06)))
+        if data[objects + 0x20000] != 1:
+            raise RuntimeError(f'{directory}: pose-change capture lacks published owner state')
+    before, now = frames
+    if now['frame'] != before['frame'] + 1 or now['pose'] == before['pose']:
+        raise RuntimeError(f'{directory}: not an adjacent pose change: {frames}')
+    if all(now[key] == before[key] for key in ('x', 'y', 'camera_x', 'camera_y')):
+        raise RuntimeError(f'{directory}: pose changed without physical/camera motion')
+    return dict(previous=before, current=now)
+
+
+def require_intermediate_presents(directory: Path, first_frame: int) -> dict:
+    intermediate = moving = 0
+    previous = None
+    samples = []
+    with (directory / 'present.csv').open(newline='') as source:
+        for row in csv.DictReader(source):
+            frame, alpha = int(row['frame']), float(row['alpha'])
+            if frame < first_frame or not 0 < alpha < 1:
+                previous = None
+                continue
+            intermediate += 1
+            if previous and previous['frame'] == row['frame'] and previous['crc32'] != row['crc32']:
+                moving += 1
+                if len(samples) < 8:
+                    samples.append(dict(frame=frame, before_phase=float(previous['alpha']),
+                                        after_phase=alpha, before_crc=previous['crc32'], after_crc=row['crc32']))
+            previous = row
+    if not intermediate or not moving:
+        raise RuntimeError(f'{directory}: extra presents did not show intermediate pixel motion')
+    return dict(intermediate_presents=intermediate, changing_same_frame_pairs=moving, samples=samples)
+
+
+def require_state_roundtrip(directory: Path) -> dict:
+    frames = {name: (directory / f'{name}.wram.bin').read_bytes()
+              for name in ('expected-load', 'actual-load', 'reset-load', 'continued-input')}
+    if any(len(frame) != 0x20000 for frame in frames.values()):
+        raise RuntimeError(f'{directory}: incomplete state dump')
+    if frames['expected-load'] != frames['actual-load'] or frames['actual-load'] != frames['reset-load']:
+        raise RuntimeError(f'{directory}: save/load or reset/load changed the expected continuation')
+    # Keep the input check independent of advancing RNG, timers, and counters.
+    before = tuple(struct.unpack_from('<H', frames['actual-load'], address)[0] for address in (0xaf6, 0xafa))
+    after = tuple(struct.unpack_from('<H', frames['continued-input'], address)[0] for address in (0xaf6, 0xafa))
+    if before == after:
+        raise RuntimeError(f'{directory}: no player movement after reload')
+    return dict(exact_wram_continuation=True, before=before, after=after)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--exe", type=Path, required=True)
@@ -79,6 +140,11 @@ def main() -> int:
     parser.add_argument("--xray-angle", type=lambda value: int(value, 0),
                         help="also require this captured beam angle (decimal or 0x hex)")
     parser.add_argument("--audio", action="store_true")
+    parser.add_argument('--capture-pose-change', action='store_true',
+                        help='require an adjacent moving Samus pair with different poses')
+    parser.add_argument('--motion-after-frame', type=int, default=1)
+    parser.add_argument('--check-state-roundtrip', action='store_true',
+                        help='check the high_fps_scene fixture save/load and reset/load dumps')
     parser.add_argument('--execution-policy', default='off',
                         choices=('off', 'on', 'force', 'verify', 'auto', 'lle', 'hle'))
     parser.add_argument('--run-ahead', type=int, choices=range(5), default=0,
@@ -94,6 +160,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.modes[0] != 'stock' or len(set(args.modes)) != len(args.modes):
         parser.error('modes must start with stock and contain no duplicates')
+    if 'fps' in args.modes and ('wide' not in args.modes or args.modes.index('wide') > args.modes.index('fps')):
+        parser.error('the wide control must precede the wide FPS run')
     if args.require_xray and not any(mode in args.modes for mode in ('wide', 'fps')):
         parser.error('--require-xray requires a wide or fps capture mode')
     if args.xray_angle is not None and (not args.require_xray or not 0 <= args.xray_angle <= 256):
@@ -101,6 +169,8 @@ def main() -> int:
     exe, rom = args.exe.resolve(strict=True), args.rom.resolve(strict=True)
     if args.frames < 1 or args.timeout <= 0:
         parser.error("frames and timeout must be positive")
+    if args.motion_after_frame < 1:
+        parser.error('motion-after-frame must be positive')
     if args.min_simulation_hz is not None and args.min_simulation_hz <= 0:
         parser.error('minimum simulation rate must be positive')
     if not 1 <= args.profile_start_frame <= args.frames:
@@ -120,7 +190,9 @@ def main() -> int:
         "execution_policy": args.execution_policy,
         "run_ahead": args.run_ahead,
     }
-    reference = None
+    # Retain exact input identities even if the first runtime arm fails.
+    (run_root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    references = {}
     for index, name in enumerate(args.modes):
         directory = run_root / name
         directory.mkdir()
@@ -171,10 +243,18 @@ def main() -> int:
             env['SM_CAPTURE_GRAPPLE_MIN_LENGTH'] = str(args.grapple_min_length)
         if args.capture_rotation and wide:
             env['SM_CAPTURE_ROTATION_PREFIX'] = 'rotation'
+        if args.capture_pose_change and name != 'stock':
+            env['SM_CAPTURE_MOTION_PREFIX'] = 'pose-change'
+            env['SM_CAPTURE_MOTION_POSE_CHANGE'] = '1'
+            env['SM_CAPTURE_MOTION_AFTER'] = str(args.motion_after_frame)
+            if paced:
+                env['SNESRECOMP_PRESENT_LOG'] = 'present.csv'
         if args.profile:
             env["SNESRECOMP_HOST_PROFILE"] = "1"
             env["SNESRECOMP_HOST_PROFILE_START_FRAME"] = str(args.profile_start_frame)
         env["SM_RUN_FRAMES"] = str(args.frames)
+        if args.check_state_roundtrip:
+            env['SNESRECOMP_DUMP_DIR'] = str(directory)
         env["SM_STATE_TRACE"] = "state.csv"
         env["SNESRECOMP_DEBUG_PORT"] = '0'
         env['SNESRECOMP_EXECUTION_MODE'] = args.execution_policy
@@ -183,6 +263,12 @@ def main() -> int:
         env["SM_CAPTURE_PATH"] = "final.capture"
         env["SNESRECOMP_FRAME_BMP"] = "final.bmp"
         env["SNESRECOMP_FRAME_BMP_FRAME"] = str(args.frames)
+        if args.check_state_roundtrip:
+            # FRAME_BMP follows the restored guest counter. The host screenshot
+            # follows the monotonic run index, so it still reaches the final
+            # presentation after reset/load has rewound guest frame numbers.
+            env['SNESRECOMP_SCREENSHOT'] = 'final.ppm'
+            env['SNESRECOMP_SCREENSHOT_FRAME'] = str(args.frames)
         command = [str(exe), "--config", "config.ini"]
         if script:
             command += ["--script", str(script)]
@@ -226,6 +312,16 @@ def main() -> int:
             raise RuntimeError(f"{name}: simulation count differs")
         if paced and args.fps > 61 and present <= sim:
             raise RuntimeError("FPS run did not produce extra presentations")
+        if args.check_state_roundtrip:
+            magic, dimensions, maximum, rgb = (directory / 'final.ppm').read_bytes().split(b'\n', 3)
+            w, h = map(int, dimensions.split())
+            if magic != b'P6' or maximum != b'255' or len(rgb) != w * h * 3:
+                raise RuntimeError(f'{name}: invalid final presentation screenshot')
+            pixels = bytearray(w * h * 4)
+            pixels[0::4], pixels[1::4], pixels[2::4] = rgb[2::3], rgb[1::3], rgb[0::3]
+            header = bytearray(54)
+            struct.pack_into('<2sI4xIIiiHH', header, 0, b'BM', 54 + len(pixels), 54, 40, w, -h, 1, 32)
+            (directory / 'final.bmp').write_bytes(header + pixels)
         bitmap = (directory / "final.bmp").read_bytes()
         if args.capture_power_bomb and wide and not list(directory.glob("powerbomb.*.capture")):
             raise RuntimeError(f"{name}: fixture did not reach a power-bomb phase")
@@ -248,16 +344,27 @@ def main() -> int:
         if width != expected_width or abs(height) != 224:
             raise RuntimeError(f"{name}: presentation is {width}x{height}, expected {expected_width}x224")
         digest = hashlib.sha256(trace).hexdigest()
-        if reference is None:
-            reference = trace
-        elif trace != reference:
-            first = next(i + 1 for i, (a, b) in enumerate(zip(reference.splitlines(), lines)) if a != b)
-            raise RuntimeError(f"{name}: game-state trace differs at simulation frame {first}")
+        # Visible enemy activation is simulation geometry. Compare FPS on/off
+        # at the same width; stock and wide are deliberately different packages.
+        if not paced:
+            references[wide] = trace
+        elif trace != references[wide]:
+            first = next(i + 1 for i, (a, b) in enumerate(zip(references[wide].splitlines(), lines)) if a != b)
+            raise RuntimeError(f"{name}: game-state trace differs from its width control at simulation frame {first}")
         report["runs"][name] = {"trace_sha256": digest, "simulations": sim,
                                "presentations": present, "seconds": seconds,
                                "render_width": width, "render_height": abs(height),
                                "presentation_hz": present / seconds if seconds else 0}
+        report['runs'][name]['reference_mode'] = 'wide' if wide else 'stock'
+        if name == 'wide':
+            report['runs'][name]['matches_stock_trace'] = trace == references[False]
         report['runs'][name]['simulation_hz'] = sim / seconds if seconds else 0
+        if args.capture_pose_change and name != 'stock':
+            report['runs'][name]['pose_change'] = require_pose_change_capture(directory)
+            if paced and args.fps > 61:
+                report['runs'][name]['intermediate_pixels'] = require_intermediate_presents(directory, args.motion_after_frame)
+        if args.check_state_roundtrip:
+            report['runs'][name]['state_roundtrip'] = require_state_roundtrip(directory)
         if paced and args.min_simulation_hz is not None and sim / seconds < args.min_simulation_hz:
             raise RuntimeError(f'{name}: simulation delivery {sim / seconds:.3f} Hz '
                                f'is below {args.min_simulation_hz:.3f} Hz')
@@ -313,7 +420,7 @@ def main() -> int:
     report["passed"] = True
     (run_root / "report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     extra = "extra presentations verified" if args.fps > 61 and any(mode in args.modes for mode in ('fps', 'fps_only')) else "no extra-presentation requirement for selected modes/rate"
-    print(f"PASS: identical per-simulation state traces; {extra}.", flush=True)
+    print(f"PASS: identical state traces at matching simulation widths; {extra}.", flush=True)
     return 0
 
 
