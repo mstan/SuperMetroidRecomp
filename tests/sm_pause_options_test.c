@@ -127,6 +127,8 @@ static void FadeOutDone(void) { menu_index = (uint16)(menu_index + 1); }
 
 int main(void) {
   SmVideoDefaults(&g_sm_video);
+  /* This fixture exercises the saved disabled preset and disabled HUD row. */
+  g_sm_video.enhanced = false;
   g_sm_video.hud_anchored = false;
   assert(!g_sm_video.enhanced && !g_sm_video.fps_enabled);
   game_state_byte = 0x0F;
@@ -141,7 +143,7 @@ int main(void) {
   assert(joypad1_lastkeys == 0);
   Frame(0, kButton_Down);
   assert(joypad1_lastkeys == 0);
-  /* Opened on Widescreen at the defaults: sm-video defaults, and the faked
+  /* Opened on Widescreen with the saved disabled preset and the faked
    * framework defaults (windowed, vsync on, no blend, no run-ahead, scale 3). */
   HashCheck(256, 0x3606AAC9u);
 
