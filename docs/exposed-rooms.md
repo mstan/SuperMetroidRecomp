@@ -224,6 +224,14 @@ and the candidate game build. `first-preview.bmp` is the inspected offline
 `baseline-live-scenery` retain matched gameplay state/diagnostic evidence.
 Capacity records and exact build jobs are beside `source/`.
 These are retained for continuing this feature, not delivered release files.
+The NES Metroid reference was checked in
+`F:/Projects/nesrecomp/MetroidNESRecomp/metroid_ws_actors.c`: its
+`guest_room_pair`, `collide_actor` and `commit_effects` provide the existing
+pattern for world-space collision filtering followed by native responses and
+bounded gameplay-effect transfer. Its retained native transitions do not meet
+this task's additional continuous-traversal requirement. `ceres-live-1/`
+retains a fresh combined-build Ceres boot and 180 advancing gameplay ticks;
+its assisted hatch approach did not cross and is not traversal acceptance.
 Additional evidence: `neighbor-enemy-settled-on/` and `-off/` contain actual
 32:9 captures, typed resident data and zero-native-center comparison logs.
 `resident-replay-visible/` and `resident-replay-visible-playback/` retain the
