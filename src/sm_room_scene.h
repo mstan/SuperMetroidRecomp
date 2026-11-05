@@ -15,14 +15,16 @@ typedef struct SmRoomImage {
 /* A publication has no host pointers and owns all of its room resources. */
 typedef struct SmRoomScene {
   uint32_t version, count, logic, seamless, root;
+  int32_t camera_dx, camera_dy;
   SmRoomImage rooms[];
 } SmRoomScene;
 static inline size_t SmRoomSceneBytes(unsigned count) {
   return count<=SM_ROOM_RESIDENTS ? sizeof(SmRoomScene)+(size_t)count*sizeof(SmRoomImage) : 0;
 }
 static inline bool SmRoomSceneValid(const SmRoomScene *scene) {
-  if (!scene || scene->version!=1 || scene->count>SM_ROOM_RESIDENTS || scene->logic>1 ||
-      scene->seamless>1 || scene->root>65535) return false;
+  if (!scene || scene->version!=2 || scene->count>SM_ROOM_RESIDENTS || scene->logic>1 ||
+      scene->seamless>1 || scene->root>65535 ||
+      scene->camera_dx < -4096 || scene->camera_dx>4096 || scene->camera_dy < -4096 || scene->camera_dy>4096) return false;
   for (unsigned i=0; i<scene->count; ++i) {
     const SmRoomImage *image=&scene->rooms[i]; const SmRoomPlacement *v=&image->placement;
     unsigned w=image->ram[0x7a5] | image->ram[0x7a6]<<8,h=image->ram[0x7a7] | image->ram[0x7a8]<<8;

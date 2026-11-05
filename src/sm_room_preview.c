@@ -232,6 +232,17 @@ bool SmRoomSceneSample(const SmRoomImage *p,int x,int y,int view_x,int view_y,ui
       pixel=image_pixel(p,tile,lx,(int)fy,(p->ram[0x5e]&15)*8192,2);
       if (pixel) layers[2]=(uint16_t)(((tile&0x2000 ? 3 : 1)<<12) | 0x200 | (((tile>>10)&7)*4+pixel));
     }
+  } else if (type==8 || type==10 || type==12) {
+    /* Rain, spores and fog retain their cartridge BG3 tilemap, animated
+     * graphics and native HDMA scroll phase in the resident machine. */
+    int fx=lx-cx+(int16_t)word(p->ram+0xcadc),fy=ly-cy+(int16_t)word(p->ram+0xcade);
+    unsigned sc=p->ram[0x5b],tx=((unsigned)fx/8)&63,ty=((unsigned)fy/8)&63;
+    unsigned offset=(tx&31)+(ty&31)*32;
+    if ((sc&1) && (tx&32)) offset+=1024;
+    if ((sc&2) && (ty&32)) offset+=sc&1 ? 2048 : 1024;
+    tile=word(p->vram+(((sc&0xfc)*512+offset*2)&65535));
+    pixel=image_pixel(p,tile,fx,fy,(p->ram[0x5e]&15)*8192,2);
+    if (pixel) layers[2]=(uint16_t)(((tile&0x2000 ? 3 : 1)<<12) | 0x200 | (((tile>>10)&7)*4+pixel));
   }
   return true;
 }

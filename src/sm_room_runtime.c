@@ -115,7 +115,8 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   memset(r->ram+0xc0c,0,0x2000-0xc0c);
   memset(r->ram+0x370,0,0x400);
   memset(r->ram+0x619,0,0x24);
-  r->ram[0x52]=3; r->ram[0x55]=1; r->ram[0x5d]=0; r->ram[0x5e]=2;
+  r->ram[0x52]=3; r->ram[0x55]=1; r->ram[0x5d]=0; r->ram[0x5e]=4;
+  put(r,0xcadc,0); put(r,0xcade,0);
   r->cpu=interp816_init(r,read_bus,write_bus);
   if (!r->cpu) { free(r); return NULL; }
   r->cpu->db=0x7e; r->cpu->i=true;
@@ -197,6 +198,48 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
 }
 void SmRoomRuntimeBackground(SmRoomRuntime *r, const uint8_t vram[65536]) {
   if (r && vram) memcpy(r->vram+0x8000,vram+0x8000,0x37c0);
+}
+bool SmRoomRuntimeCapture(SmRoomRuntime *r,const uint8_t ram[0x20000],const uint16_t vram[0x8000]) {
+  if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return false;
+  memcpy(r->ram,ram,sizeof(r->ram));
+  for (unsigned i=0; i<0x8000; ++i) { r->vram[2*i]=(uint8_t)vram[i]; r->vram[2*i+1]=(uint8_t)(vram[i]>>8); }
+  /* A suspended resident has no authority over the actual player's body. */
+  put(r,0xe12,1);
+  if (!r->actors) {
+    memset(r->ram+0xf78,0,2048);
+    memset(r->ram+0x1997,0,36);
+  }
+  return true;
+}
+void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t vram[0x8000]) {
+  if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return;
+  /* Entry-only encounters are initialized by the active cartridge loader.
+   * Ordinary populations keep their resident health, AI, animation and death
+   * state, including deleted slots. Never respawn a killed preview actor. */
+  bool boss=false;
+  for (unsigned i=0; i<32; ++i) {
+    unsigned id=word(ram+0xf78+64*i);
+    if (id && (r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id))) boss=true;
+  }
+  if (r->actors && !boss) {
+    memcpy(ram+0xe4c,r->ram+0xe4c,10);
+    memcpy(ram+0xe84,r->ram+0xe84,0xf78-0xe84);
+    memcpy(ram+0xf78,r->ram+0xf78,0x18aa-0xf78);
+    memcpy(ram+0x7000,r->ram+0x7000,0x2800);
+    memcpy(ram+0x198d,r->ram+0x198d,0x1c23-0x198d);
+    for (unsigned i=0x6c00; i<0x8000; ++i) vram[i]=(uint16_t)word(r->vram+2*i);
+  }
+  if (!boss) {
+    /* Restore the room's running liquid/animation phase after entry setup;
+     * the native loader retains ownership of its DMA channels and scripts. */
+    memcpy(ram+0x195c,r->ram+0x195c,0x198d-0x195c);
+    memcpy(ram+0x1e79,r->ram+0x1e79,0x1f4b-0x1e79);
+    for (unsigned i=0; i<6; ++i) {
+      unsigned destination=word(r->ram+0x1f3d+2*i)*2,bytes=word(r->ram+0x1f31+2*i);
+      if ((destination&1) || (bytes&1) || destination>65536 || bytes>65536-destination) continue;
+      for (unsigned j=0; j<bytes; j+=2) vram[(destination+j)/2]=(uint16_t)word(r->vram+destination+j);
+    }
+  }
 }
 bool SmRoomRuntimeStepEffects(SmRoomRuntime *r) {
   if (!r || r->error[0]) return false;

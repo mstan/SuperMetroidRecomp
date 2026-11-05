@@ -15,6 +15,8 @@ bool SmRoomRuntimeStepEffects(SmRoomRuntime *room);
 bool SmRoomRuntimeStepVisible(SmRoomRuntime *room, int samus_x, int samus_y,
     int camera_x, int camera_y, unsigned extra);
 void SmRoomRuntimeBackground(SmRoomRuntime *room, const uint8_t vram[65536]);
+bool SmRoomRuntimeCapture(SmRoomRuntime *room, const uint8_t ram[0x20000], const uint16_t vram[0x8000]);
+void SmRoomRuntimePromote(const SmRoomRuntime *room, uint8_t ram[0x20000], uint16_t vram[0x8000]);
 const uint8_t *SmRoomRuntimeRam(const SmRoomRuntime *room);
 const uint8_t *SmRoomRuntimeVram(const SmRoomRuntime *room);
 const char *SmRoomRuntimeError(const SmRoomRuntime *room);

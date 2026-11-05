@@ -371,7 +371,7 @@ set(SM_HOST_SOURCES
     src/sm_spc_player.c   # SPC upload interception
     ${SM_RENDERER_SOURCE} # read-only custom widescreen renderer
     src/sm_room_preview.c # independent connected-room scenery
-    src/sm_room_runtime.c src/sm_rooms.c
+    src/sm_room_runtime.c src/sm_rooms.c src/sm_seamless.c
     src/sm_mode7.c        # SM's mode-7 object projection
     src/sm_display.c      # SM presentation geometry
     src/sm_video.c        # SM aspect/HUD policy + presentation clock

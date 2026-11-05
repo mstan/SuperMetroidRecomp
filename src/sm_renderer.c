@@ -2086,7 +2086,7 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
     unsigned tm=r[0x69] ? r[0x69] : 19,ts=r[0x6b];
     for (int sx=0; sx<view.width; ++sx) {
       int x=sx-view.extra,wx=camera_x+x,wy=camera_y+y+1;
-      if (x>=0 && x<256) continue;
+      if (!rooms->camera_dx && !rooms->camera_dy && x>=0 && x<256) continue;
       if (wx>=0 && wx<room_width && wy>=0 && wy<room_height && !padding[(wy/256)*16+wx/256]) continue;
       uint16_t layers[3],screens[2]={0x500,0x500};
       if (!SmRoomSceneSample(image,wx,wy,camera_x,camera_y,layers)) continue;
@@ -2133,6 +2133,13 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   bool room = room_state(state);
   const SmRoomScene *rooms=f->rooms && f->rooms->root==read16(f->ram,0x79b) ? f->rooms : NULL;
   const SmRoomScene *old_rooms=previous && previous->rooms && rooms && previous->rooms->root==rooms->root ? previous->rooms : NULL;
+  int camera_dx=rooms && rooms->seamless ? rooms->camera_dx : 0;
+  int camera_dy=rooms && rooms->seamless ? rooms->camera_dy : 0;
+  if (old_rooms && alpha<1) {
+    camera_dx=lerp_pixel(old_rooms->camera_dx,camera_dx,alpha);
+    camera_dy=lerp_pixel(old_rooms->camera_dy,camera_dy,alpha);
+  }
+  bool displaced=camera_dx || camera_dy;
   if (rooms) for (unsigned i=0; i<rooms->count; ++i) {
     for (unsigned j=0; j<0x8000; ++j) private_vram[i][j]=(uint16_t)read16(rooms->rooms[i].vram,2*j);
     for (unsigned j=0; j<256; ++j) private_palettes[i][j]=(uint16_t)read16(rooms->rooms[i].ram,0xc000+2*j);
@@ -2164,7 +2171,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   const uint16_t *hd_vram[224]; int hd_source[224]; unsigned hd_sources = 0;
   uint8_t padding_screens[256] = {0};
   uint16_t padding_fill[256] = {0};
-  if (room && viewport.extra) room_padding_screens(f->ram, padding_screens, padding_fill);
+  if (room && (viewport.extra || displaced)) room_padding_screens(f->ram, padding_screens, padding_fill);
   SmBg2Object bg2 = bg2_object(f, previous, alpha);
   int camera_x = (int16_t)read16(f->ram, 0x911);
   int camera_y = (int16_t)read16(f->ram, 0x915);
@@ -2393,22 +2400,25 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     bool reuse_center = false;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
-    reuse_center = mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
+    reuse_center = !displaced && mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
         !(viewport.extra && wide_windows[y].remove_clamped_edge);
     if (reuse_center) ++render_stats.native_center_lines;
 #endif
-    sprites(&scanout, l, y, viewport, objects, f, previous, alpha, reuse_center);
+    SmViewport object_view=viewport;
+    int object_y=y;
+    if (mode==1 && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y-=camera_dy; }
+    sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha, reuse_center);
     if (viewport.extra && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
        * The native center continues to use captured OAM exclusively. */
       for (int phase = 7; phase >= 0; --phase) {
-        enemies(f, l, &scanout, y, viewport, objects, (unsigned)phase, previous, alpha);
-        if (phase == 6) enemy_projectiles(f, l, &scanout, y, viewport, objects, false, previous, alpha);
-        if (phase == 3) player_projectiles(f, l, &scanout, y, viewport, objects, false, previous, alpha);
+        enemies(f, l, &scanout, object_y, object_view, objects, (unsigned)phase, previous, alpha);
+        if (phase == 6) enemy_projectiles(f, l, &scanout, object_y, object_view, objects, false, previous, alpha);
+        if (phase == 3) player_projectiles(f, l, &scanout, object_y, object_view, objects, false, previous, alpha);
       }
-      enemy_projectiles(f, l, &scanout, y, viewport, objects, true, previous, alpha);
-      player_projectiles(f, l, &scanout, y, viewport, objects, true, previous, alpha);
-      sprite_objects(f, l, &scanout, y, viewport, objects, previous, alpha);
+      enemy_projectiles(f, l, &scanout, object_y, object_view, objects, true, previous, alpha);
+      player_projectiles(f, l, &scanout, object_y, object_view, objects, true, previous, alpha);
+      sprite_objects(f, l, &scanout, object_y, object_view, objects, previous, alpha);
     }
     grapple_pixels(l, &scanout, y, viewport, objects, grapple, grapple_recover_native, grapple_count);
     if (viewport.extra && has_flare)
@@ -2462,7 +2472,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
      * ordinary layer a tile at a time after raster-scroll interpolation. */
     uint16_t native_backgrounds[3][256];
     bool native_layer[3] = {false, false, false};
-    if (mode == 1 && !reuse_center) for (unsigned layer = 0; layer < 3; ++layer) {
+    if (mode == 1 && !reuse_center && !displaced) for (unsigned layer = 0; layer < 3; ++layer) {
       if (!(enabled & (1u << layer)) ||
           (layer == 2 && anchor_tail) ||
           ((scanout.mosaic & (1u << layer)) && (scanout.mosaic >> 4))) continue;
@@ -2474,8 +2484,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
      * BG2-only effect lines can leave its registers stale. */
     int matte_x = mode == 1 && (enabled & 1) ? background_lines[0].world_x : camera_x;
     int matte_y = mode == 1 && (enabled & 1) ? background_lines[0].world_y : camera_y;
+    if (mode==1 && y>=32 && !hud_tail) { matte_x+=camera_dx; matte_y+=camera_dy; }
 #if SM_NATIVE_RASTER && SM_NATIVE_ROW_PLAN
-    if (mode == 1) {
+    if (mode == 1 && !displaced) {
       native_render_mode1_row(&scanout, l, background_lines, native_backgrounds,
           native_layer, objects, y, viewport, matte_x, matte_y, brightness,
           &native_windows, &margin_windows, reuse_center ? f->stock + y * 256 : NULL,
@@ -2495,12 +2506,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
        * raster/interpolated BG1 camera as terrain so the edge cannot wobble
        * between simulation ticks and intermediate presentations. */
       const SmBackgroundLine *world = &background_lines[0];
-      if (mode == 1 && (x < 0 || x >= 256) && world->room_width &&
+      if (mode == 1 && (displaced || x < 0 || x >= 256) && world->room_width &&
           (matte_x + x < 0 || matte_x + x >= world->room_width ||
            matte_y + y + 1 < 0 || matte_y + y + 1 >= world->room_height)) continue;
       unsigned padding_x = (unsigned)(matte_x + x) / 256;
       unsigned padding_y = (unsigned)(matte_y + y + 1) / 256;
-      if (mode == 1 && (x < 0 || x >= 256) && world->room &&
+      if (mode == 1 && (displaced || x < 0 || x >= 256) && world->room &&
           padding_x < 16 && padding_y < 16 &&
           padding_screens[padding_y * 16 + padding_x] &&
           !padding_fill[padding_y * 16 + padding_x]) continue;
@@ -2548,6 +2559,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           }
 #endif
           int sample_x = x, sample_y = y + 1;
+          if (mode==1 && y>=32 && !hud_tail) { sample_x+=camera_dx; sample_y+=camera_dy; }
           if (scanout.mosaic & (1u << layer)) {
             int size = (scanout.mosaic >> 4) + 1;
             /* Mosaic precedes scroll and tile lookup, independently per BG.
@@ -2556,7 +2568,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
             sample_x -= ((sample_x % size) + size) % size;
             sample_y -= sample_y % size;
           }
-          bool margin = sample_x < 0 || sample_x >= 256;
+          bool margin = displaced || sample_x < 0 || sample_x >= 256;
           backgrounds[layer] = background_pixel(&background_lines[layer], l->vram,
                                                  sample_x, sample_y, margin);
         }

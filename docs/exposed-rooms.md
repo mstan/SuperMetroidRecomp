@@ -99,18 +99,63 @@ Entry-only encounters still require broader live qualification.
 - All 28 CTests pass with this integration, including all renderer variants,
   persistent options, immutable publication/capture and replay parsing.
 
+## Continuous handoff stage (2026-11-05)
+
+`sm_seamless.c` now performs a planar destination load at the ordinary frame
+boundary using bounded, actual cartridge instructions on the active bus. It
+runs native room/door setup only on entry, without simulating transition ticks
+or advancing the SPC timeline. Native/elevator transitions remain available.
+A full machine backup restores the original native transition if an entry
+routine cannot complete without a wait; that fallback still needs targeted
+fault-path qualification.
+
+The resident manager promotes ordinary enemy health, AI, death, animation and
+extended state, retains the departing room as a resident and rebases the
+presentation camera. Active collision/tilemap coordinates remain bounded.
+The camera eases to the native room camera, while the compositor can show both
+rooms throughout the native viewport. The HUD remains anchored. Resident scene
+v2 and manager state v3 include the camera displacement in snapshots/replay.
+Entry OAM is regenerated to avoid using departing-room screen coordinates.
+Rain/spores/fog now sample their native BG3 graphics, palette/animation and
+scroll state; the default native BG3 graphics base was corrected.
+
+- Assisted Landing Site -> $93AA entry completes in one simulation tick.
+  Samus clears the entrance, moves to x109 and receives normal enemy contact.
+  Fresh Off mode also enters in one tick and repeats 180 movement frames
+  identically after save/load. Fresh Native mode retains the original old-room
+  transition state after one tick and settles in $93AA normally.
+  The entrance plays the cartridge's blue-cap opening instead of closing on
+  her. This is an entry/handoff test, **not** a natural valid-shot door test.
+- Saving during camera carry and repeating 180 movement frames produces
+  byte-identical complete active WRAM. Native runtime promotion tests retain
+  resident enemy state while preserving active player data and continuation
+  stack. Whole-manager On/Off continuation probes still pass.
+- All 28 CTests pass, including new native-viewport resident ownership under a
+  rebased camera, Off weather BG3 composition and prior native-mode oracles.
+- First entry and continued 32:9 images were inspected. This remains a
+  prototype: body placement still clamps at the destination edge, door opening
+  is not yet coupled before crossing, and full temporal/FX fidelity is unproven.
+- Early full-session replay attempts include unrecorded artificial debug RAM
+  edits and cannot qualify the crossing. Async save/load commands did not
+  create the assumed pre-entry checkpoint; the saved slot was already after
+  entry. Keep these failed setups separate from runtime replay defects and
+  from passing post-entry continuation. A correctly sliced post-entry replay
+  restores the carried camera and matches all native/resident checkpoints for
+  179 executions. Natural recorded input through the doorway is still required.
+
 ## Outstanding implementation and qualification
 
-**Not release ready.** The Continuous/Native choice is persisted, but actual
-continuous handoff is the next implementation step; it must not be represented
-as completed merely because its menu control exists.
+**Not release ready.** Continuous handoff exists and the horizontal assisted
+case works, but general seamless traversal and the complete door/combat contract
+remain unqualified. Do not represent the feature as complete or release it.
 
-1. Implement continuous world/camera traversal and active/resident ownership
-   handoff, preserving motion, actors, projectiles, collision, FX and room-entry
-   scripts. Retain the native transition option; elevators/warps need appropriate
-   native behavior. Prevent actor reinitialization/pop when entering a resident.
-2. Implement paired native door PLMs, both-face valid-shot hit detection and
-   shared unlock/animation. Retain ammunition, lock and progression rules.
+1. Implement paired native door PLMs, both-face valid-shot hit detection and
+   shared unlock/animation. Retain ammunition, lock and progression rules. This
+   is the next main implementation step, not another tooling campaign.
+2. Complete natural continuous traversal in all four directions. Eliminate
+   edge-placement jumps and opening delays using the paired connection state;
+   preserve motion, collision, actor/projectile handoff, native entry scripts
+   and the native transition option. Qualify retained actors on return entry.
 3. Implement cross-open-door combat and projectile/actor transfer without
    duplicated hits/rewards. Walls and closed doors must block interaction.
 4. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
@@ -139,6 +184,18 @@ Additional evidence: `neighbor-enemy-settled-on/` and `-off/` contain actual
 `resident-replay-visible/` and `resident-replay-visible-playback/` retain the
 populated-room recording and successful reproduction; `resident-replay/` and
 `resident-replay-playback/` retain fresh-boot replay coverage.
+`seamless-camera-qualified/`, `seamless-camera-oam/` and
+`handoff-qualified-on-continuous/` retain assisted-entry and restore evidence.
+`handoff-guarded-on-continuous/` records the failed pre-entry checkpoint setup;
+its post-entry continuation is useful, but its unsliced replay is not a pass.
+`handoff-camera-tail-playback/` retains the passing 179-execution post-entry
+replay. `handoff-options-fresh-off-continuous/` retains a fresh Off handoff and
+180-frame identical save/load continuation; `handoff-options-fresh-on-native/`
+retains the native-transition option check. `handoff-qualified.exe` preserves
+this exact runtime; `handoff-build-identity.json` records its hash/pins. These
+artifacts remain task evidence outside delivery folders. The four
+superseded standalone current-turn EXE/object probes were removed; CMake probes
+are the supported replacements.
 No player save, settings, release archive or running playtest was replaced.
 The two standalone prototype EXEs were removed after the CMake-built probes
 superseded them. Retained build/capture directories are needed for continuing

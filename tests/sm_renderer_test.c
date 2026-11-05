@@ -456,7 +456,7 @@ static void resident_publication(const char *path) {
   ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1; ppu.screenEnabled[0]=1; ppu.cgram[1]=31;
   for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
   SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
-  *scene=(SmRoomScene){.version=1,.count=1,.root=0x91f8,.logic=0};
+  *scene=(SmRoomScene){.version=2,.count=1,.root=0x91f8,.logic=0};
   SmRoomImage *image=&scene->rooms[0];
   image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
       .left=256,.top=0,.right=512,.bottom=256};
@@ -466,6 +466,8 @@ static void resident_publication(const char *path) {
   r[0x196e]=2; r[0x1962]=80; r[0x5e]=2;
   for (unsigned y=0; y<8; ++y) { image->vram[2*y]=255; image->vram[0x4000+2*y]=255; }
   for (unsigned a=0xb800; a<0xc000; a+=2) image->vram[a+1]=4;
+  SmRoomScene *rebased=malloc(SmRoomSceneBytes(1)); assert(rebased);
+  memcpy(rebased,scene,SmRoomSceneBytes(1)); rebased->seamless=1; rebased->camera_dx=128;
   assert(SmRendererLatchRooms(scene));
   r[0xc003]=0; r[0xc002]=31; /* The producer can reuse its publication immediately. */
   free(scene);
@@ -482,6 +484,20 @@ static void resident_publication(const char *path) {
   assert(SmRendererSaveCapture(path)); ResetFixtureRenderer();
   assert(SmRendererLoadCapture(path) && SmRendererDraw(output,view,false,1));
   assert(!memcmp(expected,output,bytes));
+  /* A rebased camera moves resident scenery into the native viewport. */
+  assert(SmRendererLatchRooms(rebased));
+  BeginFixtureFrame(ram,2);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock));
+  assert(SmRendererDraw(output,view,false,1));
+  assert(output[60*view.width+view.extra+32]==0xff0000);
+  assert(output[60*view.width+view.extra+200]==0x0000ff);
+  rebased->rooms[0].ram[0x196e]=10; rebased->rooms[0].ram[0x5b]=0x5c;
+  assert(SmRendererLatchRooms(rebased)); free(rebased);
+  BeginFixtureFrame(ram,3);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  assert(output[60*view.width+view.extra+200]==0x007b7b); /* Off weather still animates/composes BG3. */
   free(expected); assert(!remove(path)); ResetFixtureRenderer();
 }
 

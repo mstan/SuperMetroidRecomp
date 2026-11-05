@@ -6,11 +6,13 @@
 #include "sm_renderer.h"
 #include "sm_activity.h"
 #include "sm_rooms.h"
+#include "sm_seamless.h"
 #include "mods/sm_mod_overlay.h"
 
 static bool SmFrameBegin(uint32_t *inputs) {
   if (!SmActivityFrameBegin()) return false;
   if (!SmReplayBegin(inputs)) return false;
+  if (g_sm_video.enhanced && g_sm_video.seamless && !SmSeamlessDoor()) return false;
   if (!SmRoomsFrame(g_ram,g_sm_video.enhanced,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||
       !SmRendererLatchRooms(SmRoomsScene())) return false;
   /* Playback may restore a checkpoint and change presentation at this exact

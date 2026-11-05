@@ -6,6 +6,9 @@ void SmRoomsReset(void);
 bool SmRoomsFrame(const uint8_t active[0x20000], bool enabled, unsigned extra,
                     bool requested_logic, bool requested_seamless);
 const SmRoomScene *SmRoomsScene(void);
+bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination);
+bool SmRoomsHandoff(const uint8_t previous[0x20000], const uint16_t previous_vram[0x8000],
+    uint8_t active[0x20000], uint16_t vram[0x8000], const SmRoomPlacement *destination, unsigned direction);
 size_t SmRoomsStateBound(void);
 size_t SmRoomsSave(void *out, size_t capacity);
 bool SmRoomsValidate(const void *in, size_t size);

@@ -61,6 +61,17 @@ int main(int argc,char **argv) {
   assert(SmRoomRuntimeSave(r,repeated,bytes));
   assert(!memcmp(continued,repeated,bytes));
   puts("resident save/restore continuation matches exactly; truncated input rejected");
+  uint8_t *entered=malloc(sizeof(active)); uint16_t *entered_vram=calloc(0x8000,sizeof(*entered_vram));
+  assert(entered && entered_vram); memcpy(entered,SmRoomRuntimeRam(r),sizeof(active));
+  entered[0xf8c]^=0x55; /* A fresh native load must not replace resident health. */
+  entered[0x9c2]=0x34; entered[0x9c3]=0x12; entered[0xaf6]=0x78; entered[0xaf7]=0x56;
+  uint8_t stack[32]; memcpy(stack,entered+0x1fe0,sizeof(stack));
+  SmRoomRuntimePromote(r,entered,entered_vram);
+  assert(!memcmp(entered+0xf78,SmRoomRuntimeRam(r)+0xf78,2048));
+  assert(entered[0x9c2]==0x34 && entered[0x9c3]==0x12 && entered[0xaf6]==0x78 && entered[0xaf7]==0x56);
+  assert(!memcmp(stack,entered+0x1fe0,sizeof(stack)));
+  puts("promotion retains resident enemies while preserving active player and continuation stack");
+  free(entered); free(entered_vram);
   free(snapshot); free(continued); free(repeated);
   SmRoomRuntime *visual=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,active,false); assert(visual && !*SmRoomRuntimeError(visual));
   uint8_t visual_start[65536]; memcpy(visual_start,SmRoomRuntimeVram(visual),sizeof(visual_start));
