@@ -21,6 +21,8 @@ typedef struct SmVideoSettings {
   unsigned fps; /* 0 = display refresh (Auto). */
   bool fps_enabled;
   bool hud_anchored; /* Anchor energy left and minimap right. */
+  bool neighboring_logic;
+  bool seamless;
 } SmVideoSettings;
 
 extern SmVideoSettings g_sm_video;

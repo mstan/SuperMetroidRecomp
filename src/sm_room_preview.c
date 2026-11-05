@@ -118,7 +118,9 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
   unsigned head = 0, total = 1;
   bool seen[SM_WORLD_ROOMS] = {false};
   seen[active-world.rooms] = true;
-  queue[0] = (struct Placement){active,0,0,left,top,right,bottom};
+  /* Portal ownership is independent of the current viewport. Keep complete
+   * loaded rooms available to interpolation and a live aspect change. */
+  queue[0] = (struct Placement){active,0,0,-65536,-65536,65536,65536};
   Preview *old[kResidents]; unsigned old_count = count;
   memcpy(old,residents,sizeof(old)); count = 0;
   while (head < total) {
@@ -141,7 +143,9 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
       if (dir==1 && cr>plane_x) cr=plane_x;
       if (dir==2 && ct<plane_y) ct=plane_y;
       if (dir==3 && cb>plane_y) cb=plane_y;
-      if (cl>=cr || ct>=cb || !overlaps(x,y,to->width*256,to->height*256,cl,ct,cr,cb)) continue;
+      int vl=cl>left ? cl : left, vt=ct>top ? ct : top;
+      int vr=cr<right ? cr : right, vb=cb<bottom ? cb : bottom;
+      if (vl>=vr || vt>=vb || !overlaps(x,y,to->width*256,to->height*256,vl,vt,vr,vb)) continue;
       uint16_t state = SmWorldRoomStateForDoor(to,read_byte,NULL,ram,d->definition);
       Preview *p = NULL;
       for (unsigned j = 0; j < old_count; ++j)
@@ -162,6 +166,16 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
   for (unsigned j = 0; j < old_count; ++j) free(old[j]);
 }
 unsigned SmRoomPreviewCount(void) { return count; }
+bool SmRoomPreviewPlacement(unsigned index, SmRoomPlacement *out) {
+  if (index>=count || !out) return false;
+  const Preview *p=residents[index];
+  *out=(SmRoomPlacement){.room=p->room,.state=p->state,.incoming=p->incoming,.reserved=0,
+      .x=p->x,.y=p->y,.width=p->width,.height=p->height,
+      .left=p->left,.top=p->top,.right=p->right,.bottom=p->bottom};
+  return true;
+}
+const SmWorldRoom *SmRoomPreviewRoom(uint16_t header) { return ready ? SmWorldFindRoom(&world,header) : NULL; }
+const uint8_t *SmRoomPreviewVram(unsigned index) { return index<count ? residents[index]->tiles : NULL; }
 static unsigned tile_pixel(const Preview *p, unsigned tile, int x, int y) {
   unsigned tx=(x&7)^((tile&0x4000) ? 7 : 0), ty=(y&7)^((tile&0x8000) ? 7 : 0);
   unsigned at=(tile&1023)*32+ty*2, shift=7-tx;
@@ -173,6 +187,54 @@ static unsigned block_tile(const Preview *p, unsigned block, int x, int y) {
   return word(p->definitions+(block&1023)*8+(qy*2+qx)*2)^((block&0xc00)<<4);
 }
 static int parallax(int camera, unsigned rate) { return rate ? rate==1 ? 0 : camera*(int)(rate&254)/256 : camera; }
+static unsigned image_tile(const SmRoomImage *p,unsigned block,int x,int y) {
+  unsigned qx=((x/8)&1)^((block>>10)&1), qy=((y/8)&1)^((block>>11)&1);
+  return word(p->ram+0xa000+(block&1023)*8+(qy*2+qx)*2)^((block&0xc00)<<4);
+}
+static unsigned image_pixel(const SmRoomImage *p,unsigned tile,int x,int y,unsigned base,unsigned bpp) {
+  unsigned tx=(x&7)^((tile&0x4000) ? 7 : 0), ty=(y&7)^((tile&0x8000) ? 7 : 0);
+  unsigned a=(base+(tile&1023)*bpp*8+ty*2)&65535, shift=7-tx;
+  unsigned pixel=((p->vram[a]>>shift)&1) | (((p->vram[(a+1)&65535]>>shift)&1)<<1);
+  if (bpp==4) pixel|=(((p->vram[(a+16)&65535]>>shift)&1)<<2) | (((p->vram[(a+17)&65535]>>shift)&1)<<3);
+  return pixel;
+}
+bool SmRoomSceneSample(const SmRoomImage *p,int x,int y,int view_x,int view_y,uint16_t layers[3]) {
+  if (!p || !layers) return false;
+  const SmRoomPlacement *v=&p->placement;
+  int lx=x-v->x, ly=y-v->y;
+  unsigned w=word(p->ram+0x7a5),h=word(p->ram+0x7a7);
+  if (!w || !h || (uint64_t)w*h>0x3200 || lx<0 || ly<0 || lx>=(int)w*16 || ly>=(int)h*16 ||
+      x<v->left || x>=v->right || y<v->top || y>=v->bottom) return false;
+  unsigned block=word(p->ram+0x10002+2*((ly/16)*w+lx/16));
+  if (block==0x83ff) return false;
+  memset(layers,0,3*sizeof(*layers));
+  unsigned tile=image_tile(p,block,lx,ly), pixel=image_pixel(p,tile,lx,ly,0,4);
+  if (pixel) layers[0]=(uint16_t)(((tile&0x2000 ? 12 : 8)<<12) | (((tile>>10)&7)*16+pixel));
+  int cx=view_x-v->x,cy=view_y-v->y;
+  int bx=lx-cx+parallax(cx,p->ram[0x91b]),by=ly-cy+parallax(cy,p->ram[0x91c]);
+  bool valid=true;
+  if (!(p->ram[0x91b]&1)) {
+    valid=bx>=0 && by>=0 && bx<(int)w*16 && by<(int)h*16;
+    if (valid) tile=image_tile(p,word(p->ram+0x19602+2*((by/16)*w+bx/16)),bx,by);
+  } else {
+    unsigned tx=((unsigned)bx/8)&63,ty=((unsigned)by/8)&31;
+    tile=word(p->vram+0x9000+2*((tx&31)+ty*32+(tx>=32 ? 1024 : 0)));
+  }
+  pixel=valid ? image_pixel(p,tile,bx,by,0,4) : 0;
+  if (pixel) layers[1]=(uint16_t)(((tile&0x2000 ? 11 : 7)<<12) | 0x100 | (((tile>>10)&7)*16+pixel));
+  unsigned type=word(p->ram+0x196e);
+  if (type==2 || type==4 || type==6) {
+    int surface=(int16_t)word(p->ram+(type==6 ? 0x195e : 0x1962));
+    if (surface>=0 && ly>=surface-8) {
+      unsigned fy=ly<surface ? 248u+(unsigned)(ly-surface+8) : 256u+((unsigned)(ly-surface)&255);
+      unsigned tx=((unsigned)lx/8)&31,ty=fy/8;
+      tile=word(p->vram+0xb000+2*(tx+(ty&31)*32+(ty>=32 ? 1024 : 0)));
+      pixel=image_pixel(p,tile,lx,(int)fy,(p->ram[0x5e]&15)*8192,2);
+      if (pixel) layers[2]=(uint16_t)(((tile&0x2000 ? 3 : 1)<<12) | 0x200 | (((tile>>10)&7)*4+pixel));
+    }
+  }
+  return true;
+}
 bool SmRoomPreviewPixel(int x, int y, uint16_t *color) {
   return SmRoomPreviewPixelAt(x,y,camera_x,camera_y,color);
 }

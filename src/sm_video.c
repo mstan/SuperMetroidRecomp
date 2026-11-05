@@ -16,7 +16,8 @@ static const char *const aspect_names[] = {"4:3", "16:9", "21:9", "32:9", "Fit"}
 SmVideoSettings g_sm_video;
 
 void SmVideoDefaults(SmVideoSettings *s) {
-  *s = (SmVideoSettings){.enhanced = true, .aspect = SM_ASPECT_FIT, .hud_anchored = true};
+  *s = (SmVideoSettings){.enhanced = true, .aspect = SM_ASPECT_FIT, .hud_anchored = true,
+      .neighboring_logic = true, .seamless = true};
 }
 
 const char *SmAspectName(SmAspect aspect) {
@@ -88,6 +89,12 @@ bool SmVideoLoad(SmVideoSettings *s, const char *path) {
     } else if (!strcmp(key, "HudAnchored")) {
       if (!strcmp(value, "0") || !strcmp(value, "1")) s->hud_anchored = value[0] == '1';
       else valid = false;
+    } else if (!strcmp(key, "NeighboringRoomLogic")) {
+      if (!strcmp(value,"0") || !strcmp(value,"1")) s->neighboring_logic=value[0]=='1';
+      else valid=false;
+    } else if (!strcmp(key, "SeamlessRooms")) {
+      if (!strcmp(value,"0") || !strcmp(value,"1")) s->seamless=value[0]=='1';
+      else valid=false;
     } else if (!strcmp(key, "Aspect")) {
       if (!SmParseAspect(value, &s->aspect)) valid = false;
     } else if (!strcmp(key, "PresentationFPS")) {
@@ -107,8 +114,9 @@ bool SmVideoSave(const SmVideoSettings *s, const char *path) {
   if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return false;
   FILE *f = fopen(temporary, "w");
   if (!f) return false;
-  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\n",
-                    s->enhanced, SmAspectName(s->aspect), s->fps_enabled, s->fps, s->hud_anchored) > 0;
+  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\n",
+                    s->enhanced, SmAspectName(s->aspect), s->fps_enabled, s->fps, s->hud_anchored,
+                    s->neighboring_logic,s->seamless) > 0;
   if (fclose(f)) ok = false;
   if (ok) {
 #ifdef _WIN32

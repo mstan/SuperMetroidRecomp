@@ -1,4 +1,5 @@
 #include "sm_room_runtime.h"
+#include "sm_activity.h"
 #include "snes/interp816.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,9 @@ struct SmRoomRuntime {
   uint8_t vram[65536];
   uint8_t ppu_registers[0x34], dma_registers[128];
   uint16_t product, quotient, remainder;
+  uint16_t population, tileset;
+  uint8_t population_data[32*16+3], tileset_data[32*4+2];
+  bool actors;
   char error[128];
 };
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
@@ -31,7 +35,14 @@ static void fail(SmRoomRuntime *r, const char *kind, uint32_t a) {
 static uint8_t read_bus(void *context, uint32_t a) {
   SmRoomRuntime *r=context; int off=ram_offset(a);
   if (off>=0) return r->ram[off];
-  if (a&0x8000) return r->read(r->context,a);
+  if (a&0x8000) {
+    uint32_t key=a&0x7fffff;
+    if (r->population && key>=0x210000u+r->population && key-0x210000u-r->population<sizeof(r->population_data))
+      return r->population_data[key-0x210000u-r->population];
+    if (r->tileset && key>=0x340000u+r->tileset && key-0x340000u-r->tileset<sizeof(r->tileset_data))
+      return r->tileset_data[key-0x340000u-r->tileset];
+    return r->read(r->context,a);
+  }
   unsigned lo=a&65535;
   if (!((a>>16)&0x40)) {
     if (lo>=0x4300 && lo<0x4380) return r->dma_registers[lo-0x4300];
@@ -89,24 +100,35 @@ static uint32_t ram_long(SmRoomRuntime *r,unsigned a) {
 }
 SmRoomRuntime *SmRoomRuntimeCreate(SmWorldRead read, void *context,
     const SmWorldRoom *room, uint16_t state, const uint8_t active[0x20000]) {
+  return SmRoomRuntimeCreateConfigured(read,context,room,state,0,active,true);
+}
+SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
+    const SmWorldRoom *room, uint16_t state, uint16_t incoming,
+    const uint8_t active[0x20000], bool actors) {
   if (!read || !room || !state || !active) return NULL;
   SmRoomRuntime *r=calloc(1,sizeof(*r)); if (!r) return NULL;
-  r->read=read; r->context=context;
+  r->read=read; r->context=context; r->actors=actors;
   memcpy(r->ram,active,sizeof(r->ram));
+  memset(r->ram+0x10000,0,0x10000);
   /* Room-local actors, projectiles, PLMs, FX and sprite submissions cannot
    * inherit the active room's occupants. Keep equipment/progression globals. */
   memset(r->ram+0xc0c,0,0x2000-0xc0c);
   memset(r->ram+0x370,0,0x400);
   memset(r->ram+0x619,0,0x24);
+  r->ram[0x52]=3; r->ram[0x55]=1; r->ram[0x5d]=0; r->ram[0x5e]=2;
   r->cpu=interp816_init(r,read_bus,write_bus);
   if (!r->cpu) { free(r); return NULL; }
   r->cpu->db=0x7e; r->cpu->i=true;
   interp816_set_brk_hook_enabled(r->cpu,false);
   put(r,0x79b,room->header); put(r,0x7bb,state); put(r,0x79f,room->area);
+  put(r,0x78d,incoming);
   put(r,0x7a5,room->width*16); put(r,0x7a7,room->height*16);
   put(r,0x7a9,room->width); put(r,0x7ab,room->height);
   put(r,0x7b9,room->width*room->height*256);
   if (!call(r,0x82def2,2)) return r;
+  for (unsigned i=0; i<512; ++i) r->ram[0xc200+i]=read(context,0x9a8000u+i);
+  for (unsigned i=0; i<0x2000; ++i) r->vram[0x8000+i]=read(context,0x9ab200u+i);
+  for (unsigned i=0; i<0x2e00; ++i) r->vram[0xc000+i]=read(context,0x9ad200u+i);
   if (!SmWorldUnpack(read,context,0xb9a09d,r->ram+0xa000,2048) ||
       !SmWorldUnpack(read,context,ram_long(r,0x7c0),r->ram+0xa800,6144) ||
       !SmWorldUnpack(read,context,ram_long(r,0x7c6),r->ram+0xc200,512) ||
@@ -126,16 +148,31 @@ SmRoomRuntime *SmRoomRuntimeCreate(SmWorldRead read, void *context,
   memcpy(r->ram+0x10000,level,2+n);
   memcpy(r->ram+0x16402,level+2+n,n/2);
   if (2u+2*n+n/2<=bytes) memcpy(r->ram+0x19602,level+2+n+n/2,n);
-  /* Boss initialization can arm encounters or script-only enemies. Until
-   * entry, retain their scenery and leave their native encounter dormant. */
-  unsigned population=word(r->ram+0x7cf);
+  memcpy(r->ram+0xc000,r->ram+0xc200,512);
+  if (!actors) return r;
+  /* Ordinary populations retain the cartridge's complete initialization.
+   * Boss definitions stay dormant individually; they must not suppress other
+   * residents or visual effects in the same room. Filtering is local to this
+   * interpreter bus and never patches the ROM or active machine. */
+  r->population=(uint16_t)word(r->ram+0x7cf); r->tileset=(uint16_t)word(r->ram+0x7d1);
+  memset(r->population_data,255,sizeof(r->population_data)); memset(r->tileset_data,255,sizeof(r->tileset_data));
+  unsigned used=0;
   for (unsigned i=0; i<32; ++i) {
-    unsigned id=read(context,0xa10000u+population+16*i) |
-        read(context,0xa10001u+population+16*i)<<8;
+    uint32_t a=0xa10000u+r->population+16*i;
+    unsigned id=read(context,a) | read(context,a+1)<<8;
     if (id==65535) break;
-    if (read(context,0xa00010u+id) || read(context,0xa00011u+id)) {
-      fail(r,"entry-only boss population",room->header); return r;
-    }
+    if (read(context,0xa00010u+id) || read(context,0xa00011u+id)) continue;
+    for (unsigned j=0; j<16; ++j) r->population_data[used*16+j]=read(context,a+j);
+    ++used;
+  }
+  unsigned tiles=0;
+  for (unsigned i=0; i<32 && r->tileset; ++i) {
+    uint32_t a=0xb40000u+r->tileset+4*i;
+    unsigned id=read(context,a) | read(context,a+1)<<8;
+    if (id==65535) break;
+    if (read(context,0xa00010u+id) || read(context,0xa00011u+id)) continue;
+    for (unsigned j=0; j<4; ++j) r->tileset_data[tiles*4+j]=read(context,a+j);
+    ++tiles;
   }
   put(r,0xe1c,65535); put(r,0xe12,1); /* no active-player collision in the isolated probe */
   if (!call(r,0xa08a1e,3)) return r;
@@ -148,13 +185,22 @@ void SmRoomRuntimeDestroy(SmRoomRuntime *r) {
   if (r) { interp816_free(r->cpu); free(r); }
 }
 bool SmRoomRuntimeStep(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y) {
+  return SmRoomRuntimeStepVisible(r,samus_x,samus_y,camera_x,camera_y,0);
+}
+bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y, unsigned extra) {
   if (!r || r->error[0]) return false;
   put(r,0xaf6,samus_x); put(r,0xafa,samus_y);
   put(r,0x911,camera_x); put(r,0x915,camera_y);
-  return call(r,0xa08eb6,3) && call(r,0xa08fd4,3);
+  if (!r->actors) return true;
+  if (!call(r,0xa08eb6,3) || !SmActivityAugmentQueues(r->ram,extra)) return false;
+  return call(r,0xa08fd4,3) && call(r,0x868104,3);
+}
+void SmRoomRuntimeBackground(SmRoomRuntime *r, const uint8_t vram[65536]) {
+  if (r && vram) memcpy(r->vram+0x8000,vram+0x8000,0x37c0);
 }
 bool SmRoomRuntimeStepEffects(SmRoomRuntime *r) {
   if (!r || r->error[0]) return false;
+  if (!r->actors && !call(r,0x868104,3)) return false;
   if (!call(r,0x878064,3) || !call(r,0x8dc527,3) || !call(r,0x8884b9,3)) return false;
   /* Publish the native animated-tile requests into this room's private
    * VRAM. The active machine's NMI and DMA queues are never involved. */
@@ -182,7 +228,7 @@ const char *SmRoomRuntimeError(const SmRoomRuntime *r) { return r ? r->error : "
 typedef struct RoomState {
   uint32_t magic, version;
   uint16_t room, state, a, x, y, sp, pc, dp, product, quotient, remainder;
-  uint8_t bank, db, flags, emulation;
+  uint8_t bank, db, flags, emulation, actors;
   uint8_t ram[0x20000], vram[65536], math[8], ppu[0x34], dma[128];
 } RoomState;
 size_t SmRoomRuntimeStateSize(void) { return sizeof(RoomState); }
@@ -191,7 +237,7 @@ bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
       r->cpu->sp!=0x1fff || r->cpu->pc!=0xff00) return false;
   RoomState *s=calloc(1,sizeof(*s)); if (!s) return false;
   const Interp816 *c=r->cpu;
-  s->magic=0x534d5253; s->version=1;
+  s->magic=0x534d5253; s->version=2; s->actors=r->actors;
   s->room=(uint16_t)word(r->ram+0x79b); s->state=(uint16_t)word(r->ram+0x7bb);
   s->a=c->a; s->x=c->x; s->y=c->y; s->sp=c->sp; s->pc=c->pc; s->dp=c->dp;
   s->bank=c->k; s->db=c->db; s->emulation=c->e;
@@ -202,14 +248,20 @@ bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
   memcpy(s->ppu,r->ppu_registers,sizeof(s->ppu)); memcpy(s->dma,r->dma_registers,sizeof(s->dma));
   memcpy(out,s,sizeof(*s)); free(s); return true;
 }
-bool SmRoomRuntimeLoad(SmRoomRuntime *r, const void *in, size_t size) {
-  if (!r || !in || size!=sizeof(RoomState)) return false;
+bool SmRoomRuntimeValidate(const void *in, size_t size, uint16_t room, uint16_t state, bool actors) {
+  if (!in || size!=sizeof(RoomState)) return false;
   RoomState *s=malloc(sizeof(*s)); if (!s) return false;
   memcpy(s,in,sizeof(*s));
-  if (s->magic!=0x534d5253 || s->version!=1 || s->sp!=0x1fff || s->pc!=0xff00 ||
+  bool ok=!(s->magic!=0x534d5253 || s->version!=2 || s->actors!=actors || s->sp!=0x1fff || s->pc!=0xff00 ||
       s->emulation>1 || (s->emulation && (s->flags&0x30)!=0x30) ||
-      s->room!=word(r->ram+0x79b) || s->state!=word(r->ram+0x7bb) ||
-      s->room!=word(s->ram+0x79b) || s->state!=word(s->ram+0x7bb)) { free(s); return false; }
+      s->room!=room || s->state!=state ||
+      s->room!=word(s->ram+0x79b) || s->state!=word(s->ram+0x7bb));
+  free(s); return ok;
+}
+bool SmRoomRuntimeLoad(SmRoomRuntime *r, const void *in, size_t size) {
+  if (!r || !SmRoomRuntimeValidate(in,size,(uint16_t)word(r->ram+0x79b),(uint16_t)word(r->ram+0x7bb),r->actors)) return false;
+  RoomState *s=malloc(sizeof(*s)); if (!s) return false;
+  memcpy(s,in,sizeof(*s));
   Interp816 *c=r->cpu;
   c->a=s->a; c->x=s->x; c->y=s->y; c->sp=s->sp; c->pc=s->pc; c->dp=s->dp;
   c->k=s->bank; c->db=s->db; c->e=s->emulation!=0;

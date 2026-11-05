@@ -16,7 +16,8 @@ face and synchronize both sides while respecting ammunition and locks.
 On permits ordinary enemy simulation and real combat across open connections;
 walls and closed doors block interaction. Bosses, progression scripts,
 cutscenes and encounter locks retain normal room-entry triggers. Preserve
-native room transitions and native saves. Current-build save/load, rewind,
+native saves. Continuous camera/world traversal is now the requested default;
+retain the native door transition as an option (owner clarification 2026-11-05). Current-build save/load, rewind,
 rollback, replay and netplay must include resident simulation state/settings.
 Old save-state migration is unnecessary.
 
@@ -65,36 +66,63 @@ This request supersedes deliberate secret/arena concealment in prior feedback.
   four aspect renders have zero native gameplay pixel differences, and the
   32:9 image was inspected with actual terrain and neighboring scenery.
 
+## Live resident integration (2026-11-05)
+
+The native resident runtime is connected to frame boundaries and publishes
+immutable, room-owned RAM, VRAM, palettes, ordinary enemies and environmental
+projectiles. Neighboring room logic defaults On; Off suppresses ordinary actor
+initialization/update while native FX, palette animation and animated tiles
+continue. Effective settings latch on room entry, including same-room loads.
+Primary boss definitions are filtered from pre-entry populations individually.
+Entry-only encounters still require broader live qualification.
+
+- Real unloaded-room $93AA beside Landing Site: On contains three native
+  enemies; Off contains none. Actual 32:9 terrain, liquid and sprites were
+  inspected. Both captured native gameplay centers match (0/49,152 pixels).
+- The private compositor uses pending gameplay color-math registers rather
+  than HUD hardware mirrors, fixing black neighboring terrain. Portal bounds
+  no longer depend on the viewport used when a room was loaded.
+- Whole-manager On/Off probes each advance 60 native ticks and restore the
+  exact next serialized state, without writing active RAM. Native lava
+  animation advances with logic Off. Truncated snapshots are rejected.
+- Current-build execution/file snapshots include residents; renderer capture
+  v3 owns the complete room scene. The renderer test destroys/mutates the
+  producer immediately and verifies capture restoration and Off liquid pixels.
+- Replay v4 records and checks a separate complete resident-state checksum.
+  Real resident-bearing gameplay recording, save/load discontinuity and
+  headless playback match all native and resident checkpoints (106 executions).
+  Fresh-boot recording/playback also matches 516 executions. Existing shared
+  trap diagnostics remain present and are not counted as feature regressions.
+- Network activity profile v2 freezes enhanced mode, neighbor logic and
+  transition choice with viewport width. Actual two-peer qualification and
+  net-enabled compilation remain outstanding.
+- All 28 CTests pass with this integration, including all renderer variants,
+  persistent options, immutable publication/capture and replay parsing.
+
 ## Outstanding implementation and qualification
 
-The runtime prototype is **not connected to live gameplay**. There is no
-shipping neighbor-logic toggle yet. Do not describe this branch as complete or
-release it as the requested feature.
+**Not release ready.** The Continuous/Native choice is persisted, but actual
+continuous handoff is the next implementation step; it must not be represented
+as completed merely because its menu control exists.
 
-1. Connect resident lifetime/update/publication to simulation boundaries,
-   preserving immutable renderer inputs. Publish native actor graphics and
-   native animated FX into each room's own rendering resources. Initialize
-   palette/graphics, collision and PLMs from the destination room; do not
-   inherit active-room visual or script residue.
-2. Implement paired door ownership, native shot requirements, both-face hit
-   detection, shared animation/unlock state and native transition handoff.
-3. Implement cross-open-door combat, projectile/actor state handoff and native
-   respawn rules without duplicated actors, hits or rewards. Qualify ordinary
-   AI populations and preserve entry-only encounters/scripts.
-4. Add the real default-On persisted option to the built-in Widescreen
-   provider. Apply on room load. Off must preserve working FX and doors.
-5. Include resident lifetime/state and effective setting in the game's
-   current-build snapshot/rollback/replay/netplay contracts. The prototype's
-   pointer-free resident serializer is only a component of that work.
-6. Complete foreground/hatch continuation, dynamic PLM/item/door visuals,
-   transition motion, liquids, intermediate high-FPS frames, all aspects/Fit
-   resizing and both HUD anchors. The former no-preview room `$A641` is
-   resolved: its Kraid-room destination overlaps authored allocation, requiring
-   clipping at the door plane rather than rejection of the destination.
-7. Complete built runtime, meaningful regression, persistence and matched
-   performance gates. Prepare a compact owner review with normal audio in
-   a normal window. After acceptance, release through the established channel,
-   verify packages, and replace the superseded delivery ZIP only then.
+1. Implement continuous world/camera traversal and active/resident ownership
+   handoff, preserving motion, actors, projectiles, collision, FX and room-entry
+   scripts. Retain the native transition option; elevators/warps need appropriate
+   native behavior. Prevent actor reinitialization/pop when entering a resident.
+2. Implement paired native door PLMs, both-face valid-shot hit detection and
+   shared unlock/animation. Retain ammunition, lock and progression rules.
+3. Implement cross-open-door combat and projectile/actor transfer without
+   duplicated hits/rewards. Walls and closed doors must block interaction.
+4. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
+   qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
+   Fit resizing and both HUD anchors.
+5. Extend the disconnected Ceres room graph/tileset decoding. The earlier
+   255/255 result covers the currently indexed Zebes graph, not all Ceres rooms.
+6. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
+   determinism, representative native gameplay and matched runtime performance.
+7. Prepare a compact owner review with normal audio in a normal window, then
+   release via the established channel only after required acceptance. Verify
+   the replacement before removing the superseded delivery ZIP.
 
 ## Local evidence and retained work
 
@@ -106,6 +134,11 @@ and the candidate game build. `first-preview.bmp` is the inspected offline
 `baseline-live-scenery` retain matched gameplay state/diagnostic evidence.
 Capacity records and exact build jobs are beside `source/`.
 These are retained for continuing this feature, not delivered release files.
+Additional evidence: `neighbor-enemy-settled-on/` and `-off/` contain actual
+32:9 captures, typed resident data and zero-native-center comparison logs.
+`resident-replay-visible/` and `resident-replay-visible-playback/` retain the
+populated-room recording and successful reproduction; `resident-replay/` and
+`resident-replay-playback/` retain fresh-boot replay coverage.
 No player save, settings, release archive or running playtest was replaced.
 The two standalone prototype EXEs were removed after the CMake-built probes
 superseded them. Retained build/capture directories are needed for continuing

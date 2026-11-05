@@ -4,6 +4,7 @@
 #include "sm_pause_options.h"
 #include "sm_replay.h"
 #include "sm_activity.h"
+#include "sm_rooms.h"
 #include "mods/sm_return_to_title_plugin.h"
 #include "variables.h"
 #include "common_cpu_infra.h"
@@ -94,8 +95,8 @@ static int sm_rtl_diag_enabled(void) {
  * pointer-free execution residue, never a serialized host fiber or C stack.
  * No host stack or pointer is part of a file snapshot. */
 #define SM_FILE_STATE_MAGIC 0x534D4653u  /* SMFS */
-#define SM_FILE_STATE_VERSION 5u
-static uint32_t g_loaded_file_state[8];
+#define SM_FILE_STATE_VERSION 6u
+static uint32_t g_loaded_file_state[9];
 static uint32_t g_loaded_pause_options;
 static uint32_t g_loaded_quit_state;
 static bool g_loaded_file_state_valid;
@@ -110,6 +111,7 @@ void SmHardwareReset(void) {
   counter_global_frames = 0;
   g_loaded_file_state_valid = false;
   SmPauseOptions_SetActive(false);
+  SmRoomsReset();
 }
 
 const char *SmSnapshotIdentity(void) {
@@ -124,7 +126,7 @@ const char *SmSnapshotIdentity(void) {
  * extension before the common loader writes any guest bytes as well. The
  * canonical SM cartridge has no Cx4 execution-clock suffix. */
 bool SmSnapshotPreflight(const void *data, size_t size) {
-  uint32_t version, header[8], stream_version, execution_size, pause_options, quit_state;
+  uint32_t version, header[9], stream_version, execution_size, pause_options, quit_state;
   size_t guest = RtlSnapshotGuestSize(&version);
   if (!data || size < 8 || !guest || guest > size || size - guest < sizeof(header) + 12)
     return false;
@@ -132,22 +134,27 @@ bool SmSnapshotPreflight(const void *data, size_t size) {
   memcpy(header, (const uint8_t *)data + guest, sizeof(header));
   if (stream_version != version || header[0] != SM_FILE_STATE_MAGIC || header[1] != SM_FILE_STATE_VERSION ||
       header[2] > 0xFFFFFFu || header[3] > 1 || header[4] > 1 ||
-      header[6] != SmSpcPlayer_StateSize() || !SmActivityExtraValid(header[7])) return false;
+      header[6] != SmSpcPlayer_StateSize() || !SmActivityExtraValid(header[7]) || header[8]>SmRoomsStateBound()) return false;
   memcpy(&pause_options, (const uint8_t *)data + guest + sizeof(header), 4);
   if (pause_options > 1) return false;
   memcpy(&quit_state, (const uint8_t *)data + guest + sizeof(header) + 4, 4);
   if (!SmQuitFileSelectStateValid(quit_state)) return false;
   memcpy(&execution_size, (const uint8_t *)data + guest + sizeof(header) + 8, 4);
   size_t tail = size - guest - sizeof(header) - 12;
-  return execution_size >= 8 && execution_size <= tail &&
-      tail - execution_size == header[6];
+  return execution_size >= 8 && execution_size <= tail && header[6]<=tail-execution_size &&
+      tail-execution_size-header[6]==header[8] &&
+      SmRoomsValidate((const uint8_t *)data+size-header[8],header[8]);
 }
 
 void SmStateSaveExtra(struct SaveLoadInfo *sli) {
-  uint32_t header[8] = {
+  size_t rooms_capacity=SmRoomsStateBound();
+  void *rooms=malloc(rooms_capacity);
+  size_t rooms_bytes=rooms ? SmRoomsSave(rooms,rooms_capacity) : 0;
+  if (!rooms_bytes) { free(rooms); RtlStateStreamFail(sli); return; }
+  uint32_t header[9] = {
     SM_FILE_STATE_MAGIC, SM_FILE_STATE_VERSION, g_lle_resume_pc,
     g_game_started ? 1u : 0u, g_game_done ? 1u : 0u,
-    counter_global_frames, (uint32_t)SmSpcPlayer_StateSize(), SmActivityExtra()
+    counter_global_frames, (uint32_t)SmSpcPlayer_StateSize(), SmActivityExtra(), (uint32_t)rooms_bytes
   };
   sli->func(sli, header, sizeof(header));
   uint32_t pause_options = SmPauseOptions_IsActive() ? 1u : 0u;
@@ -157,13 +164,14 @@ void SmStateSaveExtra(struct SaveLoadInfo *sli) {
   RtlSaveExecutionState(sli);
   if (header[6]) {
     void *spc = malloc(header[6]);
-    if (!spc) { RtlStateStreamFail(sli); return; }
+    if (!spc) { free(rooms); RtlStateStreamFail(sli); return; }
     if (SmSpcPlayer_SaveState(spc, header[6]) != header[6]) {
-      free(spc); RtlStateStreamFail(sli); return;
+      free(spc); free(rooms); RtlStateStreamFail(sli); return;
     }
     sli->func(sli, spc, header[6]);
     free(spc);
   }
+  sli->func(sli,rooms,rooms_bytes); free(rooms);
 }
 
 void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
@@ -172,7 +180,7 @@ void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
   sli->func(sli, g_loaded_file_state, sizeof(g_loaded_file_state));
   const uint32_t *h = g_loaded_file_state;
   if (h[0] != SM_FILE_STATE_MAGIC || h[1] != SM_FILE_STATE_VERSION || h[2] > 0xFFFFFFu ||
-      h[3] > 1 || h[4] > 1 || h[6] != SmSpcPlayer_StateSize() || !SmActivityExtraValid(h[7])) {
+      h[3] > 1 || h[4] > 1 || h[6] != SmSpcPlayer_StateSize() || !SmActivityExtraValid(h[7]) || h[8]>SmRoomsStateBound()) {
     fprintf(stderr, "[sm_state] unrecognized execution-state extension\n");
     RtlStateStreamFail(sli);
     return;
@@ -194,6 +202,11 @@ void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
     free(spc);
     if (!ok) { RtlStateStreamFail(sli); return; }
   }
+  void *rooms=malloc(h[8]);
+  if (!rooms) { RtlStateStreamFail(sli); return; }
+  sli->func(sli,rooms,h[8]);
+  bool ok=SmRoomsLoad(rooms,h[8]); free(rooms);
+  if (!ok) { RtlStateStreamFail(sli); return; }
   g_loaded_file_state_valid = true;
 }
 
@@ -226,12 +239,13 @@ typedef struct SmExecHeader {
   uint8_t started, done, pause_options, selected_row;
   uint16_t activity_extra;
   uint8_t quit_state;
+  uint32_t rooms_bytes;
 } SmExecHeader;
 #define SM_EXEC_MAGIC 0x534D4558u
-#define SM_EXEC_VERSION 6u
+#define SM_EXEC_VERSION 7u
 
 size_t SmExecStateBound(void) {
-  return sizeof(SmExecHeader) + SmSpcPlayer_StateSize();
+  return sizeof(SmExecHeader) + SmSpcPlayer_StateSize() + SmRoomsStateBound();
 }
 
 size_t SmExecStateSave(void *out, size_t capacity) {
@@ -250,8 +264,11 @@ size_t SmExecStateSave(void *out, size_t capacity) {
   hdr.spc_bytes = (uint32_t)SmSpcPlayer_SaveState(
       (uint8_t *)out + sizeof(hdr), capacity - sizeof(hdr));
   if (hdr.spc_bytes != SmSpcPlayer_StateSize()) return 0;
+  hdr.rooms_bytes=(uint32_t)SmRoomsSave((uint8_t *)out+sizeof(hdr)+hdr.spc_bytes,
+      capacity-sizeof(hdr)-hdr.spc_bytes);
+  if (!hdr.rooms_bytes) return 0;
   memcpy(out, &hdr, sizeof(hdr));
-  return sizeof(hdr) + hdr.spc_bytes;
+  return sizeof(hdr) + hdr.spc_bytes + hdr.rooms_bytes;
 }
 
 int SmExecStateLoad(const void *in, size_t size) {
@@ -265,9 +282,12 @@ int SmExecStateLoad(const void *in, size_t size) {
       !SmActivityExtraValid(hdr.activity_extra) ||
       !SmQuitFileSelectStateValid(hdr.quit_state) ||
       hdr.spc_bytes != SmSpcPlayer_StateSize() ||
-      size - sizeof(hdr) < hdr.spc_bytes) return 0;
+      size - sizeof(hdr) < hdr.spc_bytes || hdr.rooms_bytes>SmRoomsStateBound() ||
+      size-sizeof(hdr)-hdr.spc_bytes!=hdr.rooms_bytes ||
+      !SmRoomsValidate((const uint8_t *)in+sizeof(hdr)+hdr.spc_bytes,hdr.rooms_bytes)) return 0;
   if (hdr.spc_bytes && !SmSpcPlayer_LoadState(
           (const uint8_t *)in + sizeof(hdr), hdr.spc_bytes)) return 0;
+  if (!SmRoomsLoad((const uint8_t *)in+sizeof(hdr)+hdr.spc_bytes,hdr.rooms_bytes)) return 0;
   g_lle_resume_pc = hdr.resume_pc;
   counter_global_frames = hdr.frames;
   SmActivityRestore(hdr.activity_extra);

@@ -449,6 +449,42 @@ static void arena_exposure(void) {
   ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
 }
 
+static void resident_publication(const char *path) {
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+  word(0x998,8); word(0x79b,0x91f8); word(0x7a5,16); word(0x7a7,16);
+  ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1; ppu.screenEnabled[0]=1; ppu.cgram[1]=31;
+  for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
+  *scene=(SmRoomScene){.version=1,.count=1,.root=0x91f8,.logic=0};
+  SmRoomImage *image=&scene->rooms[0];
+  image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+      .left=256,.top=0,.right=512,.bottom=256};
+  uint8_t *r=image->ram;
+  r[0x7a5]=r[0x7a7]=16; r[0xc003]=0x7c; r[0xc00a]=0xe0; r[0xc00b]=3;
+  r[0x69]=17; r[0x6b]=4; r[0x6e]=2; r[0x71]=65;
+  r[0x196e]=2; r[0x1962]=80; r[0x5e]=2;
+  for (unsigned y=0; y<8; ++y) { image->vram[2*y]=255; image->vram[0x4000+2*y]=255; }
+  for (unsigned a=0xb800; a<0xc000; a+=2) image->vram[a+1]=4;
+  assert(SmRendererLatchRooms(scene));
+  r[0xc003]=0; r[0xc002]=31; /* The producer can reuse its publication immediately. */
+  free(scene);
+  BeginFixtureFrame(ram,1);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock));
+  SmViewport view={342,43,16.0/9,true};
+  assert(SmRendererDraw(output,view,false,1));
+  assert(output[100*view.width+view.extra+128]==0xff0000);
+  assert(output[60*view.width+view.extra+260]==0x0000ff);
+  assert(output[100*view.width+view.extra+260]==0x007b7b); /* Off still presents native liquid color math. */
+  size_t bytes=(size_t)view.width*224*sizeof(*output);
+  uint32_t *expected=malloc(bytes); assert(expected); memcpy(expected,output,bytes);
+  assert(SmRendererSaveCapture(path)); ResetFixtureRenderer();
+  assert(SmRendererLoadCapture(path) && SmRendererDraw(output,view,false,1));
+  assert(!memcmp(expected,output,bytes));
+  free(expected); assert(!remove(path)); ResetFixtureRenderer();
+}
+
 static void eye_beam_margins(void) {
   const SmViewport view = {342, 43, 16.0 / 9, true};
   for (unsigned fault = 0; fault < 7; ++fault) {
@@ -831,6 +867,7 @@ int main(int argc, char **argv) {
   shared_hud_liquid_map();
   mother_brain_beam_margins();
   arena_exposure();
+  resident_publication(argv[1]);
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();

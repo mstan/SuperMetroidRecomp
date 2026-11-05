@@ -62,5 +62,16 @@ int main(int argc,char **argv) {
   assert(!memcmp(continued,repeated,bytes));
   puts("resident save/restore continuation matches exactly; truncated input rejected");
   free(snapshot); free(continued); free(repeated);
+  SmRoomRuntime *visual=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,active,false); assert(visual && !*SmRoomRuntimeError(visual));
+  uint8_t visual_start[65536]; memcpy(visual_start,SmRoomRuntimeVram(visual),sizeof(visual_start));
+  for (unsigned frame=0; frame<60; ++frame) {
+    assert(SmRoomRuntimeStepVisible(visual,x+64,y,x-64,y-64,213));
+    assert(SmRoomRuntimeStepEffects(visual));
+  }
+  const uint8_t *visual_ram=SmRoomRuntimeRam(visual);
+  for (unsigned slot=0; slot<32; ++slot) assert(!visual_ram[0xf78+64*slot] && !visual_ram[0xf79+64*slot]);
+  if (visual_ram[0x196e]==2 || visual_ram[0x196e]==4) assert(memcmp(visual_start,SmRoomRuntimeVram(visual),sizeof(visual_start)));
+  puts("logic Off: no enemies spawned; environmental effects continue");
+  SmRoomRuntimeDestroy(visual);
   SmRoomRuntimeDestroy(r); SmRoomRuntimeDestroy(twin); free(world); free(rom); return 0;
 }

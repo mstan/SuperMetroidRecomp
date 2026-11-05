@@ -4,6 +4,7 @@
  */
 #include "sm_replay.h"
 #include "sm_activity.h"
+#include "sm_rooms.h"
 #include "sm_video.h"
 #include "diagnostics/replay_writer.h"
 #include "common_rtl.h"
@@ -49,7 +50,7 @@
 #endif
 
 enum { SEGMENT_FRAMES=600, SEGMENTS=360, STATE_LIMIT=16*1024*1024,
-       HISTORY_LIMIT=256*1024*1024, SNAPSHOT_LIMIT=2*1024*1024 };
+       HISTORY_LIMIT=256*1024*1024, SNAPSHOT_LIMIT=8*1024*1024 };
 static bool playing, finished, failed, pending, recording, loaded;
 static bool awaiting_render, incomplete_render;
 static SnesReplayWriter *writer;
@@ -62,6 +63,9 @@ static uint64_t generation, load_sequence, recorded_load_sequence;
 static size_t segment_bytes, history_bytes, history_sizes[SEGMENTS];
 static void *snapshot;
 static size_t snapshot_capacity;
+static void *room_hash_buffer;
+static size_t room_hash_capacity;
+static bool playback_rooms;
 static uint32_t rom_identity;
 extern Snes *g_snes;
 extern uint8_t g_ram[0x20000];
@@ -72,6 +76,16 @@ static uint32_t hash(const void *data,size_t size) {
   const uint8_t *p=data;
   while(size--) h=(h^*p++)*16777619u;
   return h;
+}
+static bool resident_hash(uint32_t *out) {
+  size_t bound=SmRoomsStateBound();
+  if (room_hash_capacity<bound) {
+    void *next=realloc(room_hash_buffer,bound); if (!next) return false;
+    room_hash_buffer=next; room_hash_capacity=bound;
+  }
+  size_t size=SmRoomsSave(room_hash_buffer,room_hash_capacity);
+  if (!size) return false;
+  *out=hash(room_hash_buffer,size); return true;
 }
 /* Explicit integers exclude process pointers and struct padding. */
 static void cpu_words(uint64_t words[16]) {
@@ -103,6 +117,7 @@ void SmReplayShutdown(void) {
   const char *why=SnesReplayWriterDestroy(writer); writer=NULL;
   if(why) { fprintf(stderr,"[sm-replay] %s; capture stopped\n",why); failed=true; }
   free(snapshot); snapshot=NULL; snapshot_capacity=0;
+  free(room_hash_buffer); room_hash_buffer=NULL; room_hash_capacity=0;
 }
 void SmReplayRomLoaded(const uint8_t *rom,unsigned size) { rom_identity=hash(rom,size); }
 void SmReplaySetConfigPath(const char *name) {
@@ -183,7 +198,7 @@ static bool start_segment(void) {
   segment_bytes=0;
   snprintf(path,sizeof(path),"%s-%06u.replay",stem,segment);
   char header[512];
-  snprintf(header,sizeof(header),"SMREPLAY 3\nBUILD %s %s %s %s\nROM %08x\nMODS %08x\nMODE lle\n",
+  snprintf(header,sizeof(header),"SMREPLAY 4\nBUILD %s %s %s %s\nROM %08x\nMODS %08x\nMODE lle\n",
       SNESRECOMP_BUILD_VERSION,SM_REPLAY_REVISION,SM_REPLAY_ENGINE,SM_REPLAY_TARGET,rom_identity,
       mods_identity());
   if(!SnesReplayWriterBegin(writer,path,header,config_path,"mods/preloaded/state.toml",
@@ -215,7 +230,8 @@ static bool write_snapshot(void) {
 }
 static unsigned policy(void) {
   return g_sm_video.enhanced | g_sm_video.fps_enabled<<1 | g_sm_video.hud_anchored<<2 |
-      snesrecomp_desktop_new_renderer()<<3 | g_config.no_sprite_limits<<4 | rtl_apu_extended_frame_timing()<<5;
+      snesrecomp_desktop_new_renderer()<<3 | g_config.no_sprite_limits<<4 | rtl_apu_extended_frame_timing()<<5 |
+      g_sm_video.neighboring_logic<<6 | g_sm_video.seamless<<7;
 }
 static bool replay_floor_active(void) {
   /* Policy labels select registered replacements, not the SM scheduler.
@@ -241,9 +257,10 @@ static unsigned mods_identity(void) {
 static bool load_playback(void) {
   char line[512], version[80], revision[80], engine[80], target[80], tail;
   unsigned rom, mods=0;
-  bool with_mods=false;
-  if(!fgets(line,sizeof(line),stream) ||
-      (strcmp(line,"SMREPLAY 2\n") && !(with_mods=!strcmp(line,"SMREPLAY 3\n"))) ||
+  if (!fgets(line,sizeof(line),stream)) { error("missing replay header"); return false; }
+  playback_rooms=!strcmp(line,"SMREPLAY 4\n");
+  bool with_mods=playback_rooms || !strcmp(line,"SMREPLAY 3\n");
+  if((strcmp(line,"SMREPLAY 2\n") && !with_mods) ||
       !fgets(line,sizeof(line),stream) || sscanf(line,"BUILD %79s %79s %79s %79s %c",version,revision,engine,target,&tail)!=4 ||
       !fgets(line,sizeof(line),stream) || sscanf(line,"ROM %x %c",&rom,&tail)!=1 ||
       (with_mods && (!fgets(line,sizeof(line),stream) || sscanf(line,"MODS %x %c",&mods,&tail)!=1)) ||
@@ -294,10 +311,10 @@ static bool playback_begin(uint32_t *inputs) {
   } else if(!playback_rows) {error("first input has no machine checkpoint");return false;}
   unsigned frame, word, flags, aspect, fps, extra;
   if(sscanf(line,"I %u %x %x %u %u %u %c",&frame,&word,&flags,&aspect,&fps,&extra,&tail)!=6 ||
-      flags>63 || aspect>=SM_ASPECT_COUNT || !SmValidFps(fps) || !SmActivityExtraValid(extra) || frame!=next_frame) {
+      flags>(playback_rooms ? 255u : 63u) || aspect>=SM_ASPECT_COUNT || !SmValidFps(fps) || !SmActivityExtraValid(extra) || frame!=next_frame) {
     error("invalid input/settings record or discontinuity without checkpoint");return false;
   }
-  g_sm_video=(SmVideoSettings){(flags&1)!=0,(SmAspect)aspect,fps,(flags&2)!=0,(flags&4)!=0};
+  g_sm_video=(SmVideoSettings){(flags&1)!=0,(SmAspect)aspect,fps,(flags&2)!=0,(flags&4)!=0,(flags&64)!=0,(flags&128)!=0};
   SmActivityRestore(extra);
   snesrecomp_desktop_set_new_renderer((flags&8)!=0); g_config.no_sprite_limits=(flags&16)!=0;
   if(flags&32)RtlEnableExtendedFrameTiming();
@@ -321,7 +338,8 @@ bool SmReplayBegin(uint32_t *inputs) {
   unsigned frame=(unsigned)snes_frame_counter;
   bool discontinuity=frame!=next_frame || generation!=RtlStateGeneration() || recorded_load_sequence!=load_sequence;
   size_t limit=history_limit()<STATE_LIMIT ? history_limit():STATE_LIMIT;
-  if(!recording || rows>=SEGMENT_FRAMES || (discontinuity && segment_bytes>limit-SNAPSHOT_LIMIT))
+  if(!recording || rows>=SEGMENT_FRAMES ||
+      (discontinuity && (segment_bytes>limit || limit-segment_bytes<SNAPSHOT_LIMIT)))
     if(!start_segment())return true;
   if((!rows || discontinuity) && !write_snapshot())return true;
   generation=RtlStateGeneration(); recorded_load_sequence=load_sequence;
@@ -348,6 +366,13 @@ void SmReplayEnd(void) {
       if(RtlSaveSnapshot("replay-divergence.sav"))fprintf(stderr,"[sm-replay] saved replay-divergence.sav\n");
       error("checkpoint mismatch");return;
     }
+    if (playback_rooms) {
+      uint32_t current,expected_rooms;
+      if (!resident_hash(&current) || !fgets(line,sizeof(line),stream) ||
+          sscanf(line,"R %u %x %c",&frame,&expected_rooms,&tail)!=2 || frame!=next_frame || current!=expected_rooms) {
+        error("resident room checkpoint mismatch or missing room-state record"); return;
+      }
+    }
     /* View geometry is only known after the recording host queries its window
      * for this raster. Read it ahead so playback uses the exact same Fit width
      * even on the first frame or immediately after a resize. */
@@ -364,6 +389,11 @@ void SmReplayEnd(void) {
     if(!SnesReplayWriterFrame(writer,(unsigned)snes_frame_counter,g_ram,0x20000,cpu,sizeof(cpu),
         g_snes->apu->ram,sizeof(g_snes->apu->ram),g_ppu->vram,sizeof(g_ppu->vram)))
       error(SnesReplayWriterError(writer));
+    uint32_t rooms_hash; char record[64];
+    if (!failed && resident_hash(&rooms_hash)) {
+      snprintf(record,sizeof(record),"R %u %08x\n",(unsigned)snes_frame_counter,rooms_hash);
+      if (!SnesReplayWriterLine(writer,record)) error(SnesReplayWriterError(writer));
+    } else if (!failed) error("cannot snapshot resident rooms for replay");
     ++rows;
     awaiting_render=!failed;
   }

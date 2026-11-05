@@ -102,7 +102,7 @@ class Rom:
 
 
 class Session:
-    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None, shared_resources=None):
+    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None, shared_resources=None, neighboring_logic=None, seamless=None, aspect='16:9'):
         cache = Path(exe).resolve().parent / 'CMakeCache.txt'
         if cache.exists() and 'SNESRECOMP_ENABLE_TRACE:BOOL=OFF' in cache.read_text().splitlines():
             raise ValueError('TCP QA requires a build configured with -DSNESRECOMP_ENABLE_TRACE=ON')
@@ -125,8 +125,13 @@ class Session:
             'EnableGamepad3=false\nEnableGamepad4=false\n',
             encoding='utf-8')
         (self.output / 'sm-video.ini').write_text(
-            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect=16:9\nPresentationEnabled=0\nHudAnchored={int(hud_anchored)}\n',
+            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect={aspect}\nPresentationEnabled=0\nHudAnchored={int(hud_anchored)}\n',
             encoding='utf-8')
+        with (self.output / 'sm-video.ini').open('a',encoding='utf-8') as video_config:
+            if neighboring_logic is not None:
+                video_config.write(f'NeighboringRoomLogic={int(neighboring_logic)}\n')
+            if seamless is not None:
+                video_config.write(f'SeamlessRooms={int(seamless)}\n')
         if features is not None:
             from test_qol_rom_removal import SOURCE, state as mod_state
             shutil.copytree(SOURCE / 'mods/preloaded/packages', self.output / 'mods/preloaded/packages')
