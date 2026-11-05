@@ -1,6 +1,7 @@
 #include "sm_seamless.h"
 #include "sm_rooms.h"
 #include "sm_door.h"
+#include "sm_activity.h"
 #include "common_rtl.h"
 #include "cpu_state.h"
 #include "snes/interp816.h"
@@ -51,7 +52,10 @@ static void write_entry(void *context,uint32_t address,uint8_t value) {
 static bool entry_call(EntryBus *b,uint32_t address,unsigned frame) {
   Interp816 *c=b->cpu; unsigned top=g_cpu.S;
   c->sp=(uint16_t)top; c->pc=(uint16_t)address; c->k=(uint8_t)(address>>16);
-  c->db=0x7e; c->dp=0; c->mf=c->xf=c->e=c->d=false; c->i=true;
+  /* These ROM entry points use the caller's system-bank mirror for absolute
+   * PPU/DMA registers. DB=$7E would silently write $7E:2115/$7E:420B RAM,
+   * leaving the native tilemap/OAM transfers unapplied. */
+  c->db=c->k; c->dp=0; c->mf=c->xf=c->e=c->d=false; c->i=true;
   c->waiting=c->stopped=c->irqWanted=c->nmiWanted=false;
   if (frame==3) g_ram[c->sp--]=c->k;
   g_ram[c->sp--]=0xfe; g_ram[c->sp--]=0xff;
@@ -93,6 +97,10 @@ bool SmActiveDoorEvent(unsigned x,unsigned y,unsigned orientation,bool closing) 
   EntryBus b={0}; b.bus=g_cpu; b.cpu=interp816_init(&b,read_entry,write_entry);
   if (!b.cpu) return false;
   interp816_set_brk_hook_enabled(b.cpu,false);
+  uint8_t scratch[64]; memcpy(scratch,g_ram,sizeof(scratch));
+  const unsigned work[]={0xdc4,0xdde,0x1c27,0x1c29,0x1c2b};
+  uint16_t saved[sizeof(work)/sizeof(*work)];
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) saved[i]=(uint16_t)word(g_ram+work[i]);
   unsigned block=y*w+x;
   for (unsigned i=0; i<40; ++i)
     if (word(g_ram+0x1c87+2*i)==2*block && SmDoorHeader(word(g_ram+0x1c37+2*i))) put(0x1c37+2*i,0);
@@ -113,6 +121,11 @@ bool SmActiveDoorEvent(unsigned x,unsigned y,unsigned orientation,bool closing) 
     b.cpu->a=(uint16_t)(closing ? 0xc8ba+4*orientation : word(RomPtr(0x949ea6u+2*(0x40+orientation))));
     ok=entry_call(&b,0x8484e7,3); put(0xdde,(int)index);
   }
+  /* A native message/PLM can be suspended across this frame boundary. Keep
+   * its direct-page temporaries and current work indices as well as its CPU
+   * registers/return stack; only the actual door state belongs to this event. */
+  memcpy(g_ram,scratch,sizeof(scratch));
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) put(work[i],saved[i]);
   interp816_free(b.cpu); return ok;
 }
 static bool open_entrance(EntryBus *b,const uint8_t *definition) {
@@ -135,10 +148,15 @@ static bool open_entrance(EntryBus *b,const uint8_t *definition) {
   return ok && entry_call(b,0x8485b4,3);
 }
 bool SmSeamlessDoor(void) {
-  if (word(g_ram+0x998)!=9) return true;
   SmRoomPlacement p;
+  uint16_t crossed_door=0;
+  if (SmRoomsUpwardDoorCarry(g_ram) && word(g_ram+0xb2e)<4) {
+    put(0xb2c,0); put(0xb2e,4);
+  }
+  bool crossing=word(g_ram+0x998)==8 && SmRoomsCrossing(g_ram,&crossed_door,&p);
+  if (crossing) { put(0x78d,crossed_door); put(0x998,9); }
+  else if (word(g_ram+0x998)!=9 || !SmRoomsDoor((uint16_t)word(g_ram+0x78d),&p)) return true;
   unsigned door=word(g_ram+0x78d);
-  if (!SmRoomsDoor((uint16_t)door,&p)) return true;
   const uint8_t *definition=RomPtr(0x830000u+door);
   if ((definition[2]&0x80) || word(definition)!=p.room) return true;
   unsigned arrival_phase=SmRoomsDoorPhase((uint16_t)door);
@@ -153,7 +171,7 @@ bool SmSeamlessDoor(void) {
     free(backup); free(previous); free(previous_vram); interp816_free(b.cpu); return false;
   }
   interp816_set_brk_hook_enabled(b.cpu,false);
-  int sx=(int)word(g_ram+0xaf6)-p.x, sy=(int)word(g_ram+0xafa)-p.y;
+  int sx=(int16_t)word(g_ram+0xaf6)-p.x, sy=(int16_t)word(g_ram+0xafa)-p.y;
   int cx=(int16_t)word(g_ram+0x911)-p.x,cy=(int16_t)word(g_ram+0x915)-p.y;
   bool ok=true;
   const struct { uint32_t pc; unsigned frame; } setup[]={
@@ -174,13 +192,18 @@ bool SmSeamlessDoor(void) {
      * separately from the active room's safe tilemap/collision coordinates. */
     unsigned rx=word(g_ram+0xafe),ry=word(g_ram+0xb00);
     if (rx>32 || ry>48) ok=false;
-    /* Clear the entrance's trigger blocks with the whole body. Otherwise a
-     * vertical floor check can immediately schedule the reverse door while
-     * Samus is moving away from it. Presentation still needs the remaining
-     * continuous body-coordinate work; this bounds native collision safely. */
-    int min_x=16+(int)rx,min_y=16+(int)ry;
-    put(0xaf6,sx<min_x ? min_x : clamp(sx,p.width-min_x));
-    put(0xafa,sy<min_y ? min_y : clamp(sy,p.height-min_y));
+    if (crossing) {
+      /* Ownership changes at the body center's actual door-plane crossing.
+       * The surrounding native collision samples can still reach either
+       * room; never move the body forward to clear an entrance trigger. */
+      if (sx<0 || sy<0 || sx>=p.width || sy>=p.height) ok=false;
+      put(0xaf6,sx); put(0xafa,sy);
+    } else {
+      /* Explicit native-transition/debug entries retain their bounded setup. */
+      int min_x=16+(int)rx,min_y=16+(int)ry;
+      put(0xaf6,sx<min_x ? min_x : clamp(sx,p.width-min_x));
+      put(0xafa,sy<min_y ? min_y : clamp(sy,p.height-min_y));
+    }
     put(0xb10,word(g_ram+0xaf6)); put(0xb14,word(g_ram+0xafa));
     put(0x911,clamp(cx,p.width-256)); put(0x915,clamp(cy,p.height-256));
     put(0x91d,0); put(0x91f,0); put(0x921,0); put(0x923,0);
@@ -199,6 +222,10 @@ bool SmSeamlessDoor(void) {
     ok=SmRoomsHandoff(previous,previous_vram,g_ram,g_ppu->vram,&p,definition[3]&3);
   }
   if (ok) {
+    /* This loader deliberately skips ResetProjectileData. Keep the single
+     * native player pool (including super-missile links) and rebase its live
+     * positions instead of leaving shots in the departing room's coordinates. */
+    SmActivityRebaseProjectiles(g_ram,p.x,p.y);
     memcpy(g_ram+0xc000,g_ram+0xc200,512);
     put(0x795,0); put(0x797,0); put(0x799,0); put(0xe16,0); put(0xe18,0);
     put(0x998,8); put(0x99c,0xe737); put(0x931,0);

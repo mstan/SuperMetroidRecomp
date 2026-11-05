@@ -119,6 +119,122 @@ unsigned SmRoomsDoorPhase(uint16_t definition) {
         read_rom(NULL,0x830004u+definition),read_rom(NULL,0x830005u+definition));
   return SM_DOOR_SHUT;
 }
+/* Only regular, reciprocal screen-edge hatches have this planar contract.
+ * Sand falls, elevators and special warp headers retain their native path. */
+static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p) {
+  unsigned dir=d->direction&3;
+  if (!d->reciprocal || (d->flags&0x80) || d->block_x<0 ||
+      (dir<2 ? (unsigned)d->block_x%16 : (unsigned)d->block_y%16)!=(dir==0 || dir==2 ? 15u : 0u)) return false;
+  bool paired=false;
+  for (unsigned i=0; i<link_count; ++i) if (links[i].a==d->definition || links[i].b==d->definition) { paired=true; break; }
+  if (!paired) return false;
+  static const int dx[4]={1,-1,0,0},dy[4]={0,0,1,-1};
+  int x=(d->block_x/16+dx[dir]-d->arrival_x/16)*256;
+  int y=(d->block_y/16+dy[dir]-d->arrival_y/16)*256;
+  for (unsigned i=0; i<count; ++i) {
+    const SmRoomPlacement *v=&residents[i].placement;
+    if (v->room==d->destination && v->x==x && v->y==y) {
+      *p=*v; p->incoming=d->definition; return true;
+    }
+  }
+  return false;
+}
+static bool active_door(const uint8_t *ram,const SmWorldDoor *d) {
+  unsigned w=word(ram+0x7a5),h=word(ram+0x7a7);
+  if (d->block_x<0 || d->block_y<0 || (unsigned)d->block_x>=w || (unsigned)d->block_y>=h) return false;
+  unsigned block=(unsigned)d->block_y*w+(unsigned)d->block_x;
+  return (word(ram+0x10002+2*block)>>12)==9 && (ram[0x16402+block]&127)==d->index;
+}
+static int tile_collision(const uint8_t *ram,int x,int y) {
+  int w=(int)word(ram+0x7a5),h=(int)word(ram+0x7a7);
+  for (unsigned i=0; i<16; ++i) {
+    if (x<0 || y<0 || x>=w || y>=h) return 16;
+    unsigned block=(unsigned)(y*w+x),type=word(ram+0x10002+2*block)>>12;
+    int bts=(int8_t)ram[0x16402+block];
+    if (type==5 && bts) { x+=bts; continue; }
+    if (type==13 && bts) { y+=bts; continue; }
+    return type==0 || type==2 || type==3 || type==4 || type==6 || type==7 || type==9 ? 0 : 16;
+  }
+  return 16;
+}
+int SmRoomsCollisionBlock(const uint8_t active[0x20000],int bx,int by) {
+  if (!seamless || word(active+0x79b)!=root || word(active+0x998)!=8) return -1;
+  int w=(int)word(active+0x7a5),h=(int)word(active+0x7a7);
+  unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i]; unsigned dir=d->direction&3; SmRoomPlacement p;
+    bool span=dir<2 ? by>=d->block_y && by<d->block_y+4 : bx>=d->block_x && bx<d->block_x+4;
+    bool near=dir==0 ? bx>=d->block_x && bx<=d->block_x+3 :
+        dir==1 ? bx<=d->block_x && bx>=d->block_x-3 :
+        dir==2 ? by>=d->block_y && by<=d->block_y+3 : by<=d->block_y && by>=d->block_y-3;
+    if (!span || !near || !active_door(active,d) || !planar_portal(d,&p)) continue;
+    /* The source trigger itself becomes ordinary hatch air. Beyond its
+     * plane sample the destination's real cap/wall cells, including when
+     * authored room allocations overlap. */
+    bool source=dir<2 ? bx==d->block_x : by==d->block_y;
+    if (source) return 0;
+    for (unsigned j=0; j<count; ++j) if (residents[j].placement.room==p.room &&
+        residents[j].placement.x==p.x && residents[j].placement.y==p.y)
+      return tile_collision(SmRoomRuntimeRam(residents[j].runtime),bx-p.x/16,by-p.y/16);
+  }
+  return bx<0 || by<0 || bx>=w || by>=h ? 16 : -1;
+}
+bool SmRoomsCrossing(const uint8_t active[0x20000],uint16_t *definition,SmRoomPlacement *destination) {
+  if (!seamless || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
+  int x=(int16_t)word(active+0xaf6),y=(int16_t)word(active+0xafa);
+  unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i]; unsigned dir=d->direction&3; SmRoomPlacement p;
+    int plane=dir<2 ? (d->block_x+(dir==0))*16 : (d->block_y+(dir==2))*16;
+    bool span=dir<2 ? y>=d->block_y*16 && y<(d->block_y+4)*16 : x>=d->block_x*16 && x<(d->block_x+4)*16;
+    bool crossed=dir==0 ? x>=plane : dir==1 ? x<plane : dir==2 ? y>=plane : y<plane;
+    if (!span || !crossed || !active_door(active,d) || !planar_portal(d,&p) || x-p.x<0 || x-p.x>=p.width || y-p.y<0 || y-p.y>=p.height) continue;
+    *definition=d->definition; *destination=p; return true;
+  }
+  return false;
+}
+bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]) {
+  if (!seamless || word(active+0x79b)!=root || word(active+0x998)!=8 || word(active+0xb36)!=1) return false;
+  int x=(int16_t)word(active+0xaf6),y=(int16_t)word(active+0xafa);
+  int rx=(int)word(active+0xafe),ry=(int)word(active+0xb00);
+  unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i]; SmRoomPlacement p;
+    int plane=d->block_y*16;
+    if ((d->direction&3)!=3 || y<plane || y-ry>plane ||
+        x-rx<d->block_x*16 || x+rx>=(d->block_x+4)*16 ||
+        !active_door(active,d) || !planar_portal(d,&p)) continue;
+    unsigned phase=SmRoomsDoorPhase(d->definition);
+    if (phase!=SM_DOOR_OPEN && phase!=SM_DOOR_OPENING) continue;
+    /* Vanilla up-doors capture the leading edge, so an ordinary Hi-Jump
+     * can reach the trigger without its center clearing the outer plane.
+     * Continue that accepted travel over real gameplay ticks instead of
+     * introducing a coordinate jump or demanding a higher jump. */
+    int by=d->block_y-1;
+    if (SmRoomsCollisionBlock(active,(x-rx)/16,by)==0 &&
+        SmRoomsCollisionBlock(active,(x+rx-1)/16,by)==0) return true;
+  }
+  return false;
+}
+static void follow_doorway(const uint8_t *active,unsigned extra) {
+  if (!seamless) return;
+  int px=(int16_t)word(active+0xaf6),py=(int16_t)word(active+0xafa);
+  unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i]; unsigned dir=d->direction&3; SmRoomPlacement p;
+    int plane=dir<2 ? (d->block_x+(dir==0))*16 : (d->block_y+(dir==2))*16;
+    bool span=dir<2 ? py>=d->block_y*16 && py<(d->block_y+4)*16 : px>=d->block_x*16 && px<(d->block_x+4)*16;
+    if (!span || abs((dir<2 ? px : py)-plane)>96 ||
+        !active_door(active,d) || !planar_portal(d,&p)) continue;
+    int sx=px-(int16_t)word(active+0x911)-camera_dx;
+    int sy=py-(int16_t)word(active+0x915)-camera_dy;
+    int left=8+(int)word(active+0xafe)-(int)extra;
+    int right=256-left,top=32+(int)word(active+0xb00),bottom=224-(int)word(active+0xb00);
+    camera_dx+=sx<left ? sx-left : sx>right ? sx-right : 0;
+    camera_dy+=sy<top ? sy-top : sy>bottom ? sy-bottom : 0;
+    return;
+  }
+}
 bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram[0x8000],
     uint8_t active[0x20000],uint16_t vram[0x8000],const SmRoomPlacement *p,unsigned direction) {
   unsigned old_room=word(previous+0x79b),old_state=word(previous+0x7bb);
@@ -130,8 +246,10 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
   }
   for (unsigned i=0; i<count;) {
     if (residents[i].placement.room==p->room) {
-      if (!SmRoomRuntimePromoteDoors(residents[i].runtime,active)) { SmRoomRuntimeDestroy(departing); return false; }
-      SmRoomRuntimePromote(residents[i].runtime,active,vram);
+      if (residents[i].placement.state==word(active+0x7bb)) {
+        if (!SmRoomRuntimePromoteDoors(residents[i].runtime,active)) { SmRoomRuntimeDestroy(departing); return false; }
+        SmRoomRuntimePromote(residents[i].runtime,active,vram);
+      }
       SmRoomRuntimeDestroy(residents[i].runtime);
       residents[i]=residents[--count];
     } else ++i;
@@ -197,6 +315,7 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
     camera_dy+=camera_dy < -8 ? 8 : camera_dy>8 ? -8 : -camera_dy;
   }
   rebased=false;
+  follow_doorway(active,extra);
   int x=(int16_t)word(active+0x911)+camera_dx, y=(int16_t)word(active+0x915)+camera_dy;
   SmRoomPreviewPrepare(active,x-(int)extra-32,y-32,x+256+(int)extra+32,y+256);
   Resident old[SM_ROOM_RESIDENTS]; unsigned old_count=count;
@@ -226,7 +345,7 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   for (unsigned i=0; i<count; ++i) {
     const SmRoomPlacement *p=&residents[i].placement; SmRoomRuntime *runtime=residents[i].runtime;
     SmRoomRuntimeProgress(runtime,active);
-    if (!SmRoomRuntimeStepVisible(runtime,(int)word(active+0xaf6)-p->x,(int)word(active+0xafa)-p->y,
+    if (!SmRoomRuntimeStepVisible(runtime,(int16_t)word(active+0xaf6)-p->x,(int16_t)word(active+0xafa)-p->y,
         x-p->x,y-p->y,extra) || !SmRoomRuntimeStepEffects(runtime)) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X: %s\n",root,p->room,SmRoomRuntimeError(runtime)); return false;
     }

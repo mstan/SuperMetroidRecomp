@@ -1214,9 +1214,9 @@ static bool xray_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   if (!table) return false;
   uint16_t tangent[129];
   for (unsigned i = 0; i < 129; ++i) tangent[i] = (uint16_t)read16(table, 2 * i);
-  int x = (int)read16(f->ram, 0xaf6) - (int)read16(f->ram, 0x911) +
+  int x = (int16_t)(uint16_t)(read16(f->ram, 0xaf6) - read16(f->ram, 0x911)) +
           (f->ram[0xa1e] == 4 ? -3 : 3);
-  int y = (int)read16(f->ram, 0xafa) - (int)read16(f->ram, 0x915) -
+  int y = (int16_t)(uint16_t)(read16(f->ram, 0xafa) - read16(f->ram, 0x915)) -
           (f->ram[0xa1f] == 5 ? 12 : 16);
   int32_t left[230], right[230];
   if (!SmRendererXrayBounds(tangent, x, y, read16(f->ram, 0xa82),
@@ -1505,18 +1505,18 @@ static bool projectile_pose(const SmSourceFrame *f, bool enemy, unsigned slot,
     unsigned gfx = read16(ram, 0x19bb + offset);
     pose->bank = 0x8d; pose->map = read16(ram, 0x1b6b + offset);
     pose->palette = gfx & 0xff00; pose->base = gfx & 255;
-    pose->world_x = (int)read16(ram, 0x1a4b + offset);
-    pose->world_y = (int)read16(ram, 0x1a93 + offset);
+    pose->world_x = (int16_t)read16(ram, 0x1a4b + offset);
+    pose->world_y = (int16_t)read16(ram, 0x1a93 + offset);
   } else {
     if (!player_projectile_visible(ram, slot)) return false;
     pose->identity = read16(ram, 0xc18 + offset);
     pose->bank = 0x93; pose->map = read16(ram, 0xcb8 + offset);
     pose->palette = pose->base = 0;
-    pose->world_x = (int)read16(ram, 0xb64 + offset);
-    pose->world_y = (int)read16(ram, 0xb78 + offset);
+    pose->world_x = (int16_t)read16(ram, 0xb64 + offset);
+    pose->world_y = (int16_t)read16(ram, 0xb78 + offset);
   }
-  pose->x = pose->world_x - (int)read16(ram, 0x911);
-  pose->y = pose->world_y - (int)read16(ram, 0x915);
+  pose->x = pose->world_x - (int16_t)read16(ram, 0x911);
+  pose->y = pose->world_y - (int16_t)read16(ram, 0x915);
   if (!enemy)
     project_player_position(ram, pose->identity, pose->world_x, pose->world_y, &pose->x, &pose->y);
   return pose->map >= 0x8000;
@@ -1530,10 +1530,10 @@ static bool sprite_object_pose(const SmSourceFrame *f, unsigned slot, SmProjecti
   pose->bank = 0xb4; pose->map = read16(data, 2);
   unsigned gfx = read16(ram, 0xf078 + offset);
   pose->palette = gfx & 0xe00; pose->base = gfx & 0x1ff;
-  pose->world_x = (int)read16(ram, 0xf0f8 + offset);
-  pose->world_y = (int)read16(ram, 0xf1f8 + offset);
-  pose->x = pose->world_x - (int)read16(ram, 0x911);
-  pose->y = pose->world_y - (int)read16(ram, 0x915);
+  pose->world_x = (int16_t)read16(ram, 0xf0f8 + offset);
+  pose->world_y = (int16_t)read16(ram, 0xf1f8 + offset);
+  pose->x = pose->world_x - (int16_t)read16(ram, 0x911);
+  pose->y = pose->world_y - (int16_t)read16(ram, 0x915);
   return pose->map >= 0x8000 && pose->y >= 0 && pose->y < 272;
 }
 static bool sprite_object_motion(const SmSourceFrame *f, const SmSourceFrame *old,
@@ -1582,16 +1582,16 @@ static bool grapple_flare_pose(const SmSourceFrame *f, SmProjectilePose *pose) {
   *pose = (SmProjectilePose){0};
   pose->bank = 0x93; pose->map = read16(map, 0);
   pose->identity = function | ((unsigned)ram[0xa1e] << 16);
-  pose->world_x = (int)read16(ram, 0xd1a); pose->world_y = (int)read16(ram, 0xd1c);
-  pose->x = pose->world_x - (int)read16(ram, 0x911);
-  pose->y = pose->world_y - (int)read16(ram, 0x915);
+  pose->world_x = (int16_t)read16(ram, 0xd1a); pose->world_y = (int16_t)read16(ram, 0xd1c);
+  pose->x = pose->world_x - (int16_t)read16(ram, 0x911);
+  pose->y = pose->world_y - (int16_t)read16(ram, 0x915);
   return pose->map >= 0x8000 && pose->y >= 0 && pose->y < 256;
 }
 #include "sm_scene.inc"
 
 static void player_from_ram(const uint8_t *ram, SmPlayerView *player) {
-  int x = (int)read16(ram, 0xaf6) - (int)read16(ram, 0x911);
-  int y = (int)read16(ram, 0xafa) - (int)read16(ram, 0x915);
+  int x = (int16_t)(uint16_t)(read16(ram, 0xaf6) - read16(ram, 0x911));
+  int y = (int16_t)(uint16_t)(read16(ram, 0xafa) - read16(ram, 0x915));
   project_player_position(ram, 0, read16(ram, 0xaf6), read16(ram, 0xafa), &x, &y);
   *player = (SmPlayerView){ram, read16(ram, 0xa1c), ram[0xa1f], x, y,
                          (int16_t)read16(ram, 0x911), (int16_t)read16(ram, 0x915)};

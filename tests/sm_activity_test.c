@@ -17,7 +17,30 @@ static void setup(void) {
   enemy(7,128,0);put(0x17a4,2);put(0x17a6,2);
   put(0x17ac,7*64);put(0x17ae,0xffff);put(0x17ec,7*64);put(0x17ee,0xffff);
 }
+static void projectile_handoff(void) {
+  memset(ram,0,sizeof(ram));
+  /* Retain live instruction lists independently of type bits. Super missiles
+   * keep linked-slot references; bombs share the pool's second half. */
+  put(0xc40,0x8123);put(0xb64,2308);put(0xb78,400);put(0xb8c,0xc000);
+  put(0xc1a,0x200);put(0xc42,0x8234);put(0xc7e,8);put(0xb66,2294);put(0xb7a,400);
+  put(0xc22,0x500);put(0xc4a,0x8345);put(0xc72,0x91a0);put(0xb6e,2275);put(0xb82,410);
+  put(0xcce,2);put(0xcd2,1);put(0xc54,3);put(0xb68,333);
+  put(0xd658,2);put(0xd730,2296);put(0xd778,405);
+  put(0xd69e,1);put(0xd776,2302);put(0xd7be,406);
+  memcpy(before,ram,sizeof(ram));
+  SmActivityRebaseProjectiles(ram,2304,256);
+  assert(get(0xb64)==4 && get(0xb78)==144);
+  assert((int16_t)get(0xb66)==-10 && get(0xb7a)==144 && get(0xc7e)==8);
+  assert((int16_t)get(0xb6e)==-29 && get(0xb82)==154 && get(0xc72)==0x91a0);
+  assert(get(0xb68)==333 && get(0xb8c)==0xc000 && get(0xc54)==3);
+  assert(get(0xcce)==2 && get(0xcd2)==1);
+  assert((int16_t)get(0xd730)==-8 && get(0xd778)==149);
+  assert((int16_t)get(0xd776)==-2 && get(0xd7be)==150);
+  SmActivityRebaseProjectiles(ram,-2304,-256);
+  assert(!memcmp(before,ram,sizeof(ram)));
+}
 int main(void) {
+  projectile_handoff();
   const unsigned widths[]={43,96,213,214};
   for(unsigned k=0;k<4;k++) {
     unsigned extra=widths[k];setup();

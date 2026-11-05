@@ -40,10 +40,10 @@ static void scene_actors(const SmSourceFrame *f, SmScene *scene) {
   const uint8_t *ram = f->object_ram;
   SmSceneActor *samus = &scene->actors[SM_SCENE_SAMUS];
   samus->valid = true;
-  samus->pose.world_x = (int)read16(ram, 0xaf6);
-  samus->pose.world_y = (int)read16(ram, 0xafa);
-  samus->pose.x = samus->pose.world_x - (int)read16(ram, 0x911);
-  samus->pose.y = samus->pose.world_y - (int)read16(ram, 0x915);
+  samus->pose.world_x = (int16_t)read16(ram, 0xaf6);
+  samus->pose.world_y = (int16_t)read16(ram, 0xafa);
+  samus->pose.x = samus->pose.world_x - (int16_t)read16(ram, 0x911);
+  samus->pose.y = samus->pose.world_y - (int16_t)read16(ram, 0x915);
   project_player_position(ram, 0, samus->pose.world_x, samus->pose.world_y,
       &samus->pose.x, &samus->pose.y);
   /* $B04/$B06 include pose-specific graphics offsets. They bind the current
@@ -58,10 +58,10 @@ static void scene_actors(const SmSourceFrame *f, SmScene *scene) {
     a->valid = read16(e, 0) && read16(e, 0) != 0xdaff &&
         !(read16(e, 14) & 0x300) && !read16(e, 42) && read16(e, 22) >= 0x8000;
     a->pose.identity = read16(e, 0) | ((unsigned)e[46] << 16);
-    a->pose.world_x = (int)read16(e, 2) + (int16_t)read16(ram, 0x7010 + slot * 64);
-    a->pose.world_y = (int)read16(e, 6) + (int16_t)read16(ram, 0x7012 + slot * 64);
-    a->pose.x = a->pose.world_x - (int)read16(ram, 0x911);
-    a->pose.y = a->pose.world_y - (int)read16(ram, 0x915);
+    a->pose.world_x = (int16_t)read16(e, 2) + (int16_t)read16(ram, 0x7010 + slot * 64);
+    a->pose.world_y = (int16_t)read16(e, 6) + (int16_t)read16(ram, 0x7012 + slot * 64);
+    a->pose.x = a->pose.world_x - (int16_t)read16(ram, 0x911);
+    a->pose.y = a->pose.world_y - (int16_t)read16(ram, 0x915);
   }
   for (unsigned slot = 0; slot < 18; ++slot) {
     SmSceneActor *a = &scene->actors[SM_SCENE_EPROJ + slot];

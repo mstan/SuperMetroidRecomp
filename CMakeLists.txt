@@ -281,7 +281,7 @@ if(BUILD_TESTING AND NOT ANDROID)
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
     target_include_directories(sm_room_doors_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_executable(sm_rooms_test tests/sm_rooms_test.c src/sm_rooms.c src/sm_room_preview.c
-        src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
+        src/sm_room_runtime.c src/sm_room_collision.c src/sm_activity.c src/mods/sm_world.c
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
     target_include_directories(sm_rooms_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     foreach(target sm_room_preview_test sm_room_runtime_test sm_room_doors_test sm_rooms_test)
@@ -376,6 +376,7 @@ set(SM_HOST_SOURCES
     ${SM_RENDERER_SOURCE} # read-only custom widescreen renderer
     src/sm_room_preview.c # independent connected-room scenery
     src/sm_room_runtime.c src/sm_rooms.c src/sm_seamless.c
+    src/sm_room_collision.c src/sm_room_collision_host.c
     src/sm_mode7.c        # SM's mode-7 object projection
     src/sm_display.c      # SM presentation geometry
     src/sm_video.c        # SM aspect/HUD policy + presentation clock

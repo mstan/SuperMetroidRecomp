@@ -5,6 +5,9 @@
 /* Simulation geometry, distinct from the read-only renderer. */
 enum { SM_ACTIVITY_EXTRA_MAX = 214, SM_ACTIVITY_PROFILE = 2 };
 unsigned SmActivityExtra(void);
+/* Player-owned native slots and linked missile indices survive a continuous
+ * room handoff; only their room-relative positions and emitted trails move. */
+void SmActivityRebaseProjectiles(uint8_t ram[0x20000], int x, int y);
 bool SmActivityExtraValid(unsigned extra);
 void SmActivityRestore(unsigned extra);
 bool SmActivityAugmentQueues(uint8_t *ram, unsigned extra);

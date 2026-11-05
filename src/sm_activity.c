@@ -14,6 +14,26 @@ static void put(uint8_t *ram, unsigned at, unsigned value) {
   ram[at] = (uint8_t)value; ram[at + 1] = (uint8_t)(value >> 8);
 }
 
+void SmActivityRebaseProjectiles(uint8_t ram[0x20000], int x, int y) {
+  for (unsigned i = 0; i < 10; ++i) {
+    unsigned offset = i * 2;
+    if (!word(ram, 0xc40 + offset) && !word(ram, 0xc18 + offset)) continue;
+    put(ram, 0xb64 + offset, word(ram, 0xb64 + offset) - x);
+    put(ram, 0xb78 + offset, word(ram, 0xb78 + offset) - y);
+  }
+  for (unsigned i = 0; i < 18; ++i) {
+    unsigned offset = i * 2;
+    if (word(ram, 0xd658 + offset)) {
+      put(ram, 0xd730 + offset, word(ram, 0xd730 + offset) - x);
+      put(ram, 0xd778 + offset, word(ram, 0xd778 + offset) - y);
+    }
+    if (word(ram, 0xd67c + offset)) {
+      put(ram, 0xd754 + offset, word(ram, 0xd754 + offset) - x);
+      put(ram, 0xd79c + offset, word(ram, 0xd79c + offset) - y);
+    }
+  }
+}
+
 bool SmActivityAugmentQueues(uint8_t *ram, unsigned extra) {
   if (!SmActivityExtraValid(extra)) return false;
   /* Let the original ROM own deletion, always-active/frozen enemies, its

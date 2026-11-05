@@ -10,6 +10,11 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
 const SmRoomScene *SmRoomsScene(void);
 bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination);
 unsigned SmRoomsDoorPhase(uint16_t definition);
+/* Native collision keeps its own slope/solid responses. These queries only
+ * replace samples belonging to an adjoining room at a planar doorway. */
+int SmRoomsCollisionBlock(const uint8_t active[0x20000], int block_x, int block_y);
+bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]);
+bool SmRoomsCrossing(const uint8_t active[0x20000], uint16_t *definition, SmRoomPlacement *destination);
 bool SmRoomsHandoff(const uint8_t previous[0x20000], const uint16_t previous_vram[0x8000],
     uint8_t active[0x20000], uint16_t vram[0x8000], const SmRoomPlacement *destination, unsigned direction);
 size_t SmRoomsStateBound(void);

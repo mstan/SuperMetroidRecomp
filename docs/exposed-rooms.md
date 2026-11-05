@@ -188,6 +188,71 @@ horizontal qualification binary before the subsequent Ceres rebuild.
 `vertical-doors-6/` retains the passing vertical case. Earlier vertical
 directories are failed/superseded input setups and do not qualify traversal.
 
+## Continuous collision and traversal
+
+This candidate replaces the early trigger/clamp path for regular planar
+hatches. Native horizontal/vertical collision dispatch samples the neighboring
+room's actual cap/wall cells when the body overlaps a doorway. Inside-body
+samples use ordinary air instead of executing foreign PLMs/scripts. Ownership
+changes when Samus's center crosses the door plane, preserving the exact body
+coordinates. Explicit native/debug entries retain their bounded setup, and
+incoming-door state changes retain the cartridge's newly selected population.
+
+- Owned-ROM manager probes pass open/closed opposing-cap collision and the
+  exact pre/post center boundary with logic On and Off. Coordinate probes cover
+  both scan directions, negative cells, eight-bit row multiplication and the
+  native tile-index high-bit alias. All 28 existing CTests pass.
+- The supported release regeneration recipe passes strict idempotence with
+  three new inside-body dispatch hooks. No generated C was edited. The candidate
+  uses task-local `gen-continuous/`, rather than changing the older shared tree.
+- The supported full game build passes. Frame-by-frame live right/left and
+  down/up round trips pass with logic On and Off on the current candidate.
+  Gameplay stays in state 8 and world body coordinates cross without an entry
+  clamp. Horizontal return continues for 180 native ticks; vertical return for
+  90. Native input fires the hatches; initial room access/position, health and
+  the Hi-Jump prerequisite are assisted. This qualifies these two regular
+  connections in all four directions, not every stock exit.
+- Vanilla up-doors accept a leading-edge contact before a normal jump's center
+  clears the outer plane. Continuous mode carries that final upward movement
+  over actual gameplay frames through an open, aligned pair. The guard uses
+  the cartridge's captured upward state 1, rejecting downward/idle states.
+  Doorway presentation also follows before the center changes ownership,
+  preventing the native camera limit from leaving the player offscreen.
+- Player projectile slots, super-missile links, timers and emitted trails
+  survive handoff, with only their room-relative positions rebased. A native
+  beam remains live with continuous world coordinates across right entry, On
+  and Off. This is not cross-room enemy-hit/actor-transfer acceptance.
+- The rebuilt portable/native/full-copy renderer probes pass signed boundary
+  positions and interpolation. The 4:3 owned-ROM probe checks that the camera
+  follows a doorway in two-pixel steps while keeping the body visible.
+- Image inspection found an entry-context defect despite the position/replay
+  passes: DB=$7E routed absolute PPU/DMA writes into WRAM. Entering each native
+  routine through its system-bank mirror fixes the unapplied transfers and
+  repeated tiles. Current horizontal and vertical entry images were inspected
+  after this fix; broad scene/FX fidelity remains outstanding.
+- Current horizontal recording/playback matches all 308 executions including
+  resident state. The retained Native option previously passed its original
+  state-9 transition and 90 continuing ticks; that path remains separate.
+- The current live-qualified binary is SHA-256
+  `4fabf0a39d0815f6553047c14f860b866cb9d72d9be1b28394d2c5600094674d`,
+  retained as `continuous-qualified.exe`. All 28 CTest binaries pass, and the
+  final changed manager probe passes the actual cartridge-direction fixture.
+- Three non-screen-edge stock door records and other non-planar connections
+  retain their original path in this candidate. Special foreign terrain within
+  a hatch also needs broader collision qualification; this is not general world
+  physics acceptance or completion of seamless mode.
+
+Current evidence: `paired-doors-continuous3-on/`, `-off/`,
+`continuous-body5-on/`, `-off/`, `continuous-body5-playback/`,
+`continuous-vertical7-on/`, `-off/`, `continuous-live6.log` and its passing
+capacity receipt. `continuous-host-carry2.log` contains the 28-test pass;
+`continuous-host-up1.log` contains the final rebuilt manager/cartridge probe.
+`continuous-native-option1/` retains the native-mode check.
+`continuous-build-job.json` is the completed supported generation/build job.
+Earlier body3/body4 recordings, vertical setup attempts and SERVER's vertical4
+failure are diagnostic history, superseded by these current traversal checks.
+The standalone owned probe and the 61.8 MB local transfer ZIP were removed.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Continuous handoff exists and the horizontal assisted
@@ -197,10 +262,11 @@ remain unqualified. Do not represent the feature as complete or release it.
 1. Connect shots/projectiles reaching an inactive door face to its native hit
    handler. Qualify this separately from accepted-opening mirroring, which now
    works, including native ammunition, lock and progression rules.
-2. Complete natural continuous traversal in all four directions. Eliminate
-   edge-placement jumps and opening delays using the paired connection state;
-   preserve motion, collision, actor/projectile handoff, native entry scripts
-   and the native transition option. Qualify retained actors on return entry.
+2. Extend the qualified regular-hatch traversal to exceptional geometry and
+   broader foreign terrain. Three stock non-screen-edge records still use the
+   original path. Qualify retained actors and entry scripts beyond the two
+   current round trips. Player/beam coordinate continuity is now qualified for
+   those cases; it does not establish general actor/projectile world physics.
 3. Implement cross-open-door combat and projectile/actor transfer without
    duplicated hits/rewards. Walls and closed doors must block interaction.
 4. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
@@ -224,6 +290,12 @@ and the candidate game build. `first-preview.bmp` is the inspected offline
 `baseline-live-scenery` retain matched gameplay state/diagnostic evidence.
 Capacity records and exact build jobs are beside `source/`.
 These are retained for continuing this feature, not delivered release files.
+SERVER also retains the temporary
+`G:/Temp/Codex/supermetroid/exposed-rooms-20261105-validation` workspace:
+an exact pre-fix runtime, an owned-ROM copy and failed vertical diagnostics.
+Its useful vertical4 evidence was copied back as `server-vertical4-on/`.
+Remove that temporary remote workspace after retaining any remaining evidence
+needed at final cleanup; it contains no player saves or owner playtest.
 The NES Metroid reference was checked in
 `F:/Projects/nesrecomp/MetroidNESRecomp/metroid_ws_actors.c`: its
 `guest_room_pair`, `collide_actor` and `commit_effects` provide the existing
@@ -254,8 +326,10 @@ The two standalone prototype EXEs were removed after the CMake-built probes
 superseded them. Retained build/capture directories are needed for continuing
 this unfinished feature and should be cleaned after final delivery.
 
-The build reuses the existing verified generated translation units and pinned
-engine/UI checkouts under `feedback-20261103`; generation inputs are unchanged.
+The build uses pinned engine/UI checkouts under `feedback-20261103` and the
+supported, strictly regenerated task-local `gen-continuous/`. The shared older
+generation tree was preserved; the continuous inside-body hooks changed the
+bank-14 generation input.
 The clean worktree's missing `recomp/funcs.h` was generated using the pinned
 engine's supported sync tool. No generated C was edited.
 

@@ -2332,12 +2332,32 @@ int main(int argc, char **argv) {
       assert(output[100 * view.width + view.extra + pixel] ==
              (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
   }
-  SmRendererSetInterpolationEnabled(true);
+  /* Before center ownership crosses a left/top hatch, native positions can
+   * be negative. The displayed owner and its interpolation must survive the
+   * 16-bit wrap, including player overlays on either renderer. */
+  ResetFixtureRenderer(); SmRendererSetInterpolationEnabled(true);
+  for (unsigned frame = 1; frame <= 3; ++frame) {
+    int x = 8 - (int)frame * 4;
+    word(0xb04, (unsigned)x); word(0xb06, 100);
+    word(0xaf6, (unsigned)x); word(0xafa, 100);
+    ppu.oam[0] = (uint16_t)((x & 255) | (100 << 8));
+    ppu.highOam[0] = x < 0 ? 1 : 0;
+    LatchFixtureState(ram); BeginFixtureFrame(ram, frame);
+    for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
+    SmPlayerView player;
+    assert(SmRendererGetPlayer(0.5, &player));
+    assert(player.x == (frame == 1 ? x : x + 2) && player.y == 100);
+    for (int pixel = -8; pixel < 16; ++pixel)
+      assert(output[100 * view.width + view.extra + pixel] ==
+          (pixel >= player.x && pixel < player.x + 8 ? 0x00ff00u : 0));
+  }
   ResetFixtureRenderer();
+  word(0xaf6, 65535); word(0xafa, 65534);
   LatchFixtureState(ram); /* Native renderer: OAM ownership without a raster capture. */
   SmPlayerView native_player;
   assert(SmRendererGetNativePlayer(&ppu,&native_player));
-  assert(native_player.x==(int)(ram[0xaf6]|ram[0xaf7]<<8) && native_player.y==100);
+  assert(native_player.x == -1 && native_player.y == -2);
   ppu.oam[0]^=1;
   assert(!SmRendererGetNativePlayer(&ppu,&native_player));
   puts("Super Metroid room tiles and immutable raster capture checks passed.");
