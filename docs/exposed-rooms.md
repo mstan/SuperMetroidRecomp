@@ -60,8 +60,10 @@ This request supersedes deliberate secret/arena concealment in prior feedback.
   build produces the same 17 interpreter trap diagnostics and identical full
   WRAM at all three compared gameplay snapshots.
 - Early automatic room captures contained blank native terrain and are
-  excluded from visual acceptance despite zero native-pixel mismatches. A
-  settled current-build capture is required for that visual check.
+  excluded from visual acceptance despite zero native-pixel mismatches.
+  A guarded current-build restore then produced a settled Hall capture: all
+  four aspect renders have zero native gameplay pixel differences, and the
+  32:9 image was inspected with actual terrain and neighboring scenery.
 
 ## Outstanding implementation and qualification
 
@@ -99,9 +101,15 @@ release it as the requested feature.
 Workspace: `G:/Temp/Codex/supermetroid/exposed-rooms-20261105`.
 `source/` contains this isolated checkout; `build/` contains candidate tools
 and the candidate game build. `first-preview.bmp` is the inspected offline
-32:9 raster replay. Capacity records and exact build jobs are beside `source/`.
+32:9 raster replay. `settled-hall/hall.capture`, four aspect images/logs and
+`render-results.json` retain current-build visual evidence. `live-scenery` and
+`baseline-live-scenery` retain matched gameplay state/diagnostic evidence.
+Capacity records and exact build jobs are beside `source/`.
 These are retained for continuing this feature, not delivered release files.
 No player save, settings, release archive or running playtest was replaced.
+The two standalone prototype EXEs were removed after the CMake-built probes
+superseded them. Retained build/capture directories are needed for continuing
+this unfinished feature and should be cleaned after final delivery.
 
 The build reuses the existing verified generated translation units and pinned
 engine/UI checkouts under `feedback-20261103`; generation inputs are unchanged.
