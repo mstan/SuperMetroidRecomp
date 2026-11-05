@@ -82,8 +82,10 @@ static bool decode(Preview *p, const SmWorldRoom *room, uint16_t state, uint16_t
   p->level_background=!(p->scroll_x&1) && 2u+2*p->level_bytes+p->level_bytes/2<=bytes;
   /* The common room elements occupy tile definitions 0..255 and VRAM
    * bytes $5000..$7FFF; each tileset supplies its own remaining definitions. */
-  if (!SmWorldUnpack(read_byte,NULL,0xb9a09d,p->definitions,2048) ||
-      !SmWorldUnpack(read_byte,NULL,read_long(tileset),p->definitions+2048,6144) ||
+  if (!(room->area==6 ?
+      SmWorldUnpack(read_byte,NULL,read_long(tileset),p->definitions,sizeof(p->definitions)) :
+      SmWorldUnpack(read_byte,NULL,0xb9a09d,p->definitions,2048) &&
+      SmWorldUnpack(read_byte,NULL,read_long(tileset),p->definitions+2048,6144)) ||
       !SmWorldUnpack(read_byte,NULL,0xb98000,p->tiles+0x5000,0x3000) ||
       !SmWorldUnpack(read_byte,NULL,read_long(tileset+3),p->tiles,32768) ||
       !SmWorldUnpack(read_byte,NULL,read_long(tileset+6),p->palette,sizeof(p->palette))) return false;
@@ -175,6 +177,11 @@ bool SmRoomPreviewPlacement(unsigned index, SmRoomPlacement *out) {
   return true;
 }
 const SmWorldRoom *SmRoomPreviewRoom(uint16_t header) { return ready ? SmWorldFindRoom(&world,header) : NULL; }
+const SmWorldDoor *SmRoomPreviewDoors(uint16_t header,unsigned *n) {
+  const SmWorldRoom *room=SmRoomPreviewRoom(header);
+  if (n) *n=room ? room->door_count : 0;
+  return room ? world.doors+room->first_door : NULL;
+}
 const uint8_t *SmRoomPreviewVram(unsigned index) { return index<count ? residents[index]->tiles : NULL; }
 static unsigned tile_pixel(const Preview *p, unsigned tile, int x, int y) {
   unsigned tx=(x&7)^((tile&0x4000) ? 7 : 0), ty=(y&7)^((tile&0x8000) ? 7 : 0);

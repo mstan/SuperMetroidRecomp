@@ -1,5 +1,6 @@
 #include "sm_seamless.h"
 #include "sm_rooms.h"
+#include "sm_door.h"
 #include "common_rtl.h"
 #include "cpu_state.h"
 #include "snes/interp816.h"
@@ -86,6 +87,34 @@ static bool enemy_tiles(EntryBus *b) {
   return false;
 }
 static int clamp(int v,int high) { return v<0 ? 0 : v>high ? high : v; }
+bool SmActiveDoorEvent(unsigned x,unsigned y,unsigned orientation,bool closing) {
+  unsigned w=word(g_ram+0x7a5),h=word(g_ram+0x7a7);
+  if (orientation>=4 || x>=w || y>=h || (uint64_t)w*h>0x3200) return false;
+  EntryBus b={0}; b.bus=g_cpu; b.cpu=interp816_init(&b,read_entry,write_entry);
+  if (!b.cpu) return false;
+  interp816_set_brk_hook_enabled(b.cpu,false);
+  unsigned block=y*w+x;
+  for (unsigned i=0; i<40; ++i)
+    if (word(g_ram+0x1c87+2*i)==2*block && SmDoorHeader(word(g_ram+0x1c37+2*i))) put(0x1c37+2*i,0);
+  bool restored=false,ok=true;
+  if (closing) {
+    unsigned cursor=word(RomPtr(0x8f0014u+word(g_ram+0x7bb)));
+    for (unsigned i=0; (cursor&0x8000) && i<256; ++i,cursor+=6) {
+      const uint8_t *entry=RomPtr(0x8f0000u+cursor); unsigned header=word(entry);
+      if (!header) break;
+      if (!SmDoorHeader(header) || entry[2]!=x || entry[3]!=y) continue;
+      b.cpu->x=(uint16_t)cursor; ok=entry_call(&b,0x84846a,3); restored=true;
+      if (ok) put(0x1d27+word(g_ram+0x1c27),(int)word(RomPtr(0x840004u+header)));
+      break;
+    }
+  }
+  if (!restored) {
+    unsigned index=word(g_ram+0xdde); put(0xdc4,(int)block); put(0xdde,65535);
+    b.cpu->a=(uint16_t)(closing ? 0xc8ba+4*orientation : word(RomPtr(0x949ea6u+2*(0x40+orientation))));
+    ok=entry_call(&b,0x8484e7,3); put(0xdde,(int)index);
+  }
+  interp816_free(b.cpu); return ok;
+}
 static bool open_entrance(EntryBus *b,const uint8_t *definition) {
   unsigned block=definition[5]*word(g_ram+0x7a5)+definition[4];
   if (block>=word(g_ram+0x7a5)*word(g_ram+0x7a7)) return false;
@@ -97,7 +126,7 @@ static bool open_entrance(EntryBus *b,const uint8_t *definition) {
       read_entry(b,0x949ea7+2*(0x40+orientation))<<8;
   for (unsigned i=0; i<40; ++i) {
     unsigned h=word(g_ram+0x1c37+2*i);
-    if (word(g_ram+0x1c87+2*i)==2*block && h>=0xc842 && h<=0xc8b4) put(0x1c37+2*i,0);
+    if (word(g_ram+0x1c87+2*i)==2*block && SmDoorHeader(h)) put(0x1c37+2*i,0);
   }
   unsigned index=word(g_ram+0xdde);
   put(0xdc4,(int)block); put(0xdde,65535); b->cpu->a=(uint16_t)header;
@@ -112,6 +141,7 @@ bool SmSeamlessDoor(void) {
   if (!SmRoomsDoor((uint16_t)door,&p)) return true;
   const uint8_t *definition=RomPtr(0x830000u+door);
   if ((definition[2]&0x80) || word(definition)!=p.room) return true;
+  unsigned arrival_phase=SmRoomsDoorPhase((uint16_t)door);
   EntryBus b={0}; b.bus=g_cpu;
   b.cpu=interp816_init(&b,read_entry,write_entry); if (!b.cpu) return false;
   uint8_t *previous=malloc(0x20000); uint16_t *previous_vram=malloc(0x10000);
@@ -128,7 +158,9 @@ bool SmSeamlessDoor(void) {
   bool ok=true;
   const struct { uint32_t pc; unsigned frame; } setup[]={
     {0x82ddf1,2},{0x82de12,2},{0x82de6f,2},{0x82def2,2},
-    {0x8882c1,3},{0x878016,3},{0x868016,3},{0x8dc4d8,3},{0x8483c3,3},
+    /* The native transition clears old HDMA objects before initializing the
+     * next room. Keep that bounded part, without its vblank wait. */
+    {0x8882ac,3},{0x8882c1,3},{0x878016,3},{0x868016,3},{0x8dc4d8,3},{0x8483c3,3},
     {0x82e783,3},{0x82e7d3,3},{0x89ab82,3},
     {0x90ac8d,3},{0x82e139,3},{0xa08a1e,3},{0xa08a9e,3},{0x91dee6,3},
   };
@@ -140,12 +172,25 @@ bool SmSeamlessDoor(void) {
     /* Door entry scripts and boss setup have now run once, on actual entry.
      * Native coordinates remain bounded; the presentation camera is rebased
      * separately from the active room's safe tilemap/collision coordinates. */
-    put(0xaf6,clamp(sx,p.width-16)<16 ? 16 : clamp(sx,p.width-16));
-    put(0xafa,clamp(sy,p.height-24)<24 ? 24 : clamp(sy,p.height-24));
+    unsigned rx=word(g_ram+0xafe),ry=word(g_ram+0xb00);
+    if (rx>32 || ry>48) ok=false;
+    /* Clear the entrance's trigger blocks with the whole body. Otherwise a
+     * vertical floor check can immediately schedule the reverse door while
+     * Samus is moving away from it. Presentation still needs the remaining
+     * continuous body-coordinate work; this bounds native collision safely. */
+    int min_x=16+(int)rx,min_y=16+(int)ry;
+    put(0xaf6,sx<min_x ? min_x : clamp(sx,p.width-min_x));
+    put(0xafa,sy<min_y ? min_y : clamp(sy,p.height-min_y));
     put(0xb10,word(g_ram+0xaf6)); put(0xb14,word(g_ram+0xafa));
     put(0x911,clamp(cx,p.width-256)); put(0x915,clamp(cy,p.height-256));
     put(0x91d,0); put(0x91f,0); put(0x921,0); put(0x923,0);
-    ok=enemy_tiles(&b) && entry_call(&b,0x82e8eb,2) && open_entrance(&b,definition) && entry_call(&b,0x82e97c,3) &&
+    bool boss=false;
+    for (unsigned i=0; i<32; ++i) {
+      unsigned id=word(g_ram+0xf78+64*i);
+      if (id && word(RomPtr(0xa00010u+id))) boss=true;
+    }
+    ok=ok && enemy_tiles(&b) && ((arrival_phase==SM_DOOR_OPEN || arrival_phase==SM_DOOR_OPENING) && !boss ? true :
+       entry_call(&b,0x82e8eb,2) && open_entrance(&b,definition)) && entry_call(&b,0x82e97c,3) &&
        entry_call(&b,0x80a2f9,2) && entry_call(&b,0x80a33a,2) &&
        entry_call(&b,0x80a37b,2) && entry_call(&b,0x80a176,3) &&
        entry_call(&b,0x88d865,3) && entry_call(&b,0x82e071,3) && entry_call(&b,0x82e0d5,3);

@@ -12,7 +12,7 @@ static bool Fail(SmWorld *w, const char *why, uint32_t at) {
 }
 static bool Header(Reader r, uint16_t h) {
   uint32_t a = 0x8f0000u | h;
-  return h >= 0x9000 && h < 0xe000 && B(r,a+1) < SM_WORLD_AREAS &&
+  return h >= 0x9000 && h < 0xe200 && B(r,a+1) <= SM_WORLD_AREAS &&
     B(r,a+2) < 64 && B(r,a+3) < 31 && B(r,a+4) && B(r,a+4) <= 16 &&
     B(r,a+5) && B(r,a+5) <= 16 && W(r,a+9) >= 0x8000;
 }
@@ -187,6 +187,10 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   memset(w,0,sizeof(*w)); Reader r={read,context};
   if (!Header(r,0x91f8)) return Fail(w,"stock Landing Site missing",0x8f91f8);
   w->rooms[w->room_count++].header=0x91f8;
+  /* Ceres is a disconnected cartridge graph. It has room scenery and doors,
+   * but no Zebes map or persistent exploration bitmap of its own. */
+  if (Header(r,0xdf45) && B(r,0x8fdf46)==SM_WORLD_AREAS)
+    w->rooms[w->room_count++].header=0xdf45;
   for (unsigned i=0; i<w->room_count; ++i) {
     SmWorldRoom *room=&w->rooms[i]; uint32_t a=0x8f0000u|room->header;
     room->area=B(r,a+1); room->x=B(r,a+2); room->y=B(r,a+3)+1;
@@ -242,6 +246,7 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   }
   for (unsigned n=0; n<w->room_count; ++n) {
     const SmWorldRoom *room=&w->rooms[n];
+    if (room->area>=SM_WORLD_AREAS) continue;
     for (unsigned y=room->y; y<room->y+room->height && y<32; ++y)
       for (unsigned x=room->x; x<room->x+room->width && x<64; ++x) {
         unsigned i=(x&31)+y*32+(x>=32?1024:0);

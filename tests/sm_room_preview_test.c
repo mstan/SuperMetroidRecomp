@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
   SmRoomPreviewSetRom(rom,size);
-  unsigned rooms=0, pixels=0, residents=0;
+  unsigned rooms=0, pixels=0, residents=0,ceres=0;
   for (unsigned i=0; i<world->room_count; ++i) {
     const SmWorldRoom *r=&world->rooms[i];
     Word(0x79b,r->header); Word(0x7bb,r->default_state);
@@ -36,6 +36,7 @@ int main(int argc, char **argv) {
     memcpy(before,ram,sizeof(ram));
     SmRoomPreviewPrepare(ram,-213,-32,r->width*256+213,r->height*256+32);
     unsigned n=SmRoomPreviewCount();
+    if (r->area==6) { assert(n); ++ceres; }
     if (n) ++rooms;
     else printf("room %04X: no visible planar preview\n",r->header);
     residents+=n;
@@ -51,7 +52,7 @@ int main(int argc, char **argv) {
     assert(SmRoomPreviewCount()==n);
   }
   printf("%u/%u rooms with previews, %u resident decodes, %u sampled pixels\n",rooms,world->room_count,residents,pixels);
-  assert(rooms>100 && pixels>1000);
+  assert(rooms>100 && pixels>1000 && ceres==6);
   SmRoomPreviewSetRom(NULL,0);
   assert(!SmRoomPreviewCount());
   free(world); free(rom); return 0;

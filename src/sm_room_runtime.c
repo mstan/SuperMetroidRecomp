@@ -1,5 +1,6 @@
 #include "sm_room_runtime.h"
 #include "sm_activity.h"
+#include "sm_door.h"
 #include "snes/interp816.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,9 @@ struct SmRoomRuntime {
   uint16_t population, tileset;
   uint8_t population_data[32*16+3], tileset_data[32*4+2];
   bool actors;
+  uint16_t door_blocks[128];
+  uint8_t door_orientations[128];
+  unsigned door_count;
   char error[128];
 };
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
@@ -87,16 +91,42 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
     if (c->pc==0xff00 && c->sp==0x1fff) return true;
     if (c->waiting || c->stopped) { fail(r,"room routine suspended",entry); return false; }
     interp816_runOpcode(c);
+    if (r->error[0]) {
+      size_t n=strlen(r->error);
+      snprintf(r->error+n,sizeof(r->error)-n," (entry $%06X)",(unsigned)entry);
+    }
   }
   if (!r->error[0]) fail(r,"room instruction limit",entry);
   return false;
 }
-static uint32_t rom_long(SmRoomRuntime *r,uint32_t a) {
+static uint32_t rom_long(const SmRoomRuntime *r,uint32_t a) {
   return r->read(r->context,a) | r->read(r->context,a+1)<<8 |
       (uint32_t)r->read(r->context,a+2)<<16;
 }
-static uint32_t ram_long(SmRoomRuntime *r,unsigned a) {
+static uint32_t ram_long(const SmRoomRuntime *r,unsigned a) {
   return word(r->ram+a) | (uint32_t)r->ram[a+2]<<16;
+}
+static bool remember_door(SmRoomRuntime *r,unsigned block,unsigned orientation) {
+  for (unsigned i=0; i<r->door_count; ++i) if (r->door_blocks[i]==block) return true;
+  if (r->door_count==128) { fail(r,"resident door capacity",block); return false; }
+  r->door_blocks[r->door_count]=(uint16_t)block;
+  r->door_orientations[r->door_count++]=(uint8_t)orientation; return true;
+}
+static bool initialize_doors(SmRoomRuntime *r,uint16_t state) {
+  unsigned cursor=(unsigned)rom_long(r,0x8f0014u+state)&65535;
+  if (!(cursor&0x8000)) return true;
+  for (unsigned i=0; i<256; ++i,cursor+=6) {
+    unsigned header=(unsigned)rom_long(r,0x8f0000u+cursor)&65535;
+    if (!header) { put(r,0x1c23,0x8000); return true; }
+    if (!SmDoorHeader(header)) continue;
+    if (header>=0xc842 && header<=0xc8b4) {
+      unsigned x=r->read(r->context,0x8f0002u+cursor),y=r->read(r->context,0x8f0003u+cursor);
+      if (!remember_door(r,y*word(r->ram+0x7a5)+x,((header-0xc842)/6)%4)) return false;
+    }
+    r->cpu->x=(uint16_t)cursor;
+    if (!call(r,0x84846a,3)) return false;
+  }
+  fail(r,"unterminated resident door PLMs",state); return false;
 }
 SmRoomRuntime *SmRoomRuntimeCreate(SmWorldRead read, void *context,
     const SmWorldRoom *room, uint16_t state, const uint8_t active[0x20000]) {
@@ -130,8 +160,10 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   for (unsigned i=0; i<512; ++i) r->ram[0xc200+i]=read(context,0x9a8000u+i);
   for (unsigned i=0; i<0x2000; ++i) r->vram[0x8000+i]=read(context,0x9ab200u+i);
   for (unsigned i=0; i<0x2e00; ++i) r->vram[0xc000+i]=read(context,0x9ad200u+i);
-  if (!SmWorldUnpack(read,context,0xb9a09d,r->ram+0xa000,2048) ||
-      !SmWorldUnpack(read,context,ram_long(r,0x7c0),r->ram+0xa800,6144) ||
+  if (!(room->area==6 ?
+      SmWorldUnpack(read,context,ram_long(r,0x7c0),r->ram+0xa000,8192) :
+      SmWorldUnpack(read,context,0xb9a09d,r->ram+0xa000,2048) &&
+      SmWorldUnpack(read,context,ram_long(r,0x7c0),r->ram+0xa800,6144)) ||
       !SmWorldUnpack(read,context,ram_long(r,0x7c6),r->ram+0xc200,512) ||
       !SmWorldUnpack(read,context,0xb98000,r->vram+0x5000,0x3000) ||
       !SmWorldUnpack(read,context,ram_long(r,0x7c3),r->vram,32768)) {
@@ -149,7 +181,20 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   memcpy(r->ram+0x10000,level,2+n);
   memcpy(r->ram+0x16402,level+2+n,n/2);
   if (2u+2*n+n/2<=bytes) memcpy(r->ram+0x19602,level+2+n+n/2,n);
+  for (unsigned block=0; block<room->width*room->height*256u; ++block) {
+    unsigned type=word(r->ram+0x10002+2*block)>>12,bts=r->ram[0x16402+block];
+    if ((type==12 || type==4) && bts>=0x40 && bts<=0x43 && !remember_door(r,block,bts-0x40)) return r;
+  }
   memcpy(r->ram+0xc000,r->ram+0xc200,512);
+  if (!initialize_doors(r,state)) return r;
+  /* A disabled population must not make kill-quota doors believe that the
+   * room has already been cleared. Preserve the cartridge's actual quota. */
+  unsigned quota=0;
+  for (unsigned i=0; i<32; ++i) {
+    uint32_t at=0xa10000u+word(r->ram+0x7cf)+16*i;
+    if (((unsigned)rom_long(r,at)&65535)==65535) { quota=read(context,at+2); break; }
+  }
+  put(r,0xe52,(int)quota);
   if (!actors) return r;
   /* Ordinary populations retain the cartridge's complete initialization.
    * Boss definitions stay dormant individually; they must not suppress other
@@ -166,6 +211,7 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
     for (unsigned j=0; j<16; ++j) r->population_data[used*16+j]=read(context,a+j);
     ++used;
   }
+  r->population_data[used*16+2]=(uint8_t)quota;
   unsigned tiles=0;
   for (unsigned i=0; i<32 && r->tileset; ++i) {
     uint32_t a=0xb40000u+r->tileset+4*i;
@@ -195,6 +241,74 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
   if (!r->actors) return true;
   if (!call(r,0xa08eb6,3) || !SmActivityAugmentQueues(r->ram,extra)) return false;
   return call(r,0xa08fd4,3) && call(r,0x868104,3);
+}
+bool SmRoomRuntimeStepDoors(SmRoomRuntime *r) {
+  if (!r || r->error[0]) return false;
+  uint16_t pre[40]={0},timer[40]={0}; bool suspended[40]={0};
+  for (unsigned i=0; i<40; ++i) {
+    unsigned header=word(r->ram+0x1c37+2*i);
+    if (!header || SmDoorHeader(header)) continue;
+    /* Captured departing rooms can contain items, stations and scripts.
+     * Reserve their slots without executing any pre-instruction or draw. */
+    suspended[i]=true; pre[i]=(uint16_t)word(r->ram+0x1cd7+2*i);
+    timer[i]=(uint16_t)word(r->ram+0xde1c+2*i);
+    put(r,0x1cd7+2*i,0x8469); put(r,0xde1c+2*i,65535);
+  }
+  bool ok=call(r,0x8485b4,3);
+  for (unsigned i=0; i<40; ++i) if (suspended[i]) {
+    put(r,0x1cd7+2*i,pre[i]); put(r,0xde1c+2*i,timer[i]);
+  }
+  return ok;
+}
+bool SmRoomRuntimeDoorShot(SmRoomRuntime *r,unsigned x,unsigned y,uint16_t type) {
+  if (!r || r->error[0] || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;
+  unsigned block=y*word(r->ram+0x7a5)+x;
+  unsigned tile=word(r->ram+0x10002+2*block),bts=r->ram[0x16402+block];
+  if (((tile>>12)!=12 && (tile>>12)!=4) || bts<0x40 || bts>0x44) return false;
+  unsigned header=(unsigned)rom_long(r,0x949ea6u+2*bts)&65535;
+  unsigned previous_index=word(r->ram+0xdde),previous_type=word(r->ram+0xc18);
+  put(r,0xdc4,(int)block); put(r,0xdde,0); put(r,0xc18,type); r->cpu->a=(uint16_t)header;
+  bool ok=call(r,0x8484e7,3);
+  put(r,0xdde,(int)previous_index); put(r,0xc18,(int)previous_type);
+  return ok;
+}
+bool SmRoomRuntimeDoorOpen(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orientation) {
+  if (!r || r->error[0] || orientation>=4 || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;
+  unsigned block=y*word(r->ram+0x7a5)+x;
+  for (unsigned i=0; i<40; ++i)
+    if (word(r->ram+0x1c87+2*i)==2*block && SmDoorHeader(word(r->ram+0x1c37+2*i))) put(r,0x1c37+2*i,0);
+  unsigned index=word(r->ram+0xdde);
+  put(r,0xdc4,(int)block); put(r,0xdde,65535);
+  r->cpu->a=(uint16_t)((unsigned)rom_long(r,0x949ea6u+2*(0x40+orientation))&65535);
+  bool ok=call(r,0x8484e7,3); put(r,0xdde,(int)index); return ok;
+}
+bool SmRoomRuntimeDoorClose(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orientation) {
+  if (!r || r->error[0] || orientation>=4 || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;
+  unsigned block=y*word(r->ram+0x7a5)+x;
+  for (unsigned i=0; i<40; ++i)
+    if (word(r->ram+0x1c87+2*i)==2*block && SmDoorHeader(word(r->ram+0x1c37+2*i))) put(r,0x1c37+2*i,0);
+  unsigned cursor=(unsigned)rom_long(r,0x8f0014u+word(r->ram+0x7bb))&65535;
+  for (unsigned i=0; (cursor&0x8000) && i<256; ++i,cursor+=6) {
+    unsigned header=(unsigned)rom_long(r,0x8f0000u+cursor)&65535;
+    if (!header) break;
+    if (!SmDoorHeader(header) || r->read(r->context,0x8f0002u+cursor)!=x ||
+        r->read(r->context,0x8f0003u+cursor)!=y) continue;
+    r->cpu->x=(uint16_t)cursor;
+    if (!call(r,0x84846a,3)) return false;
+    unsigned slot=word(r->ram+0x1c27);
+    put(r,0x1d27+slot,(int)((unsigned)rom_long(r,0x840004u+header)&65535));
+    return true;
+  }
+  put(r,0xdc4,(int)block); r->cpu->a=(uint16_t)(0xc8ba+4*orientation);
+  return call(r,0x8484e7,3);
+}
+void SmRoomRuntimeProgress(SmRoomRuntime *r,const uint8_t active[0x20000]) {
+  if (!r) return;
+  memcpy(r->ram+0xd820,active+0xd820,16);
+  for (unsigned i=0; i<64; ++i) r->ram[0xd8b0+i]|=active[0xd8b0+i];
+}
+void SmRoomRuntimeDoorBits(const SmRoomRuntime *r,uint8_t active[0x20000]) {
+  if (r) for (unsigned i=0; i<64; ++i) active[0xd8b0+i]|=r->ram[0xd8b0+i];
 }
 void SmRoomRuntimeBackground(SmRoomRuntime *r, const uint8_t vram[65536]) {
   if (r && vram) memcpy(r->vram+0x8000,vram+0x8000,0x37c0);
@@ -241,8 +355,41 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
     }
   }
 }
+bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000]) {
+  if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return false;
+  /* Encounter doors retain the actual entry scripts/lock initialization. */
+  for (unsigned i=0; i<32; ++i) {
+    unsigned id=word(ram+0xf78+64*i);
+    if (id && (r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id))) return true;
+  }
+  unsigned w=word(r->ram+0x7a5),h=word(r->ram+0x7a7);
+  for (unsigned door=0; door<r->door_count; ++door) {
+    unsigned block=r->door_blocks[door],orientation=r->door_orientations[door];
+    unsigned step=orientation<2 ? w : 1;
+    if (block+3*step>=w*h) return false;
+    for (unsigned k=0; k<4; ++k) {
+      unsigned at=block+k*step;
+      ram[0x10002+2*at]=r->ram[0x10002+2*at]; ram[0x10003+2*at]=r->ram[0x10003+2*at];
+      ram[0x16402+at]=r->ram[0x16402+at];
+    }
+    for (unsigned i=0; i<40; ++i) if (word(ram+0x1c87+2*i)==2*block && SmDoorHeader(word(ram+0x1c37+2*i)))
+      { ram[0x1c37+2*i]=ram[0x1c38+2*i]=0; }
+    for (unsigned i=0; i<40; ++i) if (word(r->ram+0x1c87+2*i)==2*block &&
+        SmDoorHeader(word(r->ram+0x1c37+2*i)) && word(r->ram+0x1c37+2*i)!=0xc83e) {
+      int slot=39; while (slot>=0 && word(ram+0x1c37+2*(unsigned)slot)) --slot;
+      if (slot<0) return false;
+      const unsigned arrays[]={0x1c37,0x1c87,0x1cd7,0x1d27,0x1d77,0x1dc7,0x1e17,0xde1c,0xde6c,0xdebc,0xdf0c};
+      for (unsigned j=0; j<sizeof(arrays)/sizeof(*arrays); ++j) {
+        unsigned src=arrays[j]+2*i,dst=arrays[j]+2*(unsigned)slot;
+        ram[dst]=r->ram[src]; ram[dst+1]=r->ram[src+1];
+      }
+    }
+  }
+  return true;
+}
 bool SmRoomRuntimeStepEffects(SmRoomRuntime *r) {
   if (!r || r->error[0]) return false;
+  if (!SmRoomRuntimeStepDoors(r)) return false;
   if (!r->actors && !call(r,0x868104,3)) return false;
   if (!call(r,0x878064,3) || !call(r,0x8dc527,3) || !call(r,0x8884b9,3)) return false;
   /* Publish the native animated-tile requests into this room's private

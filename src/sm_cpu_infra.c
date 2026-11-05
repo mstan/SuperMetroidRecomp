@@ -25,6 +25,7 @@ static bool SmFrameBegin(uint32_t *inputs) {
 /* Called by the framework from SnesInit, once the machine exists. */
 static void SmInitialize(void) {
   SmActivityInitialize();
+  SmRoomsSetDoorEvent(SmActiveDoorEvent);
   /* Add Super Metroid's object to the crash/exit report. Registered through
    * the framework hook rather than by forking post_mortem.c, which is how
    * this port previously carried its own 833-line copy of that file. */

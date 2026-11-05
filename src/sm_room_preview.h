@@ -15,6 +15,7 @@ bool SmRoomPreviewPixelAt(int x, int y, int camera_x, int camera_y, uint16_t *co
 unsigned SmRoomPreviewCount(void);
 bool SmRoomPreviewPlacement(unsigned index, SmRoomPlacement *placement);
 const SmWorldRoom *SmRoomPreviewRoom(uint16_t header);
+const SmWorldDoor *SmRoomPreviewDoors(uint16_t room, unsigned *count);
 const uint8_t *SmRoomPreviewVram(unsigned index);
 bool SmRoomSceneSample(const SmRoomImage *room, int x, int y,
     int camera_x, int camera_y, uint16_t layers[3]);

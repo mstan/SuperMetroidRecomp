@@ -276,11 +276,15 @@ if(BUILD_TESTING AND NOT ANDROID)
         src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
     target_include_directories(sm_room_runtime_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_executable(sm_room_doors_test tests/sm_room_doors_test.c
+        src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
+        ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
+    target_include_directories(sm_room_doors_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_executable(sm_rooms_test tests/sm_rooms_test.c src/sm_rooms.c src/sm_room_preview.c
         src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
     target_include_directories(sm_rooms_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
-    foreach(target sm_room_preview_test sm_room_runtime_test sm_rooms_test)
+    foreach(target sm_room_preview_test sm_room_runtime_test sm_room_doors_test sm_rooms_test)
         if(MSVC)
             target_compile_options(${target} PRIVATE /UNDEBUG)
         else()

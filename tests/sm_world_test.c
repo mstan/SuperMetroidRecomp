@@ -127,6 +127,17 @@ int main(void) {
   assert(escape && world.doors[escape->first_door+1].block_x==0 && world.doors[escape->first_door+1].block_y==6);
   Byte(0xa9b338,16); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"escape door block"));
   Byte(0xa9b338,6); Byte(0xa9b333,0); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"escape door spawn"));
+  /* The disconnected Ceres component extends beyond $E000 and has no map.
+   * Its geometry/doors must still be available without indexing map area 6. */
+  Fixture(); Header(0x8fdf45,6,12,13,0xdf80); Header(0x8fe021,6,13,13,0xe060);
+  Word(0x8fdf50,0xe5e6); State(0xdf52,0); Word(0x8fe02c,0xe5e6); State(0xe02e,0);
+  Word(0x8fdf80,0xab4c); Word(0x8fe060,0xab58);
+  Word(0x83ab4c,0xe021); Byte(0x83ab4f,4);
+  Word(0x83ab58,0xdf45); Byte(0x83ab5b,5);
+  assert(SmWorldLoad(&world,Read,NULL) && world.room_count==4 && world.door_count==4);
+  const SmWorldRoom *ceres=SmWorldFindRoom(&world,0xe021);
+  assert(ceres && ceres->area==6 && world.doors[ceres->first_door].reciprocal);
+  assert(!SmWorldKnown(&world,ram,6,13,14,true,true) && !SmWorldCellRoom(&world,6,13,14));
   Fixture();
   Word(0x8f9203,0xffff); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"selector"));
   Fixture(); Byte(0xc0fffe,0x80); /* invalid absolute copy before any output */

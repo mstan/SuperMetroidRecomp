@@ -143,15 +143,60 @@ scroll state; the default native BG3 graphics base was corrected.
   restores the carried camera and matches all native/resident checkpoints for
   179 executions. Natural recorded input through the doorway is still required.
 
+## Paired door and Ceres stage (2026-11-05)
+
+Resident rooms now initialize and tick the cartridge's door PLMs with either
+logic setting. Accepted native openings and closings propagate to the paired
+face using reciprocal door definitions. Permanent unlock bits synchronize;
+mirroring an opening does not grant ammunition or an unrelated unlock. Grey
+kill-quota doors retain the authored quota when neighboring enemies are Off.
+Non-door PLM scripts remain suspended. Door state/animation transfers on entry
+without replacing active items, player data or the continuation stack. Manager
+snapshot v4 also retains the paired-edge phase cache.
+
+- Owned-ROM door probe passes all four blue orientations, wrong-ammo rejection,
+  five-missile red caps, super/power-bomb caps, boss and kill-quota grey locks,
+  closing/reopening, mid-hit restore and mid-animation promotion.
+- Live native beam rejection and power-bomb consumption/opening synchronize
+  Landing Site's yellow cap and $93AA's blue cap with logic On and Off. The
+  neighboring population contains three enemies On and zero Off. Current-build
+  state restoration passes. Access/equipment setup is assisted; the shots are
+  actual controller input, not injected door-success flags.
+- Natural right/left crossings and a second departure pass with both settings.
+  The return continues for 180 gameplay frames and the second departure for 90.
+  The full input replay matches 600 native/resident executions. Earlier apparent
+  passes that stopped gameplay are superseded: seamless entry omitted the
+  cartridge's bounded HDMA clear, and body overlap retriggered the entrance.
+  Both are corrected. Body placement remains bounded by radius and still jumps
+  at the edge; fully continuous body/collision coordinates remain outstanding.
+- Native downward fire and gravity cross Parlor's bottom blue door, and a
+  native jump returns upward from the Pit with Hi-Jump equipped. Both entries
+  stay in gameplay and the return advances another 90 gameplay frames. Room
+  access, starting position, health and the Hi-Jump prerequisite were assisted;
+  shots, collision and crossings use normal input. This vertical case currently
+  covers On mode, not both settings or all connection geometry.
+- Ceres' disconnected six-room graph and full tileset definitions are now
+  decoded. The owned-ROM sweep produces previews for 261/261 rooms, 651
+  placements and 168,528 sampled pixels. Six Ceres default-state runtimes pass
+  60 ticks, independent-context equality, exact restore and Off-mode checks.
+  These are decoding/runtime probes, not Ceres gameplay acceptance.
+
+Evidence: `paired-doors-live4-on/`, `paired-doors-live4-off/`,
+`natural-door7-on/`, `natural-door7-off/` and `natural-door7-playback/`.
+`doors-qualified.exe` and `doors-build-identity.json` preserve the exact
+horizontal qualification binary before the subsequent Ceres rebuild.
+`vertical-doors-6/` retains the passing vertical case. Earlier vertical
+directories are failed/superseded input setups and do not qualify traversal.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Continuous handoff exists and the horizontal assisted
 case works, but general seamless traversal and the complete door/combat contract
 remain unqualified. Do not represent the feature as complete or release it.
 
-1. Implement paired native door PLMs, both-face valid-shot hit detection and
-   shared unlock/animation. Retain ammunition, lock and progression rules. This
-   is the next main implementation step, not another tooling campaign.
+1. Connect shots/projectiles reaching an inactive door face to its native hit
+   handler. Qualify this separately from accepted-opening mirroring, which now
+   works, including native ammunition, lock and progression rules.
 2. Complete natural continuous traversal in all four directions. Eliminate
    edge-placement jumps and opening delays using the paired connection state;
    preserve motion, collision, actor/projectile handoff, native entry scripts
@@ -161,8 +206,8 @@ remain unqualified. Do not represent the feature as complete or release it.
 4. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors.
-5. Extend the disconnected Ceres room graph/tileset decoding. The earlier
-   255/255 result covers the currently indexed Zebes graph, not all Ceres rooms.
+5. Qualify live Ceres scenery/traversal and dormant encounter helpers. Its graph
+   and tileset decoding now cover all six rooms; live gameplay is outstanding.
 6. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
    determinism, representative native gameplay and matched runtime performance.
 7. Prepare a compact owner review with normal audio in a normal window, then
