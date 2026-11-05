@@ -1,4 +1,5 @@
 #include "sm_renderer.h"
+#include "sm_room_preview.h"
 #ifndef SM_NATIVE_RASTER
 #define SM_NATIVE_RASTER 0
 #endif
@@ -157,6 +158,7 @@ const uint32_t *SmRendererStockFrame(void) {
 void SmRendererSetRom(const uint8_t *rom, size_t size) {
   renderer_rom = rom;
   renderer_rom_size = size;
+  SmRoomPreviewSetRom(rom, size);
 }
 static const uint8_t *rom_bytes(unsigned bank, unsigned address, size_t size) {
   if (!renderer_rom || address < 0x8000 || address > 0xffff ||
@@ -1987,26 +1989,22 @@ static void hud_tail_matte(const SnesRenderRegisters *p, const SmRasterLine *lin
   }
 }
 
-/* These arenas use red scroll cells to close their staging areas. Mother
- * Brain closes screen 1 at $A9:8829; Crocomire closes screens 0/1 at
- * $A4:8A5A and opens them during its authored defeat sequence. Follow the
- * live room data, including those transitions, rather than a viewport-sized
- * rectangle. Scroll permissions in ordinary rooms are not visibility rules. */
-static void arena_staging_matte(const uint8_t *ram, SmViewport view, int y,
-                                int camera_x, int camera_y, uint32_t *row) {
-  unsigned room = read16(ram, 0x79b);
-  if (!view.extra || (room != 0xdd58 && room != 0xa98d)) return;
-  unsigned w = read16(ram, 0x7a5), h = read16(ram, 0x7a7);
-  if (!w || !h || (w & 15) || (h & 15) || w > 256 || h > 256) return;
-  int wy = camera_y + y + 1;
-  if (wy < 0 || wy >= (int)h * 16) return;
+/* Neighbor scenery replaces the old finished-pixel room matte. Only widened
+ * pixels outside the active rectangle are eligible; the captured native
+ * picture and active room's effects retain their existing ownership. */
+static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera_y,
+                                int room_width, int room_height,
+                                const uint8_t padding[256], const uint8_t brightness[32], uint32_t *row) {
+  if (y<32) return;
   for (int sx = 0; sx < view.width; ++sx) {
-    int x = sx - view.extra;
+    int x = sx - view.extra, wx = camera_x + x, wy = camera_y + y + 1;
     if (x >= 0 && x < 256) continue;
-    int wx = camera_x + x;
-    if (wx < 0 || wx >= (int)w * 16) continue;
-    unsigned cell = (unsigned)(wy / 256) * (w / 16) + (unsigned)(wx / 256);
-    if (ram[0xcd20 + cell] == 0) row[sx] = 0;
+    if (wx >= 0 && wx < room_width && wy >= 0 && wy < room_height &&
+        !padding[(wy/256)*16+wx/256]) continue;
+    uint16_t color;
+    if (SmRoomPreviewPixelAt(wx, wy, camera_x, camera_y, &color))
+      row[sx] = (uint32_t)brightness[color & 31] << 16 |
+                (uint32_t)brightness[(color >> 5) & 31] << 8 | brightness[(color >> 10) & 31];
   }
 }
 
@@ -2029,6 +2027,11 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   memset(out, 0, (size_t)viewport.width * 224 * sizeof(*out));
   unsigned state = read16(f->ram, 0x998);
   bool room = room_state(state);
+  if (room && viewport.extra)
+    SmRoomPreviewPrepare(f->ram, (int16_t)read16(f->ram, 0x911)-viewport.extra-32,
+        (int16_t)read16(f->ram, 0x915)-32,
+        (int16_t)read16(f->ram, 0x911)+256+viewport.extra+32,
+        (int16_t)read16(f->ram, 0x915)+256);
   /* $8B:C7CA parks the Mode-7 ship outside the native view while the planet
    * title/stars (OBJ) play. $8B:C9C7 starts its authored approach by changing
    * the cinematic function from nullsub_120 to $C9F9. Extra background pixels
@@ -2369,7 +2372,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           out + y * viewport.width);
       if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
           brightness, &wide_windows[y], out + y * viewport.width);
-      arena_staging_matte(f->ram, viewport, (int)y, matte_x, matte_y, out + y * viewport.width);
+      neighboring_scenery(viewport, y, matte_x, matte_y,
+          read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width);
       continue;
     }
 #endif
@@ -2477,7 +2481,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
         brightness, &wide_windows[y], out + y * viewport.width);
     if (mode == 1)
-      arena_staging_matte(f->ram, viewport, (int)y, matte_x, matte_y, out + y * viewport.width);
+      neighboring_scenery(viewport, y, matte_x, matte_y,
+          read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width);
     if (hd_line) {
       memcpy(hd.native, out + y * viewport.width, viewport.width * 4);
       hd_ok &= SnesHdFrameSetLine(hd_frame, (unsigned)y, &hd); hd_rows[y] = true;

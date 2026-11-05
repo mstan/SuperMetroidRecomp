@@ -64,6 +64,14 @@ int main(void) {
   ram[0xd822]=0x10; assert(SmWorldRoomState(room,Read,NULL,ram)==0x9350);
   Ram(0x79b,0x91f8); Ram(0x7bb,0x9999);
   assert(SmWorldRoomState(room,Read,NULL,ram)==0x9999); /* current actual state wins */
+  /* An unvisited preview knows its incoming connection. Select its actual
+   * door-specific state rather than showing the default room incorrectly. */
+  SmWorldRoom door_room={.header=0x9700,.default_state=0x9713};
+  Word(0x8f970b,0xe5eb); Word(0x8f970d,0x9000); Word(0x8f970f,0x9350);
+  Word(0x8f9711,0xe5e6);
+  assert(SmWorldRoomState(&door_room,Read,NULL,ram)==0x9713);
+  assert(SmWorldRoomStateForDoor(&door_room,Read,NULL,ram,0x9000)==0x9350);
+  assert(SmWorldRoomStateForDoor(&door_room,Read,NULL,ram,0x900c)==0x9713);
   assert(SmWorldTile(&world,0,23,1)==0x24 && SmWorldTile(&world,0,32,1)==0x24);
   assert(SmWorldTile(&world,6,23,1)==31 && SmWorldTile(&world,0,-1,1)==31);
   assert(!SmWorldExplored(ram,0,23,1) && !SmWorldKnown(&world,ram,0,23,1,false,false));

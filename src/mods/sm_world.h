@@ -42,9 +42,14 @@ typedef struct SmWorld {
 } SmWorld;
 
 bool SmWorldLoad(SmWorld *world, SmWorldRead read, void *context);
+/* Bounded cartridge decoder shared by the map and room preview renderer. */
+size_t SmWorldUnpack(SmWorldRead read, void *context, uint32_t source,
+                     uint8_t *destination, size_t capacity);
 const SmWorldRoom *SmWorldFindRoom(const SmWorld *world, uint16_t header);
 uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read,
                           void *context, const uint8_t *wram);
+uint16_t SmWorldRoomStateForDoor(const SmWorldRoom *room, SmWorldRead read,
+    void *context, const uint8_t *wram, uint16_t incoming_door);
 bool SmWorldExplored(const uint8_t *wram, unsigned area, int x, int y);
 bool SmWorldKnown(const SmWorld *world, const uint8_t *wram,
                   unsigned area, int x, int y, bool reveal, bool secrets);

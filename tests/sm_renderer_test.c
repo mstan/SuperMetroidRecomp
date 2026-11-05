@@ -420,7 +420,7 @@ static void mother_brain_beam_margins(void) {
   memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom)); memset(&ppu,0,sizeof(ppu));
 }
 
-static void arena_staging(void) {
+static void arena_exposure(void) {
   const SmViewport views[] = {{256,0,4.0/3,true},{342,43,16.0/9,true},
                              {448,96,21.0/9,true},{682,213,32.0/9,true}};
   for (unsigned arena = 0; arena < 2; ++arena) for (unsigned opened = 0; opened < 2; ++opened) {
@@ -442,7 +442,7 @@ static void arena_staging(void) {
       for (int x=0;x<256;++x) assert(output[100*view.width+view.extra+x]==0xff0000);
       if (view.extra) {
         int x=arena ? -1 : 256;
-        assert(output[100*view.width+view.extra+x]==(opened ? 0xff0000u : 0));
+        assert(output[100*view.width+view.extra+x]==0xff0000u);
       }
     }
   }
@@ -830,7 +830,7 @@ int main(int argc, char **argv) {
   hud_colour_math_margins();
   shared_hud_liquid_map();
   mother_brain_beam_margins();
-  arena_staging();
+  arena_exposure();
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();

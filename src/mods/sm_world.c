@@ -86,6 +86,11 @@ static size_t Unpack(Reader r, uint32_t p, uint8_t *dst, size_t cap) {
   }
   return 0;
 }
+size_t SmWorldUnpack(SmWorldRead read, void *context, uint32_t source,
+                     uint8_t *destination, size_t capacity) {
+  if (!read || !destination || !(source & 0x8000)) return 0;
+  return Unpack((Reader){read, context}, source, destination, capacity);
+}
 static bool Drop(SmWorld *w,uint16_t room,uint16_t state,uint16_t plm,unsigned bts,unsigned x,unsigned y) {
   for (unsigned i=0; i<w->marker_count; ++i) {
     const SmWorldMarker *m=&w->markers[i];
@@ -247,6 +252,10 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   return true;
 }
 uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read, void *context, const uint8_t *ram) {
+  return SmWorldRoomStateForDoor(room,read,context,ram,0);
+}
+uint16_t SmWorldRoomStateForDoor(const SmWorldRoom *room, SmWorldRead read,
+    void *context, const uint8_t *ram, uint16_t incoming_door) {
   if (!room || !ram || !read) return 0;
   if (Ram(ram,0x79b)==room->header) return Ram(ram,0x7bb);
   Reader r={read,context}; uint32_t p=0x8f0000u+room->header+11;
@@ -255,12 +264,13 @@ uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read, void *conte
     int n=Args(fn); if (n<0) return 0;
     unsigned arg=B(r,p+2); bool selected=false;
     switch (fn) {
+      case 0xe5eb: selected=incoming_door && W(r,p+2)==incoming_door; break;
       case 0xe5ff: selected=(ram[0xd82d]&1)!=0; break;
       case 0xe612: selected=(ram[0xd820+arg/8]&(1u<<(arg&7)))!=0; break;
       case 0xe629: selected=(ram[0xd828+room->area]&arg)!=0; break;
       case 0xe652: selected=(Ram(ram,0x9a4)&4) && Ram(ram,0x9c8); break;
       case 0xe669: selected=Ram(ram,0x9d0)!=0; break;
-      default: break; /* arrival-door condition is unknown for another room */
+      default: break;
     }
     if (selected) return W(r,p+2+(unsigned)n);
     p+=4+(unsigned)n;
