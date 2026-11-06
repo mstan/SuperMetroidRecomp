@@ -316,6 +316,26 @@ This is response qualification; physical enemy-projectile crossing and live
 cross-room projectile contact remain open. Current integrated executable:
 `3b28c975d6f2fba5ee807f9b2a3cbca75d438012f992fdece8d6e3a98ff0c0e1`.
 
+Enemy-projectile terrain samples now borrow resolved foreign cells for the
+cartridge's own bounded collision response, restoring the original cell,
+coordinates and dispatch index before RTS. Both generated active execution
+and private resident execution use the same view. Native velocity, fractional
+movement, slopes, wall reactions and slot ownership remain authoritative.
+Owned-ROM probes pass all four signed allocation boundaries, foreign walls,
+exact continuation and complete moving-pool equivalence for all 32 slope
+shapes, four flips and four directions. Native open/closed/Off manager checks
+also pass (`projectile-terrain1-result.json`).
+Supported strict generation, the full build and all 28 CTests pass. A seeded
+native Mini-Kraid spit is a physics prerequisite in the existing live fixture:
+it actually moves from A011 into 9FE5, remains alive beyond x540, and dies on
+foreign geometry in its original slot, with logic On and Off. Samus stays in
+A011/gameplay. Its On replay matches all 16 checkpoints; the ordinary weapon
+replay still matches 250 (`projectile-world-build1-result.json`, exit 0;
+`world-shots6-*`, `world-eprojs1-*`). Current executable SHA-256:
+`041a5afd1dfec601f3dd31402592649c960834b6403951c1e6ec45c5c15ae6c3`.
+This does not establish completed actor movement, spatial ownership or
+resident-owned objects crossing back onto the active canvas.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -348,6 +368,11 @@ current-build restore and replay. Six acceptance areas remain open:
 ## Local evidence and retained work
 
 Workspace: `G:/Temp/Codex/supermetroid/exposed-rooms-20261105`.
+`world-objects-source/` is a small separate worktree for prepared renderer
+changes while the primary candidate stayed frozen. Its renderer checks use
+`world-objects-build/`; these changes require ownership integration and live
+qualification before acceptance. Remove the clean worktree/build after that
+integration and retain only the needed evidence.
 `source/` contains this isolated checkout; `build/` contains candidate tools
 and the candidate game build. `first-preview.bmp` is the inspected offline
 32:9 raster replay. `settled-hall/hall.capture`, four aspect images/logs and

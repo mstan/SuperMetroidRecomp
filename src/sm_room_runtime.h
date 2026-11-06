@@ -1,5 +1,6 @@
 #pragma once
 #include "mods/sm_world.h"
+#include "sm_eproj_view.h"
 typedef struct SmRoomRuntime SmRoomRuntime;
 /* Independent cartridge execution for resident rooms. The active machine's
  * bus, timing, audio, globals and native saves are never installed here. */
@@ -11,6 +12,9 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
 void SmRoomRuntimeDestroy(SmRoomRuntime *room);
 bool SmRoomRuntimeStep(SmRoomRuntime *room, int samus_x, int samus_y,
                         int camera_x, int camera_y);
+/* Ephemeral world terrain view; callbacks and in-flight native loans are not
+ * part of a between-frame snapshot. Clear after the bounded native tick. */
+void SmRoomRuntimeSetWorld(SmRoomRuntime *room,SmEprojQuery query,void *context);
 bool SmRoomRuntimeStepEffects(SmRoomRuntime *room);
 /* Door PLMs run independently of ordinary neighboring gameplay actors. */
 bool SmRoomRuntimeStepDoors(SmRoomRuntime *room);

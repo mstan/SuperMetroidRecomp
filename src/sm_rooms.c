@@ -281,6 +281,42 @@ int SmRoomsShotBlock(uint8_t active[0x20000],bool horizontal,uint16_t *index) {
   SmShotPut(active,0x28,(int)word(active+0x28)-1);
   return 1;
 }
+bool SmRoomsEprojTile(const uint8_t active[0x20000],const uint8_t source[0x20000],
+    int origin_x,int origin_y,int bx,int by,SmEprojTile *tile) {
+  if (!rom || !tile || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
+  int wx=origin_x/16+bx,wy=origin_y/16+by,ox=0,oy=0;
+  const uint8_t *owner=NULL;
+  for (unsigned i=0; i<count; ++i) {
+    const SmRoomPlacement *p=&residents[i].placement;
+    int x=wx*16+8,y=wy*16+8;
+    if (x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
+        x>=p->left && y>=p->top && x<p->right && y<p->bottom) {
+      owner=SmRoomRuntimeRam(residents[i].runtime);ox=p->x/16;oy=p->y/16;break;
+    }
+  }
+  if (!owner && wx>=0 && wy>=0 && wx<(int)word(active+0x7a5) && wy<(int)word(active+0x7a7)) owner=active;
+  if (!owner) { *tile=(SmEprojTile){bx,by,0x8000,0};return true; }
+  int x=wx-ox,y=wy-oy,w=(int)word(owner+0x7a5),h=(int)word(owner+0x7a7);
+  bool native=owner==source;
+  for (unsigned i=0; i<16; ++i) {
+    if (x<0 || y<0 || x>=w || y>=h) break;
+    unsigned block=(unsigned)(y*w+x),value=word(owner+0x10002+2*block),type=value>>12;
+    uint8_t bts=owner[0x16402+block];
+    if (type==9 && SmRoomsShotDoorAir(owner,ox*16,oy*16,block)) value=0;
+    else if (native) return false;
+    else if (type==5 && bts) { x+=(int8_t)bts;continue; }
+    else if (type==13 && bts) { y+=(int8_t)bts;continue; }
+    else if (type==5 || type==13) break;
+    *tile=(SmEprojTile){ox+x-origin_x/16,oy+y-origin_y/16,(uint16_t)value,bts};
+    return true;
+  }
+  *tile=(SmEprojTile){bx,by,0x8000,0};return true;
+}
+typedef struct EprojOrigin { const uint8_t *active;int x,y; } EprojOrigin;
+static bool resident_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
+  const EprojOrigin *origin=context;
+  return SmRoomsEprojTile(origin->active,source,origin->x,origin->y,x,y,tile);
+}
 static int tile_collision(const uint8_t *ram,int x,int y) {
   int w=(int)word(ram+0x7a5),h=(int)word(ram+0x7a7);
   for (unsigned i=0; i<16; ++i) {
@@ -484,12 +520,15 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   for (unsigned i=0; i<count; ++i) {
     const SmRoomPlacement *p=&residents[i].placement; SmRoomRuntime *runtime=residents[i].runtime;
     SmRoomRuntimeProgress(runtime,active);
-    if ((reachable[i+1] && !SmRoomRuntimeHitShots(runtime,active,p->x,p->y,resident_shots(active,p))) ||
+    EprojOrigin origin={active,p->x,p->y};SmRoomRuntimeSetWorld(runtime,resident_eproj_tile,&origin);
+    bool failed=(reachable[i+1] && !SmRoomRuntimeHitShots(runtime,active,p->x,p->y,resident_shots(active,p))) ||
         (reachable[i+1] && resident_body(active,p) && !SmRoomRuntimeTouch(runtime,active,p->x,p->y)) ||
         !SmRoomRuntimeStepVisible(runtime,(int16_t)word(active+0xaf6)-p->x,(int16_t)word(active+0xafa)-p->y,
         x-p->x,y-p->y,extra) ||
         (reachable[i+1] && !SmRoomRuntimeProjectiles(runtime,active,p->x,p->y,resident_shots(active,p),resident_body(active,p))) ||
-        !SmRoomRuntimeStepEffects(runtime)) {
+        !SmRoomRuntimeStepEffects(runtime);
+    SmRoomRuntimeSetWorld(runtime,NULL,NULL);
+    if (failed) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X: %s\n",root,p->room,SmRoomRuntimeError(runtime)); return false;
     }
     SmRoomRuntimeDoorBits(runtime,active);

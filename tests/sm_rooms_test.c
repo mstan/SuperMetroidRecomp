@@ -200,6 +200,9 @@ int main(int argc,char **argv) {
       assert(SmRoomsCollisionBlock(active,144,24)==0);
       assert(SmRoomsCollisionBlock(active,145,24)==0);
       assert(SmRoomsCollisionBlock(active,144,21)==16);
+      SmEprojTile tile;
+      assert(SmRoomsEprojTile(active,active,0,0,143,24,&tile) && !(tile.tile>>12));
+      assert(SmRoomsEprojTile(active,active,0,0,145,24,&tile) && (tile.tile>>12)<8);
       put(0xaf6,2303); put(0xafa,400);
       assert(!SmRoomsCrossing(active,&door,&destination));
       put(0xaf6,2304);
@@ -226,6 +229,7 @@ int main(int argc,char **argv) {
       active[cap+1]=(uint8_t)((active[cap+1]&15)|0xc0);
       for (unsigned frame=0; frame<60; ++frame) assert(SmRoomsFrame(active,true,213,logic!=0,true));
       assert(SmRoomsCollisionBlock(active,145,24)==16);
+      assert(SmRoomsEprojTile(active,active,0,0,145,24,&tile) && (tile.tile>>12)>=8);
       memcpy(active,original,sizeof(active));
       puts("open portal samples, exact center-crossing ownership and closed opposing cap collision pass");
     }

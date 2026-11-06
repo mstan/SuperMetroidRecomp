@@ -8,11 +8,16 @@
 /* The body dispatch PCs are shared with the elective screw-attack block
  * behavior. That callback applies this core room query before its own policy. */
 extern bool SmCombatShotBlockDispatchActive(void);
+static SmEprojLoan eproj_loan;
 bool SmRoomCollisionFrameBegin(void) {
   bool enabled=g_sm_video.enhanced && g_sm_video.seamless;
   const uint32_t body[]={0x949527,0x94953e},inside[]={0x949b9e,0x949bd3,0x949c18};
   const uint32_t shots[]={0x94a1b5,0x94a1d6,0x94a1cd,0x94a1ee,
       0x94a2a8,0x94a337,0x94a3bb,0x94a3c3,0x94a3cd,0x94a44d,0x94a455,0x94a45f,0x94a4c6,0x94a530};
+  const uint32_t eprojs[]={0x868886,0x86889e,0x86889d,0x8688b5};
+  if (eproj_loan.active) { fprintf(stderr,"[sm-rooms] unfinished native projectile terrain loan\n");return false; }
+  for (unsigned i=0; i<sizeof(eprojs)/sizeof(*eprojs); ++i)
+    if (!snes_mod_hook_arm(eprojs[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<sizeof(shots)/sizeof(*shots); ++i)
     if (!snes_mod_hook_arm(shots[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<2; ++i)
@@ -22,6 +27,20 @@ bool SmRoomCollisionFrameBegin(void) {
     return !enabled;
   }
   return true;
+}
+static bool active_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
+  (void)context;return SmRoomsEprojTile(source,source,0,0,x,y,tile);
+}
+uint32 SmRoomEprojBlockHook(CpuState *cpu,uint32 pc24) {
+  unsigned pc=pc24&65535;
+  if (pc==0x8886 || pc==0x889e) {
+    if (g_sm_video.enhanced)
+      SmEprojBegin(cpu->ram,&cpu->X,pc==0x8886,active_eproj_tile,NULL,&eproj_loan);
+  } else if (SmEprojEnd(cpu->ram,&cpu->X,pc==0x889d,&eproj_loan)) {
+    cpu->_flag_N=(cpu->X&0x8000)!=0;cpu->_flag_Z=cpu->X==0;
+    cpu->P=(uint8_t)((cpu->P&~0x82) | cpu->_flag_Z<<1 | cpu->_flag_N<<7);
+  }
+  return 0;
 }
 uint32 SmRoomInsideDispatchHook(CpuState *cpu,uint32 pc24) {
   (void)pc24;

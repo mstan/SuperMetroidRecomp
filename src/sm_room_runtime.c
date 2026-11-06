@@ -23,6 +23,9 @@ struct SmRoomRuntime {
   unsigned door_count;
   SmRoomShotAir shot_air;
   void *shot_context;
+  SmEprojQuery world_query;
+  void *world_context;
+  SmEprojLoan eproj_loan;
   char error[128];
 };
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
@@ -93,6 +96,14 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
   for (unsigned i=0; i<200000 && !r->error[0]; ++i) {
     if (c->pc==0xff00 && c->sp==0x1fff) return true;
     if (c->waiting || c->stopped) { fail(r,"room routine suspended",entry); return false; }
+    if ((c->k&127)==6) {
+      if (c->pc==0x8886 || c->pc==0x889e)
+        SmEprojBegin(r->ram,&c->x,c->pc==0x8886,r->world_query,r->world_context,&r->eproj_loan);
+      else if ((c->pc==0x889d || c->pc==0x88b5) &&
+          SmEprojEnd(r->ram,&c->x,c->pc==0x889d,&r->eproj_loan)) {
+        c->n=(c->x&0x8000)!=0;c->z=c->x==0;
+      }
+    }
     if (r->shot_air && (c->k&127)==0x14 && (c->pc==0xa1cd || c->pc==0xa1ee) &&
         c->x==18 && r->shot_air(r->shot_context,r->ram,word(r->ram+0xdc4)))
       c->x=0; /* this registered connection's trigger is ordinary shot air */
@@ -236,6 +247,9 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
 }
 void SmRoomRuntimeDestroy(SmRoomRuntime *r) {
   if (r) { interp816_free(r->cpu); free(r); }
+}
+void SmRoomRuntimeSetWorld(SmRoomRuntime *r,SmEprojQuery query,void *context) {
+  if (r) { r->world_query=query;r->world_context=context; }
 }
 bool SmRoomRuntimeStep(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y) {
   return SmRoomRuntimeStepVisible(r,samus_x,samus_y,camera_x,camera_y,0);
@@ -569,7 +583,7 @@ typedef struct RoomState {
 } RoomState;
 size_t SmRoomRuntimeStateSize(void) { return sizeof(RoomState); }
 bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
-  if (!r || !out || size!=sizeof(RoomState) || r->error[0] ||
+  if (!r || !out || size!=sizeof(RoomState) || r->error[0] || r->eproj_loan.active ||
       r->cpu->sp!=0x1fff || r->cpu->pc!=0xff00) return false;
   RoomState *s=calloc(1,sizeof(*s)); if (!s) return false;
   const Interp816 *c=r->cpu;

@@ -142,6 +142,67 @@ static void projectile_interactions(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);free(fixture);free(end);free(again);
   puts("native resident projectile contact/suit damage, shootable reactions/plasma, slot isolation and exact restore pass");
 }
+typedef struct EprojTerrainProbe { unsigned queries,crossings;bool native,wall; } EprojTerrainProbe;
+static bool eproj_terrain(void *context,const uint8_t *ram,int x,int y,SmEprojTile *tile) {
+  EprojTerrainProbe *probe=context;++probe->queries;
+  unsigned w=SmShotWord(ram,0x7a5),h=SmShotWord(ram,0x7a7);
+  bool outside=x<0 || y<0 || x>=(int)w || y>=(int)h;
+  probe->crossings+=outside;
+  unsigned block=outside ? 0 : (unsigned)y*w+(unsigned)x;
+  *tile=(SmEprojTile){x,y,probe->native ? (uint16_t)SmShotWord(ram,0x10002+2*block) :
+      (uint16_t)(probe->wall && outside ? 0x8000 : 0),probe->native ? ram[0x16402+block] : 0};
+  return true;
+}
+static void projectile_terrain(SmRoomRuntime *r,SmRoomRuntime *twin) {
+  static uint8_t seed[0x20000];static uint16_t vram[0x8000];
+  const uint8_t *ram=SmRoomRuntimeRam(r),*graphics=SmRoomRuntimeVram(r);
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*fixture=malloc(size),*end=malloc(size),*again=malloc(size);
+  assert(original && fixture && end && again && SmRoomRuntimeSave(r,original,size));
+  memcpy(seed,ram,sizeof(seed));memset(seed+0xf78,0,2048);memset(seed+0x1997,0,36);
+  SmShotPut(seed,0xe4c,0);SmShotPut(seed,0xe4e,0);SmShotPut(seed,0x198d,0x8000);
+  unsigned w=SmShotWord(seed,0x7a5),h=SmShotWord(seed,0x7a7),slot=34;
+  SmShotPut(seed,0x1997+slot,0x9db0);SmShotPut(seed,0x1a03+slot,0x9e1e);
+  SmShotPut(seed,0x1b47+slot,0x9dda);SmShotPut(seed,0x1b8f+slot,0x7fff);SmShotPut(seed,0x1bb3+slot,0x0404);
+  SmShotPut(seed,0x1a27+slot,0);SmShotPut(seed,0x1a6f+slot,0);
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(graphics[2*i] | graphics[2*i+1]<<8);
+  for (unsigned wall=0; wall<2; ++wall) for (unsigned direction=0; direction<4; ++direction) {
+    int x=direction==0 ? (int)w*16-2 : direction==1 ? 2 : 64;
+    int y=direction==2 ? (int)h*16-2 : direction==3 ? 2 : 64;
+    int dx=direction==0 ? 4 : direction==1 ? -4 : 0,dy=direction==2 ? 4 : direction==3 ? -4 : 0;
+    for (unsigned i=0; i<w*h; ++i) { SmShotPut(seed,0x10002+2*i,0x8000);seed[0x16402+i]=0; }
+    SmShotPut(seed,0x1a4b+slot,x);SmShotPut(seed,0x1a93+slot,y);
+    SmShotPut(seed,0x1ab7+slot,dx*256);SmShotPut(seed,0x1adb+slot,dy*256);
+    assert(SmRoomRuntimeCapture(r,seed,vram) && SmRoomRuntimeSave(r,fixture,size));
+    EprojTerrainProbe probe={.wall=wall!=0};SmRoomRuntimeSetWorld(r,eproj_terrain,&probe);
+    assert(SmRoomRuntimeStepVisible(r,64,64,0,0,213));
+    assert(probe.crossings && SmShotWord(ram,0x10002)==0x8000 && ram[0x16402]==0);
+    assert((SmShotWord(ram,0x1997+slot)!=0)==!wall);
+    if (!wall) assert(SmShotWord(ram,0x1a4b+slot)==((unsigned)(x+dx)&65535) &&
+        SmShotWord(ram,0x1a93+slot)==((unsigned)(y+dy)&65535));
+    assert(SmRoomRuntimeSave(r,end,size) && SmRoomRuntimeLoad(r,fixture,size));
+    assert(SmRoomRuntimeStepVisible(r,64,64,0,0,213) && SmRoomRuntimeSave(r,again,size) && !memcmp(end,again,size));
+    SmRoomRuntimeSetWorld(r,NULL,NULL);
+  }
+  /* Compare the complete native moving-projectile pool against unmodified
+   * cartridge collision for every slope shape/flip and movement direction. */
+  for (unsigned shape=0; shape<32; ++shape) for (unsigned flip=0; flip<4; ++flip)
+    for (unsigned direction=0; direction<4; ++direction) {
+      for (unsigned i=0; i<w*h; ++i) { SmShotPut(seed,0x10002+2*i,0x1000);seed[0x16402+i]=(uint8_t)(shape+flip*64); }
+      SmShotPut(seed,0x1a4b+slot,64);SmShotPut(seed,0x1a93+slot,64);
+      SmShotPut(seed,0x1ab7+slot,direction==0 ? 1024 : direction==1 ? -1024 : 0);
+      SmShotPut(seed,0x1adb+slot,direction==2 ? 1024 : direction==3 ? -1024 : 0);
+      assert(SmRoomRuntimeCapture(r,seed,vram) && SmRoomRuntimeSave(r,fixture,size) && SmRoomRuntimeLoad(twin,fixture,size));
+      EprojTerrainProbe probe={.native=true};SmRoomRuntimeSetWorld(r,eproj_terrain,&probe);
+      assert(SmRoomRuntimeStepVisible(r,64,64,0,0,213) && SmRoomRuntimeStepVisible(twin,64,64,0,0,213));
+      if (memcmp(ram+0x198d,SmRoomRuntimeRam(twin)+0x198d,0x296)) {
+        fprintf(stderr,"foreign slope mismatch shape=%u flip=%u direction=%u\n",shape,flip,direction);abort();
+      }
+      assert(probe.queries && SmShotWord(ram,0x10002)==0x1000 && ram[0x16402]==shape+flip*64);
+      SmRoomRuntimeSetWorld(r,NULL,NULL);
+    }
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);free(fixture);free(end);free(again);
+  puts("native projectiles cross four signed room boundaries, stop on foreign walls, restore exactly and match all native slope shapes/flips");
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -195,7 +256,7 @@ int main(int argc,char **argv) {
   assert(SmRoomRuntimeSave(r,repeated,bytes));
   assert(!memcmp(continued,repeated,bytes));
   puts("resident save/restore continuation matches exactly; truncated input rejected");
-  if (room->header==0x93aa) { hit_shots(r);touch(r);projectile_interactions(r); }
+  if (room->header==0x93aa) { hit_shots(r);touch(r);projectile_interactions(r);projectile_terrain(r,twin); }
   uint8_t *entered=malloc(sizeof(active)); uint16_t *entered_vram=calloc(0x8000,sizeof(*entered_vram));
   assert(entered && entered_vram); memcpy(entered,SmRoomRuntimeRam(r),sizeof(active));
   entered[0xf8c]^=0x55; /* A fresh native load must not replace resident health. */
