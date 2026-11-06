@@ -3,6 +3,30 @@
 Tracking: `beads-8wg.6.44`. Branch: `feat/exposed-widescreen-rooms-20261105`.
 Base: current unified main `cfb1d6b` (v0.4.2), not the stale ordinary checkout.
 
+## Owner review rejected; work parked (2026-11-06)
+
+The owner reported five failed human checks and requested a branch/new-session
+handoff. Earlier automated readiness statements below are superseded. These
+failures remain open; later candidates have not been owner-cleared:
+
+| Report | Beads | Required correction |
+| --- | --- | --- |
+| HF-01 | beads-8wg.6.45 | A hatch looks closed while passable; keep its visible state consistent, preferring open presentation while logically open. |
+| HF-02 | beads-8wg.6.46 | Room entry loses/corrupts its visible canvas into black space. |
+| HF-03 | beads-8wg.6.47 | Remove the black fade from the selectable Native transition while retaining its animation and coherent scenery. |
+| HF-04 | beads-8wg.6.48 | Correct lava-entry body/layer placement and the separately reported liquid-rendering error. |
+| HF-05 | beads-8wg.6.49 | Make the Ceres escape shaft actually traversable/exitable through normal controller play. |
+
+The full recovery goal is [HANDOFF-WIDESCREEN.md](../HANDOFF-WIDESCREEN.md).
+Five copied screenshots, owner reports, hashes and original review metadata are
+retained in task-root `human-feedback-20261106/`. The actually reviewed original
+Candidate5 hash is verified; its Fit/120-FPS configuration must be reproduced.
+Do not discard failures as old, patch old snapshot guards, or infer a fix from a
+later commit/green test. Netplay and rewind have no owner verdict. PR52 stays
+draft/unmerged; v0.4.3 candidates remain unpublished/undelivered. The owner
+requested parking, so this turn records evidence and pushes the handoff without
+attempting additional gameplay fixes.
+
 ## Approved behavior
 
 Expose secrets and connected rooms instead of concealing them with black
@@ -27,8 +51,8 @@ This request supersedes deliberate secret/arena concealment in prior feedback.
 
 ## Implemented and evaluated
 
-Current burndown (2026-11-06): all demonstrated implementation defects are
-resolved. Final net-enabled QA is frozen at source `ecea946` with the established
+Earlier automated checkpoint, superseded by the failed owner review above:
+net-enabled QA is frozen at source `ecea946` with the established
 Windows release implementation flags and tracing enabled, SHA-256
 `76fb60aa81a7ebc8cd56da4f895efcdf912885a2ccdd80f34a7b89528888a71e`.
 `net-final-build2` passes all 28 tests and full owned-ROM runtime, manager and
@@ -47,9 +71,28 @@ then use its `Start review.cmd` when ready. Actual two-peer gameplay and rewind
 commit/input isolation remain human checks, along with visual/audio judgments.
 No owner verdict is recorded. Existing evidence does not certify every possible
 room/weapon combination; connected/swinging Grapple entry remains untested.
-The v0.4.3 release must still pass normal four-platform/package gates, fresh
-packaged default/gameplay checks, and verified replacement in the established
-delivery directory. No release is accepted from a prepared bundle alone.
+The normal v0.4.3 four-platform builds/tests now pass on exact candidate commit
+`072563f` ([Actions run](https://github.com/mstan/SuperMetroidRecomp/actions/runs/42249517458)).
+All four downloaded ZIPs pass the established runtime-package audit. The actual
+Windows shipping executable, SHA-256
+`de5528c8442a986635217e81780a7f115ccfc900db52bf21002a55c742622d52`,
+also passes fresh native-SRAM gameplay, a controller-driven A184/9D19 doorway
+crossing and current-build save/load. The ROM's door table establishes 9D19;
+the initial fixture incorrectly assumed 9FE5. A walking-only setup also stopped
+at the native station ledge before ordinary jump/fire input corrected access.
+Both raw expectation failures remain beside the corrected retained-evidence
+qualification `release-native-0.4.3/qualified.json`; no production fix or rerun
+was needed to correct the destination expectation.
+
+Actual fresh live policies prove Widescreen/edge HUD/neighbor On/Continuous and
+Fit, with positive simulation width and no `sm-video.ini` override. The inspected
+package capture shows neighboring scenery and paired bubbles: 194 custom lines,
+zero stock fallback and 0/49,152 native-center pixel differences. The packaged
+configuration retains windowed 960x540 and normal volume; only its disposable
+QA profile was muted. The four original audited ZIPs and `SHA256SUMS` are staged
+under `release-candidate-0.4.3/`. Human observations remain the acceptance gate;
+integration, publication and verified delivery replacement follow that review.
+No owner acceptance or delivered release is inferred from these automated gates.
 
 - ROM-derived connected-room terrain, definitions, graphics and palettes.
   Library backgrounds, streamed second-layer backgrounds, parallax and
