@@ -256,7 +256,8 @@ bool SmRoomSceneSample(const SmRoomImage *p,int x,int y,int view_x,int view_y,ui
   unsigned type=word(p->ram+0x196e);
   if (type==2 || type==4 || type==6) {
     int surface=(int16_t)word(p->ram+(type==6 ? 0x195e : 0x1962));
-    if (surface>=0 && ly>=surface-8) {
+    if (surface>=0 && ly>=surface-8 &&
+        (ly>=surface || SmRoomLiquidSurfaceAir(p->ram,lx,surface))) {
       unsigned fy=ly<surface ? 248u+(unsigned)(ly-surface+8) : 256u+((unsigned)(ly-surface)&255);
       unsigned tx=((unsigned)lx/8)&31,ty=fy/8;
       tile=word(p->vram+0xb000+2*(tx+(ty&31)*32+(ty>=32 ? 1024 : 0)));

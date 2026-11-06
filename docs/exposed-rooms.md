@@ -30,6 +30,10 @@ A complete departing image survives native loader phases so partially replaced
 VRAM and palettes do not become the visible world. The renderer handles the
 native body and camera stages separately. Foreground continuation recognizes
 solid padding by its tile definition and respects real air and portal ownership.
+Overlapping unused allocations retain the active room's foreground texture;
+authored connected scenery still takes precedence. Native camera placement stays
+with the departing room until scrolling setup rebases it. Liquid surface texels
+stop at solid banks while the liquid body keeps its native raster behavior.
 
 Hatch promotion requests a native column redraw when copied cells change. This
 keeps the visible cap synchronized after its opening PLM has completed.

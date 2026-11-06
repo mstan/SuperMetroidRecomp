@@ -1,4 +1,5 @@
 #include "sm_renderer.h"
+#include "sm_room_preview.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -361,6 +362,29 @@ static void shared_hud_liquid_map(void) {
       assert(output[200 * view.width + x] == 0x00ff00);
     }
   }
+  /* The surface row must stop at the pool's solid bank. Test the native
+   * center as well as margins; the liquid body and open surface stay intact. */
+  word(0x196e,2);word(0x1962,201);ram[0x5e]=4;
+  for (unsigned x=48;x<53;++x) word(0x10002+2*(12*128+x),0x8001);
+  BeginFixtureFrame(ram,3);
+  for (unsigned y=1;y<=224;++y) {
+    ppu.hScroll[2]=773;ppu.vScroll[2]=y<192 ? 0 : 55;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  assert(SmRendererEndFrame(stock));
+  for (unsigned v=0;v<sizeof(views)/sizeof(views[0]);++v) for (unsigned phase=0;phase<3;++phase) {
+    SmViewport view=views[v];assert(SmRendererDraw(output,view,false,phase*.5));
+    assert(output[199*view.width+view.extra+8]==0);
+    assert(output[199*view.width+view.extra+96]==0xffffff);
+    assert(output[200*view.width+view.extra+8]==0x00ff00);
+  }
+  SmRoomImage *liquid=calloc(1,sizeof(*liquid));assert(liquid);
+  liquid->placement=(SmRoomPlacement){.width=2048,.height=256,.left=0,.top=0,.right=2048,.bottom=256};
+  memcpy(liquid->ram,ram,sizeof(ram));memcpy(liquid->vram,ppu.vram,sizeof(liquid->vram));
+  uint16_t layers[3];
+  assert(SmRoomSceneSample(liquid,776,199,768,0,layers) && !layers[2]);
+  assert(SmRoomSceneSample(liquid,864,199,768,0,layers) && layers[2]);
+  free(liquid);
   ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
 }
 
@@ -1202,17 +1226,19 @@ static void native_transition_canvas(const char *path) {
   word(0x998,11);word(0x7a5,16);word(0x7a7,16);
   ppu.bgmode=1;ppu.inidisp=0x80;ppu.cgram[1]=0x03e0; /* incomplete/faded live resources */
   const SmViewport view={342,43,16.0/9,true};
-  for (unsigned frame=1;frame<=4;++frame) {
+  const unsigned phases[]={0xe36e,0xe310,0xe353,0xe36e,0xe38e,0xe3c0,0xe434,0xe434};
+  const int cameras[]={0,0,0,0,0,-256,-128,0};
+  for (unsigned frame=1;frame<=8;++frame) {
     word(0x79b,frame==1 ? 0x91f8 : 0x9400);
-    word(0x99c,frame==1 ? 0xe36e : frame==2 ? 0xe38e : 0xe434);
-    word(0x911,frame<=2 ? 0 : frame==3 ? -128 : 0);
+    word(0x99c,phases[frame-1]);
+    word(0x911,cameras[frame-1]);
     assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,frame);
     for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
     assert(SmRendererEndFrame(stock));
     for (unsigned phase=0;phase<3;++phase) {
       assert(SmRendererDraw(output,view,false,phase*.5));
-      assert(output[100*view.width+view.extra+64]==(frame<4 ? 0xff0000u : 0x0000ffu));
-      assert(output[100*view.width+view.extra+260]==(frame<4 ? 0x0000ffu : 0));
+      assert(output[100*view.width+view.extra+64]==(frame<8 ? 0xff0000u : 0x0000ffu));
+      assert(output[100*view.width+view.extra+260]==(frame<8 ? 0x0000ffu : 0));
     }
   }
   assert(SmRendererSaveCapture(path));ResetFixtureRenderer();
@@ -1289,6 +1315,20 @@ static void continued_solid_foreground(void) {
     assert(output[200*view.width+view.extra+48]==0xff0000); /* mixed-screen filler below the floor */
     assert(output[100*view.width+view.extra+260]==0x0000ff); /* real connected canvas wins */
   }
+  /* Both allocations contain padding here. The connected room's blue wall
+   * must not claim the active room's red foreground continuation. */
+  scene->native=0;word(0x998,8);
+  other->placement.x=other->placement.left=0;other->placement.right=256;
+  for (unsigned i=0;i<256;++i) {
+    unsigned v=i%16==0 ? 0x8002 : 0x83ff;
+    other->ram[0x10002+2*i]=(uint8_t)v;other->ram[0x10003+2*i]=(uint8_t)(v>>8);
+  }
+  for (unsigned i=0;i<4;++i) other->ram[0xa010+2*i]=1;
+  for (unsigned y=0;y<8;++y) other->vram[32+2*y]=255;
+  assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,4);
+  for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  assert(output[200*view.width+view.extra+48]==0xff0000);
   free(scene);ResetFixtureRenderer();
 }
 

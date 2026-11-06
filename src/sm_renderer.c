@@ -989,7 +989,8 @@ typedef struct SmBackgroundLine {
   int hud_extra;
   int room_width, room_height, camera_x, camera_y;
   unsigned layer, sc, base, low, high;
-  const uint8_t *room;
+  const uint8_t *room, *fx_room;
+  int liquid_surface;
   const uint8_t *padding_screens;
   const uint16_t *revealed;
   const uint16_t *padding_fill;
@@ -1028,6 +1029,11 @@ static SmBackgroundLine background_line(const SnesRenderRegisters *p, const uint
   /* Room loading uploads 0x840 bytes of FX map starting at word $5BE0.
    * Its first row (surface bubbles) still belongs to the first $5A page. */
   b.fx_surface = b.screen_space && (b.sc & 2) && read16(room, 0x1964) != 0;
+  unsigned fx_type=read16(room,0x196e);
+  if (b.fx_surface && (fx_type==2 || fx_type==4 || fx_type==6)) {
+    b.liquid_surface=(int16_t)read16(room,fx_type==6 ? 0x195e : 0x1962);
+    if (b.liquid_surface>=0) b.fx_room=room;
+  }
   if (layer == 1 && object.valid && (room[0x91b] & 1)) {
     b.object_canvas = true;
     b.canvas_width = b.size * (b.sc & 1 ? 64 : 32);
@@ -1074,6 +1080,14 @@ static SmBackgroundLine background_line(const SnesRenderRegisters *p, const uint
   return b;
 }
 
+static bool liquid_surface_line(const SmBackgroundLine *b,int y) {
+  return b->fx_room && y>32 && b->shift==3 &&
+      ((((unsigned)(y+b->scroll_y)&1023)>>3)&63)==31;
+}
+static bool liquid_surface_blocked(const SmBackgroundLine *b,int x,int y) {
+  return liquid_surface_line(b,y) &&
+      !SmRoomLiquidSurfaceAir(b->fx_room,b->camera_x+x,b->liquid_surface);
+}
 static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram,
                                  int x, int y, bool margin) {
   if (b->hud_extra) {
@@ -1087,6 +1101,7 @@ static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram
   if (margin && b->object_canvas &&
       (x < b->canvas_x || x >= b->canvas_x + b->canvas_width ||
        y < b->canvas_y || y >= b->canvas_y + b->canvas_height)) return 0;
+  if (liquid_surface_blocked(b,x,y)) return 0;
   int size = b->size;
   int px, py;
   unsigned tile;
@@ -2321,7 +2336,10 @@ static void continue_foreground(SmViewport view,int y,int cx,int cy,const uint8_
           wx<p->left || wy<p->top || wx>=p->right || wy>=p->bottom) continue;
       unsigned tile=read16(image->ram,0x10002+2*(((wy-p->y)/16)*(p->width/16)+(wx-p->x)/16));
       if (!foreground_padding(image->ram,tile)) { authored=true;break; }
-      required=i;break;
+      /* A connected allocation can overlap the active room's unused cells.
+       * Its own padding is not authored scenery and must not replace the
+       * active room's foreground with an unrelated room's wall texture. */
+      if (required==~0u) required=i;
     }
     if (authored) continue;
     unsigned block=0,distance=~0u,owner=SM_ROOM_RESIDENTS,candidate,cost;int lx=wx,ly=wy;
@@ -2370,7 +2388,9 @@ static void continue_foreground(SmViewport view,int y,int cx,int cy,const uint8_
  * instead of brightening those transient tilemaps and faded palettes. */
 static void native_origin(const uint8_t *ram,const SmRoomScene *rooms,int *x,int *y) {
   *x=*y=0;
-  if (read16(ram,0x79b)==rooms->root || read16(ram,0x99c)==0xe38e) return;
+  /* The destination header precedes camera setup by several native phases.
+   * Those frames still use the departing room's coordinates. */
+  if (read16(ram,0x79b)==rooms->root || read16(ram,0x99c)<0xe3c0) return;
   for (unsigned i=0;i<rooms->count;++i) if (rooms->rooms[i].placement.room==read16(ram,0x79b)) {
     *x=rooms->rooms[i].placement.x;*y=rooms->rooms[i].placement.y;return;
   }
@@ -2785,6 +2805,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     int matte_x=mode==1 && (enabled&1) ? background_lines[0].world_x : camera_x;
     int matte_y=mode==1 && (enabled&1) ? background_lines[0].world_y : camera_y;
     if ((mode==1 || mode==7) && y>=32 && !hud_tail) { matte_x+=camera_dx;matte_y+=camera_dy; }
+    if (mode==1) background_lines[2].camera_x=matte_x;
     uint16_t foreign_objects[SM_MAX_WIDTH];uint8_t foreign_owners[SM_MAX_WIDTH],object_owners[SM_MAX_WIDTH];
     memset(object_owners,255,(size_t)viewport.width);
     world_objects(viewport,y,matte_x,matte_y,(mode==1 || mode==7) && !hud_tail ? rooms : NULL,
@@ -2794,7 +2815,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     bool foreign_center=false;
     for (int sx=viewport.extra; sx<viewport.extra+256; ++sx) if (foreign_objects[sx]) { foreign_center=true;break; }
     reuse_center = !(rooms && rooms->ownership) && !foreign_center && !displaced && mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
-        !(viewport.extra && wide_windows[y].remove_clamped_edge);
+        !(viewport.extra && wide_windows[y].remove_clamped_edge) &&
+        !liquid_surface_line(&background_lines[2],y+1);
     if (reuse_center) ++render_stats.native_center_lines;
 #endif
     SmViewport object_view=viewport;
@@ -2878,6 +2900,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           ((scanout.mosaic & (1u << layer)) && (scanout.mosaic >> 4))) continue;
       native_layer[layer] = SnesRenderRegistersMode1TileRow(&scanout, l->vram, layer,
           0, y + 1, 256, native_backgrounds[layer]);
+      if (layer==2 && native_layer[layer] && liquid_surface_line(&background_lines[2],y+1))
+        for (int x=0;x<256;++x) if (liquid_surface_blocked(&background_lines[2],x,y+1))
+          native_backgrounds[2][x]=0;
     }
 #endif
     /* BG1 scroll is meaningful when terrain is enabled. Color-only and

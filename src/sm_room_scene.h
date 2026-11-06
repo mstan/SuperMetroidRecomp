@@ -27,6 +27,15 @@ typedef struct SmRoomScene {
 static inline size_t SmRoomSceneBytes(unsigned count) {
   return count<=SM_ROOM_RESIDENTS ? sizeof(SmRoomScene)+(size_t)count*sizeof(SmRoomImage) : 0;
 }
+/* Surface sprites/texels belong to exposed liquid, not solid terrain at
+ * the same height. Room bounds also stop a surface extending into a neighbor. */
+static inline bool SmRoomLiquidSurfaceAir(const uint8_t *ram,int x,int surface) {
+  unsigned w=ram[0x7a5]|ram[0x7a6]<<8,h=ram[0x7a7]|ram[0x7a8]<<8;
+  if (!w || !h || (uint64_t)w*h>0x3200 || surface<0) return true;
+  if (x<0 || x>=(int)w*16 || surface>=(int)h*16) return false;
+  unsigned at=0x10002+2*((unsigned)(surface/16)*w+(unsigned)x/16);
+  return (ram[at+1]>>4)!=8;
+}
 static inline bool SmRoomImageValid(const SmRoomImage *image,uint32_t room_mask) {
   const SmRoomPlacement *v=&image->placement;
   unsigned w=image->ram[0x7a5] | image->ram[0x7a6]<<8,h=image->ram[0x7a7] | image->ram[0x7a8]<<8;
