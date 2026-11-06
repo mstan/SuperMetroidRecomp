@@ -27,6 +27,30 @@ This request supersedes deliberate secret/arena concealment in prior feedback.
 
 ## Implemented and evaluated
 
+Current burndown (2026-11-06): all demonstrated implementation defects are
+resolved. Final net-enabled QA is frozen at source `ecea946` with the established
+Windows release implementation flags and tracing enabled, SHA-256
+`76fb60aa81a7ebc8cd56da4f895efcdf912885a2ccdd80f34a7b89528888a71e`.
+`net-final-build2` passes all 28 tests and full owned-ROM runtime, manager and
+preview checks. `final-runahead1` and `final-rollback1` complete actual
+9FE5/A011/9FE5 door round trips: full resident state and outbound/final native
+WRAM, VRAM, palette, OAM and SRAM match their paired baselines. The rollback
+probe runs every seven frames at depth eight with audio output disabled and no
+asymmetry/save/divergence failures. `net-final-cold1` passes the existing
+two-peer handshake/profile rejection check; it does not establish live gameplay.
+
+Two acceptance areas remain: owner observations, then release qualification and
+delivery. `human-review-final1` contains six fresh current-build setups and
+supported two-peer launchers; all six existing selector checks pass. It has not
+been opened visibly over the original live review. Close the original selector,
+then use its `Start review.cmd` when ready. Actual two-peer gameplay and rewind
+commit/input isolation remain human checks, along with visual/audio judgments.
+No owner verdict is recorded. Existing evidence does not certify every possible
+room/weapon combination; connected/swinging Grapple entry remains untested.
+The v0.4.3 release must still pass normal four-platform/package gates, fresh
+packaged default/gameplay checks, and verified replacement in the established
+delivery directory. No release is accepted from a prepared bundle alone.
+
 - ROM-derived connected-room terrain, definitions, graphics and palettes.
   Library backgrounds, streamed second-layer backgrounds, parallax and
   incoming-door room-state selection are decoded separately from active RAM.
