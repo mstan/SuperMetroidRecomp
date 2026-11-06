@@ -1,11 +1,17 @@
 #pragma once
 #include "sm_room_scene.h"
 #include "sm_eproj_view.h"
+#include "sm_enemy_view.h"
 #include <stdbool.h>
 void SmRoomsSetRom(const uint8_t *rom, size_t bytes);
 void SmRoomsReset(void);
 typedef bool (*SmRoomDoorEvent)(unsigned x, unsigned y, unsigned orientation, bool closing);
 void SmRoomsSetDoorEvent(SmRoomDoorEvent event);
+typedef int (*SmRoomEnemyReaction)(uint8_t source[0x20000],int offset_x,int offset_y,
+    int block_x,int block_y,bool horizontal);
+void SmRoomsSetEnemyReaction(SmRoomEnemyReaction reaction);
+int SmRoomsEnemyBlock(uint8_t active[0x20000],uint8_t source[0x20000],int origin_x,int origin_y,
+    bool horizontal,uint16_t *index);
 bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
                     bool requested_logic, bool requested_seamless);
 const SmRoomScene *SmRoomsScene(void);

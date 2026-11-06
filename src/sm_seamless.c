@@ -91,6 +91,27 @@ static bool enemy_tiles(EntryBus *b) {
   return false;
 }
 static int clamp(int v,int high) { return v<0 ? 0 : v>high ? high : v; }
+int SmActiveEnemyBlock(uint8_t source[0x20000],int dx,int dy,int x,int y,bool horizontal) {
+  unsigned index=word(source+0xe54),w=word(g_ram+0x7a5),h=word(g_ram+0x7a7);
+  if (index>=2048 || (index&63) || x<0 || y<0 || x>=(int)w || y>=(int)h || (uint64_t)w*h>0x3200) return -2;
+  EntryBus b={0};b.bus=g_cpu;b.cpu=interp816_init(&b,read_entry,write_entry);
+  if (!b.cpu) return -2;
+  interp816_set_brk_hook_enabled(b.cpu,false);
+  uint8_t scratch[64],actor[SM_ENEMY_BYTES],stack[256];
+  memcpy(scratch,g_ram,sizeof(scratch));memcpy(actor,g_ram+SM_ENEMY_POOL+index,sizeof(actor));
+  memcpy(stack,g_ram+0x1f00,sizeof(stack));
+  const unsigned work[]={0xe54,0xdc4,0xdd4,0xdd6,0x1e77,0x1c27,0x1c29,0x1c2b};
+  uint16_t saved[sizeof(work)/sizeof(*work)];
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) saved[i]=(uint16_t)word(g_ram+work[i]);
+  SmEnemyInput(g_ram,source,dx,dy,horizontal);
+  b.cpu->x=(uint16_t)(2*((unsigned)y*w+(unsigned)x));b.cpu->a=(uint16_t)word(g_ram+0x10002+b.cpu->x);
+  bool ok=entry_call(&b,horizontal ? 0xa0c845 : 0xa0c879,2);int result=ok ? (int)b.cpu->c : -2;
+  if (ok) SmEnemyOutput(source,g_ram,index,-dx,-dy,horizontal);
+  memcpy(g_ram,scratch,sizeof(scratch));memcpy(g_ram+SM_ENEMY_POOL+index,actor,sizeof(actor));
+  memcpy(g_ram+0x1f00,stack,sizeof(stack));
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) put(work[i],saved[i]);
+  interp816_free(b.cpu);return result;
+}
 bool SmActiveDoorEvent(unsigned x,unsigned y,unsigned orientation,bool closing) {
   unsigned w=word(g_ram+0x7a5),h=word(g_ram+0x7a7);
   if (orientation>=4 || x>=w || y>=h || (uint64_t)w*h>0x3200) return false;

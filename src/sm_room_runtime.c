@@ -33,6 +33,8 @@ struct SmRoomRuntime {
   SmEprojQuery world_query;
   void *world_context;
   SmWorldBirth world_birth;
+  SmEnemyQuery enemy_query;
+  bool enemy_reaction;
   unsigned world_phase;
   uint32_t simulation_enemies,simulation_projectiles,interaction_enemies,interaction_projectiles;
   SmEprojLoan eproj_loan;
@@ -161,6 +163,15 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
       }
     }
     if ((c->k&127)==0x20) {
+      if ((c->pc==0xc845 || c->pc==0xc879) && r->enemy_query && !r->enemy_reaction) {
+        bool horizontal=c->pc==0xc845;uint16_t original=c->x;
+        int result=r->enemy_query(r->world_context,r->ram,horizontal,&c->x);
+        if (result==-2) { fail(r,"native enemy terrain reaction",entry);break; }
+        if (result>=0) {
+          c->c=result!=0;c->n=(c->x&0x8000)!=0;c->z=c->x==0;
+          c->pc=horizontal ? 0xc858 : 0xc88c;
+        } else if (c->x!=original) c->a=(uint16_t)word(r->ram+0x10002+c->x);
+      }
       if (c->pc==0x8fff || c->pc==0x9145) player_end(r,true);
       if (c->pc==0x9010 && c->a<2048 && !(c->a&63))
         player_begin(r,r->player_eligible ? r->player_eligible(r->world_context,r->ram,c->a/64) :
@@ -328,8 +339,9 @@ void SmRoomRuntimeDestroy(SmRoomRuntime *r) {
   if (r) { interp816_free(r->cpu); free(r); }
 }
 void SmRoomRuntimeSetWorld(SmRoomRuntime *r,SmEprojQuery query,void *context) {
-  if (r) { r->world_query=query;r->world_context=context;if (!query) { r->world_birth=NULL;r->live_player=NULL;r->player_eligible=NULL; } }
+  if (r) { r->world_query=query;r->world_context=context;if (!query) { r->world_birth=NULL;r->enemy_query=NULL;r->live_player=NULL;r->player_eligible=NULL; } }
 }
+void SmRoomRuntimeSetEnemyWorld(SmRoomRuntime *r,SmEnemyQuery query) { if (r) r->enemy_query=query; }
 void SmRoomRuntimeSetPlayer(SmRoomRuntime *r,uint8_t active[0x20000],int x,int y,SmWorldPlayer eligible) {
   if (r) { r->live_player=active;r->player_x=x;r->player_y=y;r->player_eligible=eligible; }
 }
@@ -393,6 +405,29 @@ bool SmRoomRuntimeDoorShot(SmRoomRuntime *r,unsigned x,unsigned y,uint16_t type)
   bool ok=call(r,0x8484e7,3);
   put(r,0xdde,(int)previous_index); put(r,0xc18,(int)previous_type);
   return ok;
+}
+int SmRoomRuntimeEnemyBlock(SmRoomRuntime *r,uint8_t source[0x20000],int dx,int dy,int x,int y,bool horizontal) {
+  unsigned index=word(source+0xe54);
+  if (!r || r->error[0] || index>=2048 || (index&63) || x<0 || y<0 ||
+      x>=(int)word(r->ram+0x7a5) || y>=(int)word(r->ram+0x7a7)) return -2;
+  uint8_t scratch[64],actor[SM_ENEMY_BYTES],stack[256];
+  memcpy(scratch,r->ram,sizeof(scratch));memcpy(actor,r->ram+SM_ENEMY_POOL+index,sizeof(actor));
+  memcpy(stack,r->ram+0x1f00,sizeof(stack));
+  const unsigned work[]={0xe54,0xdc4,0xdd4,0xdd6,0x1e77,0x1c27,0x1c29,0x1c2b};
+  uint16_t saved[sizeof(work)/sizeof(*work)];
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  Interp816 previous=*r->cpu;SmEnemyInput(r->ram,source,dx,dy,horizontal);
+  r->cpu->x=(uint16_t)(2*(y*word(r->ram+0x7a5)+x));r->cpu->a=(uint16_t)word(r->ram+0x10002+r->cpu->x);
+  r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
+  r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;r->enemy_reaction=true;
+  bool ok=call(r,horizontal ? 0xa0c845 : 0xa0c879,2);
+  int result=ok ? (int)r->cpu->c : -2;
+  if (ok) SmEnemyOutput(source,r->ram,index,-dx,-dy,horizontal);
+  r->enemy_reaction=false;
+  memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+SM_ENEMY_POOL+index,actor,sizeof(actor));
+  memcpy(r->ram+0x1f00,stack,sizeof(stack));
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) put(r,work[i],saved[i]);
+  *r->cpu=previous;return result;
 }
 int SmRoomRuntimeShot(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,
     int x,int y,bool horizontal,SmRoomShotAir air,void *context) {
@@ -701,7 +736,7 @@ typedef struct RoomState {
 } RoomState;
 size_t SmRoomRuntimeStateSize(void) { return sizeof(RoomState); }
 bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
-  if (!r || !out || size!=sizeof(RoomState) || r->error[0] || r->eproj_loan.active || r->player_loan.active ||
+  if (!r || !out || size!=sizeof(RoomState) || r->error[0] || r->eproj_loan.active || r->player_loan.active || r->enemy_reaction ||
       r->cpu->sp!=0x1fff || r->cpu->pc!=0xff00) return false;
   RoomState *s=calloc(1,sizeof(*s)); if (!s) return false;
   const Interp816 *c=r->cpu;

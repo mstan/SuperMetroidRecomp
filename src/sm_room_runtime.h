@@ -1,6 +1,7 @@
 #pragma once
 #include "mods/sm_world.h"
 #include "sm_eproj_view.h"
+#include "sm_enemy_view.h"
 typedef struct SmRoomRuntime SmRoomRuntime;
 /* Independent cartridge execution for resident rooms. The active machine's
  * bus, timing, audio, globals and native saves are never installed here. */
@@ -16,6 +17,11 @@ bool SmRoomRuntimeStep(SmRoomRuntime *room, int samus_x, int samus_y,
  * part of a between-frame snapshot. Clear after the bounded native tick. */
 void SmRoomRuntimeSetWorld(SmRoomRuntime *room,SmEprojQuery query,void *context);
 void SmRoomRuntimeSetBirth(SmRoomRuntime *room,SmWorldBirth birth);
+void SmRoomRuntimeSetEnemyWorld(SmRoomRuntime *room,SmEnemyQuery query);
+/* Native A0 actor block reaction in this terrain owner's machine. Offsets
+ * translate the original resource pool into this room and back. */
+int SmRoomRuntimeEnemyBlock(SmRoomRuntime *room,uint8_t source[0x20000],int offset_x,int offset_y,
+    int block_x,int block_y,bool horizontal);
 /* Bounded live player view during each eligible actor/pre-instruction only.
  * Ineligible entities see the player out of range and cannot commit effects. */
 void SmRoomRuntimeSetPlayer(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,SmWorldPlayer eligible);

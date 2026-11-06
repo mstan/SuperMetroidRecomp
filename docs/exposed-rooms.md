@@ -418,6 +418,34 @@ already-crossed objects with logic Off. Replay checkpoints match 188, 15 and
 `world-shots9-*`, `world-eprojs6-*`, `world-retained6-*`). Exact executable:
 `6b2f37a84aea4e3d9332850f0d269d46f3d371b8bfcdbc0e80b890874380f782`.
 
+The shared native actor movers now resolve foreign terrain through A0C845 /
+A0C879 in the terrain owner's machine. One actor and its movement workspace
+are translated for the bounded reaction, then restored to their resource
+machine. The native mover retains fractional movement, span loops, slope
+policy and clipping. Active-bus and resident callers use the same routing;
+the actual room keeps breakable-block/PLM effects. Registered doorway trigger
+tiles act as air while native caps and ordinary solid terrain keep their
+normal reactions.
+
+Owned-ROM checks match native air/walls and every slope shape, flip, movement
+policy and direction (1,632 combinations per room). Real native Beetom AI
+walks through both signed boundaries, follows foreign floor, hits its wall,
+and repeats exactly after restore. Whole-manager checks route native block
+effects in both directions, preserve unrelated terrain/resource-owned actors,
+and restore the same world exactly. The new manager fixture initially used a
+one-screen width for the two-screen 93AA room; it now reads native dimensions.
+
+The integrated game builds, all 28 CTests pass, and existing live shots,
+projectiles and retained-object On/Off cases pass. A fresh live Beetom setup
+then returns continuously from 9FE5 to A011. Its original resident slot walks
+from local X=2 to -23, changes spatial owner to A011 at X=-1, and continues on
+active-room terrain. All 102 replay checkpoints match
+(`actor-terrain-integrated3-result.json`, exit 0; `world-actor1-*`). These
+positioned/protected setups qualify movement, not natural encounter or full
+sprite/foreground presentation. Earlier regression replays match 188/15/13
+checkpoints (`world-shots10-*`, `world-eprojs7-*`, `world-retained7-*`). Exact
+executable: `c49b928de155d3a12544f3bf504cccfaa3b8dc4a266faad27d2687c9f3626aa6`.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -434,7 +462,9 @@ current-build restore and replay. Six acceptance areas remain open:
    without duplicated hits/rewards. Native weapon, actor-contact and enemy-
    projectile responses and ordinary open/closed/Off routing now pass probes.
    Retained enemy-projectile transfer/contact now passes live On/Off checks.
-   General actor terrain/movement, native Root masks for foreign objects,
+   Shared native actor movers now use foreign terrain and pass the live
+   leftward transfer above; broader actor paths/encounters remain to qualify.
+   Native Root masks for foreign objects,
    resource retention beyond the original room's visibility, area weapons and
    complete ownership still need implementation. Native health/ammo rewards
    and grab release pass the bounded runtime/manager checks above; natural

@@ -16,6 +16,7 @@ bool SmRoomCollisionFrameBegin(void) {
   const uint32_t shots[]={0x94a1b5,0x94a1d6,0x94a1cd,0x94a1ee,
       0x94a2a8,0x94a337,0x94a3bb,0x94a3c3,0x94a3cd,0x94a44d,0x94a455,0x94a45f,0x94a4c6,0x94a530};
   const uint32_t eprojs[]={0x868886,0x86889e,0x86889d,0x8688b5};
+  const uint32_t actors[]={0xa0c845,0xa0c879};
   const uint32_t entities[]={0xa08fd4,0xa09168,0x868104,0x868124,0x868091,0x8680fe,0xa09419,0x938070,0x9381d0};
   entity_phase=0;
   for (unsigned i=0; i<sizeof(entities)/sizeof(*entities); ++i)
@@ -23,6 +24,8 @@ bool SmRoomCollisionFrameBegin(void) {
   if (eproj_loan.active) { fprintf(stderr,"[sm-rooms] unfinished native projectile terrain loan\n");return false; }
   for (unsigned i=0; i<sizeof(eprojs)/sizeof(*eprojs); ++i)
     if (!snes_mod_hook_arm(eprojs[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+  for (unsigned i=0; i<sizeof(actors)/sizeof(*actors); ++i)
+    if (!snes_mod_hook_arm(actors[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<sizeof(shots)/sizeof(*shots); ++i)
     if (!snes_mod_hook_arm(shots[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<2; ++i)
@@ -48,6 +51,19 @@ uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
 }
 static bool active_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
   (void)context;return SmRoomsEprojTile(source,source,0,0,x,y,tile);
+}
+uint32 SmRoomEnemyBlockHook(CpuState *cpu,uint32 pc24) {
+  if (!g_sm_video.enhanced) return 0;
+  bool horizontal=(pc24&65535)==0xc845;uint16_t original=cpu->X,index=original;
+  int result=SmRoomsEnemyBlock(cpu->ram,cpu->ram,0,0,horizontal,&index);cpu->X=index;
+  if (result==-1) {
+    if (index!=original) cpu->A=(uint16_t)SmShotWord(cpu->ram,0x10002+index);
+    return 0;
+  }
+  if (result<0) { fprintf(stderr,"[sm-rooms] native world actor reaction failed\n");abort(); }
+  cpu->_flag_C=result!=0;cpu->_flag_N=(index&0x8000)!=0;cpu->_flag_Z=index==0;
+  cpu->P=(uint8_t)((cpu->P&~0x83) | cpu->_flag_C | cpu->_flag_Z<<1 | cpu->_flag_N<<7);
+  return (pc24&0xff0000u) | (horizontal ? 0xc858 : 0xc88c);
 }
 uint32 SmRoomEprojBlockHook(CpuState *cpu,uint32 pc24) {
   unsigned pc=pc24&65535;

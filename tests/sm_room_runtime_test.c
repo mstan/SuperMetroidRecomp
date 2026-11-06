@@ -203,6 +203,95 @@ static void projectile_terrain(SmRoomRuntime *r,SmRoomRuntime *twin) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);free(fixture);free(end);free(again);
   puts("native projectiles cross four signed room boundaries, stop on foreign walls, restore exactly and match all native slope shapes/flips");
 }
+static void actor_blocks(SmRoomRuntime *r) {
+  static uint8_t seed[0x20000],native[0x20000],foreign[0x20000],owner_before[0x20000];
+  static uint16_t vram[0x8000];const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size);assert(original && SmRoomRuntimeSave(r,original,size));
+  memcpy(seed,ram,sizeof(seed));unsigned index=31*64,block=6*SmShotWord(seed,0x7a5)+6;
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(gfx[2*i] | gfx[2*i+1]<<8);
+  for (unsigned shape=0; shape<34; ++shape) for (unsigned flip=0; flip<4; ++flip)
+  for (unsigned direction=0; direction<4; ++direction) for (unsigned policy=0; policy<3; ++policy) {
+    bool horizontal=direction<2,positive=!(direction&1);int dx=0,dy=0;
+    if (horizontal) dx=positive ? -512 : 512;else dy=positive ? -256 : 256;
+    SmShotPut(seed,0x10002+2*block,shape<32 ? 0x1000 : shape==32 ? 0 : 0x8000);
+    seed[0x16402+block]=(uint8_t)((shape&31) | flip<<6);
+    assert(SmRoomRuntimeCapture(r,seed,vram));memcpy(owner_before,ram,sizeof(owner_before));memcpy(native,seed,sizeof(native));
+    memset(native,0,64);SmShotPut(native,0xe54,(int)index);SmShotPut(native,SM_ENEMY_POOL+index,0xe87f);
+    int along=6*16+(positive ? -1 : 18),across=6*16+8,sign=positive ? 1 : -1;
+    SmShotPut(native,0xf7a+index,horizontal ? along : across);SmShotPut(native,0xf7e +index,horizontal ? across : along);
+    SmShotPut(native,0xf82+index,8);SmShotPut(native,0xf84+index,8);
+    SmShotPut(native,0x12,0);SmShotPut(native,0x14,sign*2);SmShotPut(native,0x18,along+sign*2);
+    SmShotPut(native,0x1a,along+sign*2+(positive ? 7 : -8));SmShotPut(native,0x1c,0);SmShotPut(native,0x1e,0);
+    SmShotPut(native,0x20,policy==0 ? 0 : policy==1 ? 0x4000 : 0x8000);memcpy(foreign,native,sizeof(foreign));
+    SmEnemyTranslate(foreign,index,-dx,-dy,horizontal);
+    int expected=SmRoomRuntimeEnemyBlock(r,native,0,0,6,6,horizontal);
+    int actual=SmRoomRuntimeEnemyBlock(r,foreign,dx,dy,6,6,horizontal);assert(expected>=0 && actual==expected);
+    SmEnemyTranslate(native,index,-dx,-dy,horizontal);
+    assert(!memcmp(native,foreign,64) && !memcmp(native+SM_ENEMY_POOL+index,foreign+SM_ENEMY_POOL+index,SM_ENEMY_BYTES));
+    assert(SmShotWord(native,0x1e77)==SmShotWord(foreign,0x1e77));
+    assert(!memcmp(owner_before,ram,64) && !memcmp(owner_before+SM_ENEMY_POOL,ram+SM_ENEMY_POOL,2048));
+  }
+  /* Native enemy-breakable terrain must change in its real room, preserving
+   * the actor pool and every other terrain cell. */
+  memset(seed+0x1c37,0,80);SmShotPut(seed,0x10002+2*block,0xa123);seed[0x16402+block]=15;
+  assert(SmRoomRuntimeCapture(r,seed,vram));memcpy(foreign,seed,sizeof(foreign));
+  SmShotPut(foreign,0xe54,(int)index);SmShotPut(foreign,SM_ENEMY_POOL+index,0xe87f);
+  SmShotPut(foreign,0xf7a+index,6*16+8+512);SmShotPut(foreign,0xf7e +index,6*16+8);
+  assert(SmRoomRuntimeEnemyBlock(r,foreign,-512,0,6,6,true)==0);
+  assert(SmShotWord(ram,0x10002+2*block)==0x123 && SmShotWord(foreign,0x10002+2*block)==0xa123);
+  assert(!memcmp(seed+SM_ENEMY_POOL,ram+SM_ENEMY_POOL,2048));
+  for (unsigned b=0; b<SmShotWord(seed,0x7a5)*SmShotWord(seed,0x7a7); ++b)
+    if (b!=block) assert(SmShotWord(seed,0x10002+2*b)==SmShotWord(ram,0x10002+2*b));
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);
+  puts("actor foreign block reactions match native air/walls and all slopes/flips/policies in four directions; breakable terrain belongs to its room");
+}
+typedef struct ActorTerrain { SmRoomRuntime *owner;int x;unsigned samples,walls; } ActorTerrain;
+static int actor_neighbor(void *context,uint8_t source[0x20000],bool horizontal,uint16_t *index) {
+  ActorTerrain *t=context;int x,y;(void)index;assert(SmEnemySample(source,horizontal,&x,&y));
+  if (x>=0 && x<16 && y>=0 && y<16) return -1;
+  x-=t->x/16;if (x<0 || x>=16 || y<0 || y>=16) return 1;
+  ++t->samples;int result=SmRoomRuntimeEnemyBlock(t->owner,source,-t->x,0,x,y,horizontal);
+  if (horizontal && result==1) ++t->walls;
+  return result;
+}
+static void actor_walk(SmRoomRuntime *r,SmRoomRuntime *owner) {
+  static uint8_t seed[0x20000],terrain[0x20000];static uint16_t vram[0x8000];
+  const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);assert(SmShotWord(ram,0xf78)==0xe87f);
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*other=malloc(size),*checkpoint=malloc(size),*owner_checkpoint=malloc(size),*end=malloc(size),*again=malloc(size);
+  assert(original && other && checkpoint && owner_checkpoint && end && again);
+  assert(SmRoomRuntimeSave(r,original,size) && SmRoomRuntimeSave(owner,other,size));
+  for (unsigned direction=0; direction<2; ++direction) {
+    assert(SmRoomRuntimeLoad(r,original,size));memcpy(seed,ram,sizeof(seed));
+    for (unsigned i=1; i<32; ++i) SmShotPut(seed,0xf78+64*i,0);
+    memset(seed+0x1997,0,36);memset(seed+0x10002,0,512);memset(seed+0x16402,0,256);
+    for (unsigned x=0; x<16; ++x) SmShotPut(seed,0x10002+2*(9*16+x),0x8000);
+    SmShotPut(seed,0xf7a,direction ? 1 : 255);SmShotPut(seed,0xf7e,136);
+    SmShotPut(seed,0xf82,8);SmShotPut(seed,0xf84,8);SmShotPut(seed,0xfac,direction ? 0xb9c1 : 0xba24);SmShotPut(seed,0xfae,1000);
+    for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(gfx[2*i] | gfx[2*i+1]<<8);
+    assert(SmRoomRuntimeCapture(r,seed,vram));memcpy(terrain,seed,sizeof(terrain));
+    for (unsigned y=0; y<9; ++y) SmShotPut(terrain,0x10002+2*(y*16+(direction ? 13 : 2)),0x8000);
+    assert(SmRoomRuntimeCapture(owner,terrain,vram));ActorTerrain query={owner,direction ? -256 : 256,0,0};
+    SmRoomRuntimeSetWorld(r,NULL,&query);SmRoomRuntimeSetEnemyWorld(r,actor_neighbor);
+    for (unsigned i=0; i<8; ++i) assert(SmRoomRuntimeStepVisible(r,128,64,0,0,213));
+    assert(SmRoomRuntimeSave(r,checkpoint,size) && SmRoomRuntimeSave(owner,owner_checkpoint,size));
+    for (unsigned pass=0; pass<2; ++pass) {
+      if (pass) { assert(SmRoomRuntimeLoad(r,checkpoint,size) && SmRoomRuntimeLoad(owner,owner_checkpoint,size));query.samples=query.walls=0; }
+      bool crossed=false;
+      for (unsigned i=0; i<160; ++i) {
+        assert(SmRoomRuntimeStepVisible(r,128,64,0,0,213));int x=(int16_t)SmShotWord(ram,0xf7a);
+        if (direction ? x<0 : x>=256) crossed=true;
+        assert(direction ? x>=-24 : x<=280);
+      }
+      assert(crossed && query.samples && query.walls);
+      assert(SmRoomRuntimeSave(r,pass ? again : end,size));
+      if (pass) assert(!memcmp(end,again,size));
+    }
+    SmRoomRuntimeSetWorld(r,NULL,NULL);
+  }
+  assert(SmRoomRuntimeLoad(r,original,size) && SmRoomRuntimeLoad(owner,other,size));
+  free(original);free(other);free(checkpoint);free(owner_checkpoint);free(end);free(again);
+  puts("real native Beetom walking crosses both signed room boundaries, uses foreign floor/wall and restores exactly");
+}
 static void player_ai(SmRoomRuntime *r) {
   static uint8_t seed[0x20000],view[0x20000],checkpoint[0x20000],finished[0x20000];
   static uint16_t vram[0x8000];const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);
@@ -290,7 +379,8 @@ int main(int argc,char **argv) {
   SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(r);
   SmRoomRuntime *twin=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(twin);
   if (*SmRoomRuntimeError(r)) { fprintf(stderr,"init: %s\n",SmRoomRuntimeError(r)); return 1; }
-  if (room->header==0x9fe5) player_ai(r);
+  actor_blocks(r);
+  if (room->header==0x9fe5) { actor_walk(r,twin);player_ai(r); }
   player_pickups(r);
   unsigned moved=0; uint8_t enemies[2048];
   memcpy(enemies,SmRoomRuntimeRam(r)+0xf78,sizeof(enemies));

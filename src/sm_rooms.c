@@ -25,6 +25,7 @@ typedef struct DoorLink { uint16_t a,b,state_a,state_b; uint8_t phase_a,phase_b,
 static DoorLink links[MAX_LINKS];
 static unsigned link_count;
 static SmRoomDoorEvent door_event;
+static SmRoomEnemyReaction enemy_reaction;
 static SmRoomScene *publication;
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
 static uint8_t read_rom(void *unused, uint32_t a) {
@@ -45,6 +46,7 @@ void SmRoomsSetRom(const uint8_t *image, size_t bytes) {
 }
 const SmRoomScene *SmRoomsScene(void) { return publication; }
 void SmRoomsSetDoorEvent(SmRoomDoorEvent event) { door_event=event; }
+void SmRoomsSetEnemyReaction(SmRoomEnemyReaction reaction) { enemy_reaction=reaction; }
 typedef struct DoorContext { const uint8_t *ram; SmRoomRuntime *runtime; unsigned room,state; int x,y; } DoorContext;
 static bool door_change(const DoorContext *c,unsigned x,unsigned y,unsigned orientation,bool closing) {
   if (c->runtime) return closing ? SmRoomRuntimeDoorClose(c->runtime,x,y,orientation) :
@@ -440,6 +442,24 @@ int SmRoomsShotBlock(uint8_t active[0x20000],bool horizontal,uint16_t *index) {
   SmShotPut(active,0x28,(int)word(active+0x28)-1);
   return 1;
 }
+int SmRoomsEnemyBlock(uint8_t active[0x20000],uint8_t source[0x20000],int ox,int oy,bool horizontal,uint16_t *index) {
+  int bx,by;
+  if (!rom || word(active+0x79b)!=root || word(active+0x998)!=8 || !index ||
+      !SmEnemySample(source,horizontal,&bx,&by)) return -1;
+  unsigned slot=word(source+0xe54)/64;WorldEntities *world=resource_entities(source,ox,oy);
+  WorldEntity *entity=world ? &world->slots[slot] : NULL;
+  if (entity) sync_entity(active,source,ox,oy,entity,slot);
+  DoorContext owner;int x,y;bool air=false;
+  if (!sample_room(active,source,ox,oy,bx,by,entity,&owner,&x,&y,&air)) return 1;
+  if (air) return 0;
+  unsigned block=(unsigned)y*word(owner.ram+0x7a5)+(unsigned)x;
+  if ((word(owner.ram+0x10002+2*block)>>12)==9 && SmRoomsShotDoorAir(owner.ram,owner.x,owner.y,block)) return 0;
+  if (owner.ram==source) {
+    *index=(uint16_t)(2*(y*word(source+0x7a5)+x));return -1;
+  }
+  if (owner.runtime) return SmRoomRuntimeEnemyBlock(owner.runtime,source,ox-owner.x,oy-owner.y,x,y,horizontal);
+  return enemy_reaction ? enemy_reaction(source,ox,oy,x,y,horizontal) : -2;
+}
 bool SmRoomsEprojTile(const uint8_t active[0x20000],const uint8_t source[0x20000],
     int origin_x,int origin_y,int bx,int by,SmEprojTile *tile) {
   if (!rom || !tile || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
@@ -470,10 +490,14 @@ bool SmRoomsEprojTile(const uint8_t active[0x20000],const uint8_t source[0x20000
   }
   *tile=(SmEprojTile){bx,by,0x8000,0};return true;
 }
-typedef struct EprojOrigin { const uint8_t *active;int x,y;const bool *reachable; } EprojOrigin;
+typedef struct EprojOrigin { uint8_t *active;int x,y;const bool *reachable; } EprojOrigin;
 static bool resident_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
   const EprojOrigin *origin=context;
   return SmRoomsEprojTile(origin->active,source,origin->x,origin->y,x,y,tile);
+}
+static int resident_enemy_block(void *context,uint8_t source[0x20000],bool horizontal,uint16_t *index) {
+  const EprojOrigin *origin=context;
+  return SmRoomsEnemyBlock(origin->active,source,origin->x,origin->y,horizontal,index);
 }
 static void resident_birth(void *context,const uint8_t *source,unsigned slot,unsigned phase) {
   const EprojOrigin *origin=context;SmRoomsEntityBorn(origin->active,source,origin->x,origin->y,slot,phase);
@@ -774,6 +798,7 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
     SmRoomRuntimeSetMasks(runtime,sim_a,sim_ep,a,ep);
     EprojOrigin origin={active,p->x,p->y,reachable};SmRoomRuntimeSetWorld(runtime,resident_eproj_tile,&origin);
     SmRoomRuntimeSetBirth(runtime,resident_birth);
+    SmRoomRuntimeSetEnemyWorld(runtime,resident_enemy_block);
     SmRoomRuntimeSetPlayer(runtime,active,p->x,p->y,resident_player_eligible);
     unsigned shots=world_shots(active,root,reachable);
     if (reachable[i+1]) shots|=world_shots(active,p->room,reachable);

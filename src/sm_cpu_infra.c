@@ -28,6 +28,7 @@ static bool SmFrameBegin(uint32_t *inputs) {
 static void SmInitialize(void) {
   SmActivityInitialize();
   SmRoomsSetDoorEvent(SmActiveDoorEvent);
+  SmRoomsSetEnemyReaction(SmActiveEnemyBlock);
   /* Add Super Metroid's object to the crash/exit report. Registered through
    * the framework hook rather than by forking post_mortem.c, which is how
    * this port previously carried its own 833-line copy of that file. */
