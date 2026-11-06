@@ -638,8 +638,11 @@ and ordinary enemy weapon hits now pass the built live controller gate,
 current-build restore and replay. Six acceptance areas remain open:
 
 1. Extend the qualified regular-hatch traversal to exceptional geometry and
-   broader foreign terrain. Three stock non-screen-edge records still use the
-   original path. Qualify retained actors and entry scripts beyond the two
+   broader foreign terrain. The apparent A450/A5A0 interior anchors came from
+   buried type-9 blocks; reciprocal native arrival caps now select the actual
+   hatches. A450 continuous On/Off and the Native option pass live controller
+   traversal; A5A0 and uncapped/nonreciprocal A45C still need disposition.
+   Qualify retained actors and entry scripts beyond the two
    current round trips. Player/beam coordinate continuity is now qualified for
    those cases; it does not establish general actor/projectile world physics.
 2. Finish and live-qualify cross-open-door combat and projectile/actor transfer
@@ -666,9 +669,30 @@ current-build restore and replay. Six acceptance areas remain open:
    behavior now pass in both logic modes.
 5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
    determinism, representative native gameplay and matched runtime performance.
-6. Prepare a compact owner review with normal audio in a normal window, then
-   release via the established channel only after required acceptance. Verify
+6. The five-case owner review is open with normal audio in a normal window,
+   using its immutable Candidate5 copy. No observations have been submitted yet.
+   Preserve that running review; later candidates have additional steam and
+   hatch/sprite fixes. Release via the established channel only after required acceptance. Verify
    the replacement before removing the superseded delivery ZIP.
+
+The accepted A450 fix is commit `7b967a2`, Candidate8 SHA-256
+`9d70f59bab6cdf16dc7cebd26e01a1becb5a2b0be41f490f1f0037258fcb5479`.
+Actual jump/aim-down/fire/gravity traversal stays in gameplay state 8 with both
+caps open, all eight destination NPCs and continuous body/camera motion in both
+logic modes. Inspected screenshots also qualify the corrected vertical OAM
+sampling sign; complete replays pass 161 checkpoints On and 161 Off. The Native
+option still uses states 9/11 and passes 254 replay checkpoints. All 28 tests and
+the full native room/manager checks pass (`a450-build3`).
+
+Native unpaused scripting qualifies run-ahead 0 versus 1 through an actual
+9FE5 → A011 → 9FE5 door round trip (`runahead-script1/2`, Candidate5): all 334
+physical-frame checks, complete resident state and final WRAM/VRAM/OAM/palette/
+SRAM match. The net-enabled build passes the existing two-peer handshake and
+settings-mismatch rejection gate (`net-cold1`); this is cold-boot evidence,
+not gameplay determinism acceptance. Fresh-build rollback probing reaches A011
+but then reports snapshot-save failures, which remain an unresolved blocker
+(`rollback-script2`). Its preceding old-build seed did not load and earns no
+gameplay acceptance. Rewind, live two-peer gameplay and performance remain open.
 
 ## Local evidence and retained work
 
