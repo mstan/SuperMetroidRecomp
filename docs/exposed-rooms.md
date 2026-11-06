@@ -364,12 +364,21 @@ its owned-ROM manager and all four renderer checks pass
 (`ownership-final-native1-result.json`). The live/replay evidence above belongs
 to the earlier exact executable.
 
-Visual inspection found a separate departed-room terrain defect: the native
-9FE5 canvas is complete before exit (`world-retained3-setup-on/`), but its
-retained canvas contains a black gap after returning to A011
-(`world-retained3-on/flight-5.bmp`). A suspected zero-OBJ palette issue was
-rejected and its experimental change removed. This defect remains open;
-crossing/contact evidence does not qualify full scenery presentation.
+The departed-room black gap is fixed. With zero camera carry, the compositor
+had skipped all neighboring scenery in the native viewport, even where the
+active allocation contained padding. It now keeps authored active terrain and
+composites the neighboring canvas into padding across the full viewport.
+The exact regression fails before the change and all four renderer variants
+pass afterward (`departed-padding-before-result.json`,
+`departed-padding-after1-result.json`). Live return captures show the complete
+9FE5 canvas instead of the gap (`world-retained4-on/flight-5.bmp` versus
+`world-retained3-on/flight-5.bmp`). All three retained-projectile cases still
+pass, with 13 matching replay checkpoints (`departed-padding-live1-result.json`,
+exit 0). Exact executable:
+`904347ec569b942750ee7dbf2995e2126adadab033fe22c8a25b29e32ccbf491`.
+The earlier palette suspicion was rejected; capture and immutable graphics
+also matched. Temporary diagnostic prints were removed. This narrow viewport
+fix does not qualify the outstanding presentation cases below.
 
 ## Outstanding implementation and qualification
 
@@ -391,10 +400,13 @@ current-build restore and replay. Six acceptance areas remain open:
    resource retention beyond the original room's visibility, pickups/rewards,
    area weapons and complete ownership still need implementation. Walls and
    closed doors must block interaction.
+   A same-room 9FE5 native runtime probe seeded from the live opened-door WRAM
+   reaches the cartridge's invalid-interrupt handler after 29 ticks
+   (`departed-tiles1/2.log`); ordinary enemy gameplay needs this resolved too.
 3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
-   Fit resizing and both HUD anchors. Fix the reproduced departed-room black
-   terrain gap before treating the retained canvas as qualified.
+   Fit resizing and both HUD anchors. The reproduced departed-room native-
+   viewport padding gap is now fixed and live-qualified.
 4. Qualify live Ceres scenery/traversal and dormant encounter helpers. Its graph
    and tileset decoding now cover all six rooms; live gameplay is outstanding.
 5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer

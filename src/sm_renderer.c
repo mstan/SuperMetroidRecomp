@@ -2176,7 +2176,8 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
     unsigned tm=r[0x69] ? r[0x69] : 19,ts=r[0x6b];
     for (int sx=0; sx<view.width; ++sx) {
       int x=sx-view.extra,wx=camera_x+x,wy=camera_y+y+1;
-      if (!rooms->camera_dx && !rooms->camera_dy && x>=0 && x<256) continue;
+      /* Native padding can face a neighboring canvas after a return, even
+       * when the native camera itself supplies continuous coordinates. */
       if (wx>=0 && wx<room_width && wy>=0 && wy<room_height && !padding[(wy/256)*16+wx/256]) continue;
       uint16_t layers[3],screens[2]={0x500,0x500};
       if (!SmRoomSceneSample(image,wx,wy,camera_x,camera_y,layers)) continue;

@@ -501,6 +501,29 @@ static void resident_publication(const char *path) {
   free(expected); assert(!remove(path)); ResetFixtureRenderer();
 }
 
+static void resident_in_native_padding(void) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);word(0x79b,0x91f8);word(0x7a5,32);word(0x7a7,16);word(0x911,256);
+  for (unsigned y=0; y<16; ++y) for (unsigned x=16; x<32; ++x) word(0x10002+2*(y*32+x),0x83ff);
+  ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=1;ppu.hScroll[0]=256;ppu.cgram[1]=31;
+  for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.ownership=1,.root_width=512,.root_height=256};
+  SmRoomImage *image=&scene->rooms[0];
+  image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+      .left=256,.top=0,.right=512,.bottom=256};
+  image->ram[0x7a5]=image->ram[0x7a7]=16;image->ram[0x69]=1;image->ram[0xc003]=0x7c;
+  for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+  assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  const SmViewport view={342,43,16.0/9,true};
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  /* A native camera can look into the active allocation's padding after a
+   * return. The neighboring canvas owns those pixels even with zero carry. */
+  assert(output[80*view.width+view.extra+64]==0x0000ff);
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
 static void resident_projectile_pixels(void) {
   const SmViewport view={342,43,16.0/9,true};
   for (unsigned logic=0; logic<2; ++logic) for (unsigned camera=0; camera<=128; camera+=128)
@@ -963,6 +986,7 @@ int main(int argc, char **argv) {
   mother_brain_beam_margins();
   arena_exposure();
   resident_publication(argv[1]);
+  resident_in_native_padding();
   resident_projectile_pixels();
   resident_world_objects();
   eye_beam_margins();
