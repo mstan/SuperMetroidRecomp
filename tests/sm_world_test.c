@@ -76,6 +76,18 @@ static void CappedLevel(uint32_t source,bool left) {
   for (unsigned i=0; i<sizeof(data); ++i) Byte(source++,data[i]);
   Byte(source,255);
 }
+static void MorphLevel(uint32_t source,bool wide) {
+  uint8_t data[1538]={0};unsigned blocks=wide ? 512 : 256,size=2+3*blocks;
+  data[1]=wide ? 4 : 2;
+  if (wide) { data[3+2*(6*32+15)]=0x90;data[3+2*(6*32+16)]=0x90; }
+  else data[3+2*(6*16+15)]=0x90;
+  for (unsigned i=0; i<size;) {
+    unsigned n=size-i;if (n>1024) n=1024;
+    Byte(source++,(uint8_t)(0xe0|((n-1)>>8)));Byte(source++,(uint8_t)(n-1));
+    while (n--) Byte(source++,data[i++]);
+  }
+  Byte(source,255);
+}
 int main(void) {
   Fixture(); assert(SmWorldLoad(&world,Read,NULL));
   assert(world.room_count==2 && world.door_count==2 && world.state_count==3 && world.marker_count==8);
@@ -200,6 +212,17 @@ int main(void) {
   assert(world.doors[1].block_x==0 && world.doors[1].block_y==6);
   assert(world.doors[0].reciprocal && world.doors[1].reciprocal);
   assert(Read(NULL,0x839004)==1 && Read(NULL,0x839005)==6 && Read(NULL,0x839010)==13 && Read(NULL,0x839011)==6);
+  /* A one-cell-high capless Morph trigger straddles a screen boundary.
+   * Native opposed arrival screens choose the real endpoint; zero cap
+   * placeholders remain zero and the physical reciprocal gate still applies. */
+  Fixture();Byte(0x8f91fc,2);Long(0x8f920a,0xc68000);Long(0x8f9350,0xc68000);Long(0x8f940d,0xc78000);
+  MorphLevel(0xc68000,true);MorphLevel(0xc78000,false);
+  Byte(0x839003,1);Byte(0x83900f,0);Byte(0x839012,1);
+  assert(SmWorldLoad(&world,Read,NULL));
+  assert(world.doors[0].block_x==16 && world.doors[0].block_y==6 && world.doors[0].arrival_x==15);
+  assert(world.doors[1].block_x==15 && world.doors[1].block_y==6 && world.doors[1].arrival_x==16);
+  assert(world.doors[0].reciprocal && world.doors[1].reciprocal);
+  assert(!Read(NULL,0x839004) && !Read(NULL,0x839005) && !Read(NULL,0x839010) && !Read(NULL,0x839011));
   Fixture();
   Word(0x8f9203,0xffff); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"selector"));
   Fixture(); Byte(0xc0fffe,0x80); /* invalid absolute copy before any output */

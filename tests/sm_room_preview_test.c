@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
    * hatch agrees with reciprocal A3FC's native cap(70,61), so both live
    * D0B9->D017 hatches must embed the same destination allocation. */
   const SmWorldRoom *d0b9=SmWorldFindRoom(world,0xd0b9);assert(d0b9);
-  unsigned a450=0;
+  unsigned a450=0,a45c=0;
   for (unsigned i=0; i<d0b9->door_count; ++i) {
     const SmWorldDoor *d=&world->doors[d0b9->first_door+i];
     if (d->definition==0xa450) {
@@ -34,8 +34,12 @@ int main(int argc, char **argv) {
       assert((d->block_x/16-d->arrival_x/16)*256==256 && (d->block_y/16+1-d->arrival_y/16)*256==1024);
       ++a450;
     }
+    if (d->definition==0xa45c) {
+      assert(d->block_x==16 && d->block_y==41 && d->reciprocal && d->arrival_x==47 && d->arrival_y==41);
+      assert(!Read(NULL,0x83a460) && !Read(NULL,0x83a461));++a45c;
+    }
   }
-  assert(a450==1);
+  assert(a450==1 && a45c==1);
   unsigned interior=0;
   for (unsigned i=0; i<world->door_count; ++i) {
     const SmWorldDoor *d=&world->doors[i];unsigned dir=d->direction&3;
@@ -61,6 +65,14 @@ int main(int argc, char **argv) {
     memcpy(before,ram,sizeof(ram));
     SmRoomPreviewPrepare(ram,-213,-32,r->width*256+213,r->height*256+32);
     unsigned n=SmRoomPreviewCount();
+    if (r->header==0xd0b9) {
+      unsigned matches=0;
+      for (unsigned j=0; j<n; ++j) {
+        SmRoomPlacement p;assert(SmRoomPreviewPlacement(j,&p));
+        if (p.room==0xcfc9) { assert(p.x==-512 && p.y==0 && p.right==256);++matches; }
+      }
+      assert(matches==1); /* one allocation exposed through both real entrances */
+    }
     if (r->area==6) {
       assert(n);++ceres;
       for (unsigned d=0; d<r->door_count; ++d) {

@@ -101,22 +101,30 @@ static bool Drop(SmWorld *w,uint16_t room,uint16_t state,uint16_t plm,unsigned b
   w->markers[w->marker_count++]=(SmWorldMarker){room,state,plm,(uint16_t)bts,(uint8_t)x,(uint8_t)y,SM_MAP_DROP,0,3};
   return true;
 }
-/* Some layouts retain buried type9 blocks with the same BTS as a real hatch.
- * The opposed native header's arrival cap identifies the authored source
- * endpoint without guessing from scan order or a screen-edge preference. */
-static bool CappedEndpoint(Reader r,const SmWorldDoor *door,unsigned x,unsigned y) {
-  if (!door->destination || (door->flags&0x80)) return false;
+/* Some layouts retain duplicate type9 blocks with the same BTS. The opposed
+ * native header's cap/span or capless arrival screen identifies the authored
+ * source endpoint without guessing from scan order or screen edges alone. */
+static unsigned EndpointRank(Reader r,const SmWorldDoor *door,unsigned x,unsigned y) {
+  if (!door->destination || (door->flags&0x80)) return 0;
   unsigned list=W(r,0x8f0009u+door->destination),dir=door->direction&3;
+  unsigned rank=0;
   for (unsigned i=0; i<64; ++i) {
     unsigned p=W(r,0x8f0000u+list+2*i);
     if (p<0x88fc || p>=0xacf0) break;
     uint32_t a=0x830000u+p;unsigned back=B(r,a+3);
-    if (W(r,a)!=door->source || (B(r,a+2)&0x80) || back<4 || back>=8 || (back&3)!=(dir^1)) continue;
+    if (W(r,a)!=door->source || (B(r,a+2)&0x80) || back>=8 || (back&3)!=(dir^1)) continue;
+    if (back<4) {
+      /* Capless arrivals name a native screen, not placeholder cap(0,0).
+       * A45C's two-cell Morph trigger straddles that screen boundary. The
+       * later unique physical-anchor checks still decide reciprocity. */
+      if (x/16==B(r,a+6) && y/16==B(r,a+7)) rank=1;
+      continue;
+    }
     unsigned cx=B(r,a+4),cy=B(r,a+5);
     if (dir<2 ? y>=cy && y<cy+4 && abs((int)x-(int)cx)<=3 :
-                x>=cx && x<cx+4 && abs((int)y-(int)cy)<=3) return true;
+                x>=cx && x<cx+4 && abs((int)y-(int)cy)<=3) return 2;
   }
-  return false;
+  return rank;
 }
 static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) {
   uint8_t data[65536];
@@ -149,7 +157,7 @@ static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) 
     if (index >= room->door_count) return Fail(w,"level door index outside list",room->header);
     SmWorldDoor *d=&w->doors[room->first_door+index];
     unsigned x=i%(room->width*16),y=i/(room->width*16);
-    if (d->block_x<0 || (!CappedEndpoint(r,d,(unsigned)d->block_x,(unsigned)d->block_y) && CappedEndpoint(r,d,x,y))) {
+    if (d->block_x<0 || EndpointRank(r,d,x,y)>EndpointRank(r,d,(unsigned)d->block_x,(unsigned)d->block_y)) {
       d->block_x=(int16_t)x;d->block_y=(int16_t)y;
     }
   }

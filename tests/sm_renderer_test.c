@@ -634,14 +634,15 @@ static void carried_native_objects(void) {
 }
 
 static void resident_in_native_padding(void) {
+  for (unsigned ownership=0; ownership<2; ++ownership) for (unsigned padded=0; padded<2; ++padded) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
   word(0x998,8);word(0x79b,0x91f8);word(0x7a5,32);word(0x7a7,16);word(0x911,256);
-  for (unsigned y=0; y<16; ++y) for (unsigned x=16; x<32; ++x) word(0x10002+2*(y*32+x),0x83ff);
+  if (padded) for (unsigned y=0; y<16; ++y) for (unsigned x=16; x<32; ++x) word(0x10002+2*(y*32+x),0x83ff);
   ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=1;ppu.hScroll[0]=256;ppu.cgram[1]=31;
   for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
   SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-  *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.ownership=1,.root_width=512,.root_height=256};
+  *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.ownership=ownership,.root_width=512,.root_height=256};
   SmRoomImage *image=&scene->rooms[0];
   image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
       .left=256,.top=0,.right=512,.bottom=256};
@@ -651,9 +652,12 @@ static void resident_in_native_padding(void) {
   for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
   const SmViewport view={342,43,16.0/9,true};
   assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
-  /* A native camera can look into the active allocation's padding after a
-   * return. The neighboring canvas owns those pixels even with zero carry. */
-  assert(output[80*view.width+view.extra+64]==0x0000ff);
+  /* Physical ownership can overlap authored allocations, as in A45C's
+   * copied Morph tunnel. The same neighbor owns scenery and actors; Root
+   * keeps its own side, and publications without ownership keep native art. */
+  assert(output[80*view.width+view.extra+64]==(ownership || padded ? 0x0000ffu : 0xff0000u));
+  assert(output[80*view.width+view.extra-32]==0xff0000);
+  }
   ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
 }
 static void resident_projectile_pixels(void) {
@@ -702,6 +706,35 @@ static void resident_projectile_pixels(void) {
     }
   ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+}
+static void resident_padding_keeps_root_objects(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned authored=0; authored<2; ++authored) {
+    ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,32);word(0x7a7,16);word(0x911,256);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.hScroll[0]=256;ppu.screenEnabled[0]=17;
+    ppu.cgram[1]=31;ppu.cgram[193]=31<<5;ppu.oam[0]=64|(80<<8);ppu.oam[1]=0x3800;
+    for (unsigned y=0; y<8; ++y) { ppu.vram[y]=255;ppu.vram[4096+y]=255; }
+    word(0xc40,1);word(0xc18,0x100);word(0xcb8,0x9000);word(0xb64,320);word(0xb78,80);
+    romword(0x99000,1);romword(0x99005,0x3800);
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.ownership=1,.root_width=512,.root_height=256};scene->object_rooms[50]=0x91f8;
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    image->ram[0x7a5]=image->ram[0x7a7]=16;image->ram[0x69]=1;image->ram[0xc003]=0x7c;
+    for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+    if (!authored) { image->ram[0x10002+2*(5*16+4)]=255;image->ram[0x10003+2*(5*16+4)]=0x83; }
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    /* Private allocation padding cannot claim a Root-owned native missile.
+     * An authored, disconnected foreign pixel still masks that same owner. */
+    uint32_t expected=authored ? 0x0000ffu : 0x00ff00u,actual=output[80*view.width+view.extra+64];
+    if (actual!=expected) fprintf(stderr,"private authored%u Root projectile RGB%06x expected%06x\n",authored,(unsigned)actual,(unsigned)expected);
+    assert(actual==expected);
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
 }
 static void resident_world_objects(void) {
   const SmViewport view={342,43,16.0/9,true};
@@ -1169,6 +1202,7 @@ int main(int argc, char **argv) {
   resident_steam_pixels();
   carried_native_objects();
   resident_in_native_padding();
+  resident_padding_keeps_root_objects();
   resident_projectile_pixels();
   resident_world_objects();
   resident_sprite_objects();

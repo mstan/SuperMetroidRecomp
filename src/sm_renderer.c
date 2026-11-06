@@ -1632,9 +1632,11 @@ bool SmRendererGetPlayer(double alpha, SmPlayerView *player) {
 typedef struct SmObjectClip { const SmRoomScene *rooms;unsigned room;int camera_x,camera_y; } SmObjectClip;
 static bool object_room_pixel(const SmRoomScene *rooms,unsigned index,int x,int y) {
   if (index) {
-    const SmRoomPlacement *p=&rooms->rooms[index-1].placement;
-    return x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
-        x>=p->left && y>=p->top && x<p->right && y<p->bottom;
+    const SmRoomImage *image=&rooms->rooms[index-1];const SmRoomPlacement *p=&image->placement;
+    if (x<p->x || y<p->y || x>=p->x+p->width || y>=p->y+p->height ||
+        x<p->left || y<p->top || x>=p->right || y>=p->bottom) return false;
+    unsigned block=(unsigned)((y-p->y)/16)*(unsigned)(p->width/16)+(unsigned)((x-p->x)/16);
+    return read16(image->ram,0x10002+2*block)!=0x83ff; /* same authored footprint as scenery */
   }
   if (x<0 || y<0 || x>=(int)rooms->root_width || y>=(int)rooms->root_height) return false;
   for (unsigned i=1; i<=rooms->count; ++i) if (object_room_pixel(rooms,i,x,y)) return false;
@@ -2209,7 +2211,8 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
       int x=sx-view.extra,wx=camera_x+x,wy=camera_y+y+1;
       /* Native padding can face a neighboring canvas after a return, even
        * when the native camera itself supplies continuous coordinates. */
-      if (wx>=0 && wx<room_width && wy>=0 && wy<room_height && !padding[(wy/256)*16+wx/256]) continue;
+      if (wx>=0 && wx<room_width && wy>=0 && wy<room_height && !padding[(wy/256)*16+wx/256] &&
+          !(rooms->ownership && object_room_pixel(rooms,i+1,wx,wy))) continue;
       uint16_t layers[3],screens[2]={0x500,0x500};
       if (!SmRoomSceneSample(image,wx,wy,camera_x,camera_y,layers)) continue;
       if (mode7) {

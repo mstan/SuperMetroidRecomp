@@ -127,10 +127,10 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
   memcpy(old,residents,sizeof(old)); count = 0;
   while (head < total) {
     struct Placement from = queue[head++];
-    for (unsigned i = 0; i < from.room->door_count && total < kResidents+1; ++i) {
+    for (unsigned i = 0; i < from.room->door_count; ++i) {
       const SmWorldDoor *d = &world.doors[from.room->first_door+i];
       const SmWorldRoom *to = SmWorldFindRoom(&world,d->destination);
-      if (!to || seen[to-world.rooms] || d->block_x < 0 || (d->flags & 0x80) ||
+      if (!to || to==active || d->block_x < 0 || (d->flags & 0x80) ||
           (d->direction<4 && !d->reciprocal)) continue;
       unsigned dir = d->direction & 3;
       static const int dx[] = {1,-1,0,0}, dy[] = {0,0,1,-1};
@@ -150,6 +150,28 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
       int vr=cr<right ? cr : right, vb=cb<bottom ? cb : bottom;
       if (vl>=vr || vt>=vb || !overlaps(x,y,to->width*256,to->height*256,vl,vt,vr,vb)) continue;
       uint16_t state = SmWorldRoomStateForDoor(to,read_byte,NULL,ram,d->definition);
+      if (seen[to-world.rooms]) {
+        /* Multiple real entrances can expose different portions of one
+         * allocation. Union only overlapping rectangles on the same axis;
+         * never fill an unrelated corner, duplicate a room, or mix states. */
+        for (unsigned j=0; j<count; ++j) {
+          Preview *p=residents[j];
+          if (p->room!=to->header || p->state!=state || p->x!=x || p->y!=y) continue;
+          if (p->top==ct && p->bottom==cb && cl<=p->right && cr>=p->left) {
+            if (cl<p->left) p->left=cl;
+            if (cr>p->right) p->right=cr;
+          } else if (p->left==cl && p->right==cr && ct<=p->bottom && cb>=p->top) {
+            if (ct<p->top) p->top=ct;
+            if (cb>p->bottom) p->bottom=cb;
+          } else break;
+          for (unsigned k=head; k<total; ++k) if (queue[k].room==to && queue[k].x==x && queue[k].y==y) {
+            queue[k].left=p->left;queue[k].top=p->top;queue[k].right=p->right;queue[k].bottom=p->bottom;
+          }
+          break;
+        }
+        continue;
+      }
+      if (total==kResidents+1) continue;
       Preview *p = NULL;
       for (unsigned j = 0; j < old_count; ++j)
         if (old[j] && old[j]->room == to->header && old[j]->state == state && old[j]->incoming == d->definition) {

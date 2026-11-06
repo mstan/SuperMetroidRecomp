@@ -122,15 +122,21 @@ static bool mirror_doors(uint8_t active[0x20000]) {
   }
   memcpy(links,next,next_count*sizeof(*next)); link_count=next_count; return true;
 }
+static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p);
 bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination) {
   if (!destination) return false;
+  unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
+  for (unsigned i=0; i<n; ++i) if (doors[i].definition==definition && planar_portal(&doors[i],destination)) return true;
   for (unsigned i=0; i<count; ++i) if (residents[i].placement.incoming==definition) {
     *destination=residents[i].placement; return true;
   }
   return false;
 }
 unsigned SmRoomsDoorPhase(uint16_t definition) {
-  for (unsigned i=0; i<count; ++i) if (residents[i].placement.incoming==definition) {
+  SmRoomPlacement p;
+  if (!SmRoomsDoor(definition,&p)) return SM_DOOR_SHUT;
+  for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==p.room &&
+      residents[i].placement.x==p.x && residents[i].placement.y==p.y) {
     if (!SmDoorHasArrivalCap(read_rom(NULL,0x830003u+definition))) return SM_DOOR_OPEN;
     return SmDoorPhase(read_rom,NULL,SmRoomRuntimeRam(residents[i].runtime),
         read_rom(NULL,0x830004u+definition),read_rom(NULL,0x830005u+definition));
@@ -161,16 +167,27 @@ static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p) {
   for (unsigned i=0; i<count; ++i) {
     const SmRoomPlacement *v=&residents[i].placement;
     if (v->room==d->destination && v->x==x && v->y==y) {
-      *p=*v; p->incoming=d->definition; return true;
+      *p=*v;p->incoming=d->definition;
+      /* A shared canvas can be exposed by several entrances. Handoff still
+       * clips the departing room at this connection's actual plane. */
+      int plane=dir<2 ? (d->block_x+(dir==0))*16 : (d->block_y+(dir==2))*16;
+      if (dir==0 && p->left<plane) p->left=plane;
+      if (dir==1 && p->right>plane) p->right=plane;
+      if (dir==2 && p->top<plane) p->top=plane;
+      if (dir==3 && p->bottom>plane) p->bottom=plane;
+      return true;
     }
   }
   return false;
 }
-static bool active_door(const uint8_t *ram,const SmWorldDoor *d) {
+static bool active_trigger(const uint8_t *ram,const SmWorldDoor *d,int x,int y) {
   unsigned w=word(ram+0x7a5),h=word(ram+0x7a7);
-  if (d->block_x<0 || d->block_y<0 || (unsigned)d->block_x>=w || (unsigned)d->block_y>=h) return false;
-  unsigned block=(unsigned)d->block_y*w+(unsigned)d->block_x;
+  if (x<0 || y<0 || (unsigned)x>=w || (unsigned)y>=h) return false;
+  unsigned block=(unsigned)y*w+(unsigned)x;
   return (word(ram+0x10002+2*block)>>12)==9 && (ram[0x16402+block]&127)==d->index;
+}
+static bool active_door(const uint8_t *ram,const SmWorldDoor *d) {
+  return active_trigger(ram,d,d->block_x,d->block_y);
 }
 static bool interaction_entrance(const uint8_t *ram,unsigned incoming,unsigned phase) {
   if (phase==SM_DOOR_SHUT || phase==SM_DOOR_CLOSING) return false;
@@ -613,7 +630,7 @@ int SmRoomsCollisionBlock(const uint8_t active[0x20000],int bx,int by) {
      * plane sample the destination's real cap/wall cells, including when
      * authored room allocations overlap. */
     bool source=dir<2 ? bx==d->block_x : by==d->block_y;
-    if (source) return 0;
+    if (source) return active_trigger(active,d,bx,by) ? 0 : -1;
     for (unsigned j=0; j<count; ++j) if (residents[j].placement.room==p.room &&
         residents[j].placement.x==p.x && residents[j].placement.y==p.y)
       return tile_collision(SmRoomRuntimeRam(residents[j].runtime),bx-p.x/16,by-p.y/16);
@@ -628,8 +645,9 @@ bool SmRoomsCrossing(const uint8_t active[0x20000],uint16_t *definition,SmRoomPl
     const SmWorldDoor *d=&doors[i]; unsigned dir=d->direction&3; SmRoomPlacement p;
     int plane=dir<2 ? (d->block_x+(dir==0))*16 : (d->block_y+(dir==2))*16;
     bool span=dir<2 ? y>=d->block_y*16 && y<(d->block_y+4)*16 : x>=d->block_x*16 && x<(d->block_x+4)*16;
+    bool trigger=dir<2 ? active_trigger(active,d,d->block_x,y/16) : active_trigger(active,d,x/16,d->block_y);
     bool crossed=dir==0 ? x>=plane : dir==1 ? x<plane : dir==2 ? y>=plane : y<plane;
-    if (!span || !crossed || !active_door(active,d) || !planar_portal(d,&p) || x-p.x<0 || x-p.x>=p.width || y-p.y<0 || y-p.y>=p.height) continue;
+    if (!span || !trigger || !crossed || !active_door(active,d) || !planar_portal(d,&p) || x-p.x<0 || x-p.x>=p.width || y-p.y<0 || y-p.y>=p.height) continue;
     *definition=d->definition; *destination=p; return true;
   }
   return false;

@@ -113,6 +113,35 @@ static void uncapped_entrance(const uint8_t *rom) {
   memcpy(active,original,sizeof(active));
   puts("uncapped native arrival keeps its geometric link and never inserts a corner bubble");
 }
+static void morph_entrance(const uint8_t *rom) {
+  memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
+  assert(SmRoomsFrame(active,true,213,false,true));
+  const SmWorldRoom *room=SmRoomPreviewRoom(0xd0b9);assert(room);
+  SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,room->default_state,0,original,false);assert(r);
+  uint8_t *source=malloc(sizeof(active));assert(source);memcpy(source,SmRoomRuntimeRam(r),sizeof(active));SmRoomRuntimeDestroy(r);
+  for (unsigned logic=0; logic<2; ++logic) {
+    memcpy(active,source,sizeof(active));SmRoomsSetRom(rom,0x300000);
+    put(0x998,8);put(0x911,256);put(0x915,512);put(0xaf6,280);put(0xafa,665);put(0xafe,5);put(0xb00,7);
+    for (unsigned i=0; i<2; ++i) assert(SmRoomsFrame(active,true,213,logic!=0,true));
+    const SmRoomScene *scene=SmRoomsScene();const SmRoomImage *neighbor=NULL;
+    for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==0xcfc9) neighbor=&scene->rooms[i];
+    assert(neighbor && neighbor->placement.x==-512 && neighbor->placement.y==0 && neighbor->placement.right==256);
+    assert(neighbor->placement.incoming==0xa438); /* shared allocation cached through the upper hatch */
+    SmRoomPlacement p;assert(SmRoomsDoor(0xa45c,&p) && p.incoming==0xa45c && p.right==256);
+    assert(SmRoomsDoorPhase(0xa45c)==SM_DOOR_OPEN);
+    assert(SmRoomsDoor(0xa438,&p) && p.incoming==0xa438 && p.right==0); /* per-entrance departure plane */
+    for (unsigned i=0; i<40; ++i)
+      assert(SmShotWord(neighbor->ram,0x1c87+2*i)!=0 || !SmDoorHeader(SmShotWord(neighbor->ram,0x1c37+2*i)));
+    assert(SmRoomsCollisionBlock(active,16,41)==0 && SmRoomsCollisionBlock(active,15,41)==0);
+    assert(SmRoomsCollisionBlock(active,16,40)==-1 && SmRoomsCollisionBlock(active,16,42)==-1);
+    assert(SmRoomsCollisionBlock(active,15,42)==16); /* retain the actual one-cell-high tunnel floor */
+    uint16_t definition;put(0xaf6,256);assert(!SmRoomsCrossing(active,&definition,&p));
+    put(0xaf6,255);assert(SmRoomsCrossing(active,&definition,&p) && definition==0xa45c && p.right==256);
+    put(0xafa,680);assert(!SmRoomsCrossing(active,&definition,&p));
+  }
+  free(source);memcpy(active,original,sizeof(active));
+  puts("uncapped Morph passage shares its canvas, resolves incoming aliases, keeps native floor/ceiling and requires the real trigger row On/Off");
+}
 static const uint8_t *hall(void) {
   const SmRoomScene *scene=SmRoomsScene();
   for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==0x93aa) return scene->rooms[i].ram;
@@ -547,6 +576,7 @@ int main(int argc,char **argv) {
   }
   world_shots(rom);
   uncapped_entrance(rom);
+  morph_entrance(rom);
   world_combat(rom);
   neighbor_pickups(rom);
   world_actor_blocks(rom);
