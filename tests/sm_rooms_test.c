@@ -282,6 +282,43 @@ static void world_actor_blocks(const uint8_t *rom) {
   free(saved);free(end);free(again);SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
   puts("actor reactions reach both room owners; native breakable blocks change only their real room; exact world restore");
 }
+static void active_rules(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  for (unsigned enabled=0; enabled<2; ++enabled) {
+    bool logic=enabled!=0;memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    for (unsigned slot=30; slot<32; ++slot) {
+      unsigned index=slot*64;put(SM_ENEMY_POOL+index,0xe87f);put(0xf7a+index,slot==30 ? 2200 : 2299);put(0xf7e +index,400);
+      assert(SmRoomsActiveRules(active,slot)==(SM_ROOM_SIMULATES|SM_ROOM_INTERACTS));
+    }
+    put(0xf7a+31*64,2308);
+    for (unsigned ep=16; ep<18; ++ep) {
+      put(0x1997+2*ep,0x9db0);put(0x1a4b+2*ep,2299);put(0x1a93+2*ep,400);
+      put(0x1bd7+2*ep,ep==16 ? 0x2000 : 0x14);put(0x1bb3+2*ep,ep==16 ? 0 : 0x0404);
+      assert(SmRoomsActiveRules(active,32+ep)==(SM_ROOM_SIMULATES|SM_ROOM_INTERACTS));put(0x1a4b+2*ep,2308);
+    }
+    unsigned expected=logic ? SM_ROOM_SIMULATES|SM_ROOM_INTERACTS : 0;
+    assert(SmRoomsActiveRules(active,31)==expected && SmRoomsActiveRules(active,49)==expected);
+    assert(SmRoomsActiveRules(active,48)==(logic ? expected : SM_ROOM_SIMULATES));
+    for (unsigned list=0; list<2; ++list) {
+      unsigned base=list ? 0x17ec : 0x17ac;put(base,30*64);put(base+2,31*64);put(base+4,65535);put(list ? 0x17a6 : 0x17a4,4);
+    }
+    assert(SmRoomsFilterActiveQueues(active));
+    assert(SmShotWord(active,0x17a4)==(logic ? 4u : 2u) && SmShotWord(active,0x17a6)==(logic ? 4u : 2u));
+    assert(SmShotWord(active,SM_ENEMY_POOL+31*64)==0xe87f && SmShotWord(active,0x1997+34)==0x9db0);
+    unsigned cap=0x10002+2*(22*144+142);active[cap+1]=(uint8_t)((active[cap+1]&15)|0xc0);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    assert(SmRoomsActiveRules(active,30)==(SM_ROOM_SIMULATES|SM_ROOM_INTERACTS));
+    assert(SmRoomsActiveRules(active,31)==(logic ? SM_ROOM_SIMULATES : 0));
+    assert(SmRoomsActiveRules(active,49)==(logic ? SM_ROOM_SIMULATES : 0));
+    assert(SmRoomsActiveRules(active,48)==SM_ROOM_SIMULATES);
+    assert(SmRoomsFilterActiveQueues(active));assert(SmShotWord(active,0x17a4)==(logic ? 4u : 2u) && SmShotWord(active,0x17a6)==2);
+    put(0x17ac,31*64);put(0x17ae,65535);put(0x17a4,2);put(0x17ec,65535);put(0x17a6,0);
+    put(SM_ENEMY_POOL+31*64,0xdaff);assert(SmRoomsFilterActiveQueues(active));assert(SmShotWord(active,0x17a4)==2);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("active resource slots follow spatial On/Off and closed-door rules; queues retain occupied slots, Root actors, native reserved slots and visual FX");
+}
 static void retained_projectile(const uint8_t *rom) {
   if (SmShotWord(original,0x79b)!=0x91f8) return;
   static uint8_t previous[0x20000],checkpoint[0x20000],finished[0x20000];
@@ -411,6 +448,7 @@ int main(int argc,char **argv) {
   world_combat(rom);
   neighbor_pickups(rom);
   world_actor_blocks(rom);
+  active_rules(rom);
   retained_projectile(rom);
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);

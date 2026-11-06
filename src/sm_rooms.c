@@ -3,6 +3,7 @@
 #include "sm_room_preview.h"
 #include "sm_door.h"
 #include "sm_shot_view.h"
+#include "sm_activity.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -506,6 +507,33 @@ static bool room_reachable(unsigned room,const bool *reachable) {
   if (room==root) return true;
   for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==room) return reachable[i+1];
   return false;
+}
+unsigned SmRoomsActiveRules(uint8_t active[0x20000],unsigned slot) {
+  if (!rom || word(active+0x79b)!=root || word(active+0x998)!=8 || slot>=WORLD_ENEMIES+WORLD_EPROJS)
+    return SM_ROOM_SIMULATES|SM_ROOM_INTERACTS;
+  if (slot<WORLD_ENEMIES && word(active+0xf78+64*slot)==0xdaff)
+    return SM_ROOM_SIMULATES|SM_ROOM_INTERACTS; /* native reserved/death slots */
+  WorldEntity *e=&active_world.slots[slot];sync_entity(active,active,0,0,e,slot);
+  if (!e->definition) return 0;
+  unsigned rules=logic || e->room==root || (e->flags&WORLD_ENVIRONMENT) ? SM_ROOM_SIMULATES : 0;
+  if (e->room==root) return rules|SM_ROOM_INTERACTS; /* preserve native own-room scripts/helpers */
+  DoorContext resource={active,NULL,root,word(active+0x7bb),0,0};
+  if (!visible_entity(active,&resource,e)) return rules;
+  if (logic) {
+    bool reachable[SM_ROOM_RESIDENTS+1];interaction_rooms(active,reachable);
+    if (room_reachable(e->room,reachable)) rules|=SM_ROOM_INTERACTS;
+  }
+  return rules;
+}
+bool SmRoomsFilterActiveQueues(uint8_t active[0x20000]) {
+  if (!rom || word(active+0x79b)!=root || word(active+0x998)!=8) return true;
+  uint32_t simulation=0,interaction=0;
+  for (unsigned i=0; i<32; ++i) {
+    unsigned rules=SmRoomsActiveRules(active,i);
+    if (rules&SM_ROOM_SIMULATES) simulation|=1u<<i;
+    if (rules&SM_ROOM_INTERACTS) interaction|=1u<<i;
+  }
+  return SmActivityFilterQueues(active,simulation,interaction);
 }
 static bool resident_player_eligible(void *context,const uint8_t source[0x20000],unsigned slot) {
   const EprojOrigin *origin=context;

@@ -34,6 +34,18 @@ void SmActivityRebaseProjectiles(uint8_t ram[0x20000], int x, int y) {
   }
 }
 
+bool SmActivityFilterQueues(uint8_t *ram,uint32_t simulation,uint32_t interaction) {
+  for (unsigned list=0; list<2; ++list) {
+    unsigned base=list ? 0x17ec : 0x17ac,count=0;uint32_t mask=list ? interaction : simulation;
+    for (unsigned i=0; i<32; ++i) {
+      unsigned index=word(ram,base+2*i);if (index==65535) break;
+      if (index>=2048 || (index&63)) return false;
+      if (mask&(1u<<(index/64))) { put(ram,base+2*count,index);++count; }
+    }
+    put(ram,base+2*count,65535);put(ram,list ? 0x17a6 : 0x17a4,count*2);
+  }
+  return true;
+}
 bool SmActivityAugmentQueues(uint8_t *ram, unsigned extra) {
   if (!SmActivityExtraValid(extra)) return false;
   /* Let the original ROM own deletion, always-active/frozen enemies, its

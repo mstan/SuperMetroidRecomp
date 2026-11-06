@@ -1521,8 +1521,7 @@ static bool projectile_pose(const SmSourceFrame *f, bool enemy, unsigned slot,
     project_player_position(ram, pose->identity, pose->world_x, pose->world_y, &pose->x, &pose->y);
   return pose->map >= 0x8000;
 }
-static bool sprite_object_pose(const SmSourceFrame *f, unsigned slot, SmProjectilePose *pose) {
-  const uint8_t *ram = f->object_ram;
+static bool sprite_object_state(const uint8_t *ram, unsigned slot, SmProjectilePose *pose) {
   unsigned offset = slot * 2;
   pose->identity = read16(ram, 0xef78 + offset);
   const uint8_t *data = rom_bytes(0xb4, pose->identity, 4);
@@ -1532,9 +1531,21 @@ static bool sprite_object_pose(const SmSourceFrame *f, unsigned slot, SmProjecti
   pose->palette = gfx & 0xe00; pose->base = gfx & 0x1ff;
   pose->world_x = (int16_t)read16(ram, 0xf0f8 + offset);
   pose->world_y = (int16_t)read16(ram, 0xf1f8 + offset);
+  return pose->map >= 0x8000;
+}
+static bool sprite_object_pose(const SmSourceFrame *f, unsigned slot, SmProjectilePose *pose) {
+  const uint8_t *ram = f->object_ram;
+  if (!sprite_object_state(ram, slot, pose)) return false;
   pose->x = pose->world_x - (int16_t)read16(ram, 0x911);
   pose->y = pose->world_y - (int16_t)read16(ram, 0x915);
-  return pose->map >= 0x8000 && pose->y >= 0 && pose->y < 272;
+  return pose->y >= 0 && pose->y < 272;
+}
+static bool sprite_object_continuous(const uint8_t *before_ram, unsigned slot,
+                                     const SmProjectilePose *now, const SmProjectilePose *before) {
+  bool continuous = now->identity == before->identity ||
+      (now->identity == before->identity + 4 && read16(before_ram, 0xeff8 + slot * 2) == 1);
+  return continuous && now->palette == before->palette && now->base == before->base &&
+      abs(now->world_x - before->world_x) <= 32 && abs(now->world_y - before->world_y) <= 32;
 }
 static bool sprite_object_motion(const SmSourceFrame *f, const SmSourceFrame *old,
                                  unsigned slot, SmProjectilePose *now, SmProjectilePose *before) {
@@ -1543,10 +1554,7 @@ static bool sprite_object_motion(const SmSourceFrame *f, const SmSourceFrame *ol
   /* There is no separate owner ID. Admit unchanged instructions and the
    * ordinary four-byte animation advance at timer expiry, not arbitrary
    * jumps/reused instruction lists. Never execute an instruction or timer. */
-  bool continuous = now->identity == before->identity ||
-      (now->identity == before->identity + 4 && read16(old->object_ram, 0xeff8 + slot * 2) == 1);
-  return continuous && now->palette == before->palette && now->base == before->base &&
-      abs(now->world_x - before->world_x) <= 32 && abs(now->world_y - before->world_y) <= 32 &&
+  return sprite_object_continuous(old->object_ram, slot, now, before) &&
       abs(now->x - before->x) <= 32 && abs(now->y - before->y) <= 32;
 }
 static int moving_effect_slot(const SmSourceFrame *f, const SmSourceFrame *old) {
@@ -2133,6 +2141,21 @@ static void resident_objects(const SmRoomScene *rooms,const SmRoomImage *image, 
     int sy=(int16_t)read16(r,0x1a93+off)+image->placement.y-camera_y;
     unsigned gfx=read16(r,0x19bb+off);
     enemy_map_pixels(&line,&p,0x8d,read16(r,0x1b6b+off),x,sy,gfx&0xff00,gfx&255,y,view,pixels,true,&clip);
+  }
+  /* Native $A0:884D emits B4 effects first, ahead of actors/projectiles in
+   * OAM order. Reverse that emission because these pixel writes overwrite.
+   * Animation already ran in the resident VM; presentation reads it only. */
+  SmObjectClip effect_clip={rooms,image->placement.room,camera_x,camera_y};
+  for (unsigned slot=0; slot<32; ++slot) {
+    SmProjectilePose now,before;
+    if (!sprite_object_state(r,slot,&now)) continue;
+    int wx=now.world_x,wy=now.world_y;
+    if (old && alpha<1 && sprite_object_state(old->ram,slot,&before) &&
+        sprite_object_continuous(old->ram,slot,&now,&before)) {
+      wx=lerp_pixel(before.world_x,wx,alpha);wy=lerp_pixel(before.world_y,wy,alpha);
+    }
+    enemy_map_pixels(&line,&p,now.bank,now.map,wx+image->placement.x-camera_x,
+        wy+image->placement.y-camera_y,now.palette,now.base,y,view,pixels,true,&effect_clip);
   }
 }
 static bool object_wins(uint16_t candidate,unsigned room,uint16_t current,unsigned current_room) {

@@ -41,6 +41,31 @@ static void Fixture(void) {
   Word(0xb58000+2*(23+32),0x24); Byte(0x829800+(23+32)/8,1);
   Word(0xb58000+2*(1024+32),0x24); Byte(0x829800+(1024+32)/8,0x80);
 }
+static void CeresLevel(uint32_t source,unsigned width,unsigned height,bool missing,bool ambiguous) {
+  uint8_t data[2+3*768]={0};unsigned blocks=width*height*256,bytes=blocks*2,size=2+blocks*3;
+  data[0]=(uint8_t)bytes;data[1]=(uint8_t)(bytes>>8);
+  if (!missing) for (unsigned n=0; n<(ambiguous ? 2u : 1u); ++n) for (unsigned row=0; row<4; ++row) {
+    unsigned block=height==3 ? (38+row)*16+15 : (6+4*n+row)*32;
+    data[2+2*block]=0x40;data[3+2*block]=0x90;data[2+bytes+block]=(uint8_t)n;
+  }
+  for (unsigned p=0; p<size;) {
+    unsigned count=size-p;if (count>1024) count=1024;
+    Byte(source++,(uint8_t)(0xe0 | ((count-1)>>8)));Byte(source++,(uint8_t)(count-1));
+    for (unsigned n=0; n<count; ++n) Byte(source++,data[p++]);
+  }
+  Byte(source,255);
+}
+static void UncappedCeres(bool missing,bool ambiguous) {
+  Fixture();Header(0x8fdf45,6,12,13,0xdf80);Header(0x8fe021,6,13,13,0xe060);
+  Byte(0x8fdf4a,3);Byte(0x8fe025,2);
+  Word(0x8fdf50,0xe5e6);State(0xdf52,0);Word(0x8fe02c,0xe5e6);State(0xe02e,0);
+  Long(0x8fdf52,0xc68000);Long(0x8fe02e,0xc78000);
+  CeresLevel(0xc68000,1,3,false,false);CeresLevel(0xc78000,2,1,missing,ambiguous);
+  Word(0x8fdf80,0xab4c);Word(0x8fe060,0xab58);
+  Word(0x83ab4c,0xe021);Byte(0x83ab4f,0);
+  Word(0x83ab58,0xdf45);Byte(0x83ab5b,1);Byte(0x83ab5f,2);
+  if (ambiguous) { Word(0x8fe062,0xab64);Word(0x83ab64,0xdf45);Byte(0x83ab67,1);Byte(0x83ab6b,2); }
+}
 int main(void) {
   Fixture(); assert(SmWorldLoad(&world,Read,NULL));
   assert(world.room_count==2 && world.door_count==2 && world.state_count==3 && world.marker_count==8);
@@ -138,6 +163,25 @@ int main(void) {
   const SmWorldRoom *ceres=SmWorldFindRoom(&world,0xe021);
   assert(ceres && ceres->area==6 && world.doors[ceres->first_door].reciprocal);
   assert(!SmWorldKnown(&world,ram,6,13,14,true,true) && !SmWorldCellRoom(&world,6,13,14));
+  /* Uncapped Ceres headers keep zero cap fields. Native arrival screens and
+   * real opposed triggers must produce a symmetric multi-screen embedding. */
+  UncappedCeres(false,false);assert(SmWorldLoad(&world,Read,NULL));
+  const SmWorldRoom *elevator=SmWorldFindRoom(&world,0xdf45),*hall=SmWorldFindRoom(&world,0xe021);
+  const SmWorldDoor *out=&world.doors[elevator->first_door],*back=&world.doors[hall->first_door];
+  assert(out->reciprocal && back->reciprocal && out->arrival_x==0 && out->arrival_y==6);
+  assert(back->arrival_x==15 && back->arrival_y==38 && back->arrival_screen_y==2);
+  assert(!Read(NULL,0x83ab50) && !Read(NULL,0x83ab51) && !Read(NULL,0x83ab5c) && !Read(NULL,0x83ab5d));
+  /* The automap layout traverses Zebes only. Check Ceres' actual forward
+   * and reverse constraints here; the preview probe checks their placement. */
+  assert(out->block_x/16+1-out->arrival_x/16==1 && out->block_y/16-out->arrival_y/16==2);
+  assert(back->block_x/16-1-back->arrival_x/16==-1 && back->block_y/16-back->arrival_y/16==-2);
+  for (unsigned ambiguous=0; ambiguous<2; ++ambiguous) {
+    UncappedCeres(!ambiguous,ambiguous!=0);assert(SmWorldLoad(&world,Read,NULL));
+    elevator=SmWorldFindRoom(&world,0xdf45);hall=SmWorldFindRoom(&world,0xe021);
+    out=&world.doors[elevator->first_door];back=&world.doors[hall->first_door];
+    assert(!out->reciprocal && !back->reciprocal && out->arrival_y==0 && back->arrival_y==0);
+    assert(out->block_x==15 && out->block_y==38); /* retain real source metadata */
+  }
   Fixture();
   Word(0x8f9203,0xffff); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"selector"));
   Fixture(); Byte(0xc0fffe,0x80); /* invalid absolute copy before any output */

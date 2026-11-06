@@ -11,6 +11,7 @@ void SmActivityRebaseProjectiles(uint8_t ram[0x20000], int x, int y);
 bool SmActivityExtraValid(unsigned extra);
 void SmActivityRestore(unsigned extra);
 bool SmActivityAugmentQueues(uint8_t *ram, unsigned extra);
+bool SmActivityFilterQueues(uint8_t *ram,uint32_t simulation,uint32_t interaction);
 
 #if defined(SNES_HAS_LOBBY_CLIENT) && defined(RECOMP_LAUNCHER)
 #include "netplay/snes_netplay.h"

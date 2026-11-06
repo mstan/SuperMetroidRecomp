@@ -331,6 +331,29 @@ static void player_ai(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);free(grab);free(end);free(again);
   puts("native Beetom grab consumes live root input and releases; private view restored; exact mid-grab continuation");
 }
+static void visual_sprites(SmRoomRuntime *r) {
+  static uint8_t seed[0x20000];static uint16_t vram[0x8000];
+  const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);assert(!SmRoomRuntimeActors(r));
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*checkpoint=malloc(size),*end=malloc(size),*again=malloc(size);
+  assert(original && checkpoint && end && again && SmRoomRuntimeSave(r,original,size));
+  memcpy(seed,ram,sizeof(seed));memset(seed+0xef78,0,0x80);unsigned index=62;
+  SmShotPut(seed,0xef78+index,0xbe5a);SmShotPut(seed,0xeff8+index,3);SmShotPut(seed,0xf078+index,0);
+  SmShotPut(seed,0xf0f8+index,128);SmShotPut(seed,0xf1f8+index,128);
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(gfx[2*i] | gfx[2*i+1]<<8);
+  assert(SmRoomRuntimeCapture(r,seed,vram));
+  for (unsigned tick=1; tick<=12; ++tick) {
+    assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+    if (tick==1) assert(SmShotWord(ram,0xef78+index)==0xbe5a && SmShotWord(ram,0xeff8+index)==2);
+    if (tick==3) assert(SmShotWord(ram,0xef78+index)==0xbe5e && SmShotWord(ram,0xeff8+index)==3);
+    if (tick==3) assert(SmRoomRuntimeSave(r,checkpoint,size));
+  }
+  assert(!SmShotWord(ram,0xef78+index) && SmRoomRuntimeSave(r,end,size));
+  assert(SmRoomRuntimeLoad(r,checkpoint,size));
+  for (unsigned tick=0; tick<9; ++tick) assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+  assert(SmRoomRuntimeSave(r,again,size) && !memcmp(end,again,size));
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);free(checkpoint);free(end);free(again);
+  puts("logic Off advances and deletes a real native B4 effect in the highest slot without initializing enemies");
+}
 static void player_pickups(SmRoomRuntime *r) {
   static uint8_t seed[0x20000],view[0x20000],before_view[0x20000];static uint16_t vram[0x8000];
   const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);unsigned slot=34;
@@ -364,6 +387,19 @@ static void player_pickups(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);
   puts("native health/ammo drops reward Root once by body or live grapple; ineligible drops retained; private player restored");
 }
+static void ceres_scenery(const SmWorld *world) {
+  const SmWorldRoom *room=SmWorldFindRoom(world,0xe0b5);assert(room);
+  uint16_t state=SmWorldRoomState(room,Read,NULL,active);
+  for (unsigned logic=0; logic<2; ++logic) {
+    SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,active,logic!=0);
+    assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r),*vram=SmRoomRuntimeVram(r);
+    assert(ram[0x5d]==0x66 && SmShotWord(ram,0x7eb)==9);
+    for (unsigned i=0; i<1536; ++i) assert(vram[0xda00+i]==Read(NULL,0xb0ba00+i));
+    for (unsigned i=0; i<32; ++i) assert(logic || !SmShotWord(ram,0xf78+64*i));
+    SmRoomRuntimeDestroy(r);
+  }
+  puts("Ceres lab native BG bases and complete fixed scenery graphics load On/Off without activating disabled actors");
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -374,6 +410,7 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  if (strtoul(argv[3],NULL,16)==0x9fe5) ceres_scenery(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);
   uint16_t state=SmWorldRoomState(room,Read,NULL,active);
   SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(r);
@@ -434,7 +471,11 @@ int main(int argc,char **argv) {
   puts("promotion retains resident enemies while preserving active player and continuation stack");
   free(entered); free(entered_vram);
   free(snapshot); free(continued); free(repeated);
-  SmRoomRuntime *visual=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,active,false); assert(visual && !*SmRoomRuntimeError(visual));
+  uint8_t *visual_seed=malloc(sizeof(active));assert(visual_seed);memcpy(visual_seed,active,sizeof(active));
+  SmShotPut(visual_seed,0xef78+62,0xbe5a);SmShotPut(visual_seed,0xeff8+62,3);
+  SmRoomRuntime *visual=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,visual_seed,false); assert(visual && !*SmRoomRuntimeError(visual));
+  assert(SmShotWord(visual_seed,0xef78+62)==0xbe5a && !SmShotWord(SmRoomRuntimeRam(visual),0xef78+62));free(visual_seed);
+  visual_sprites(visual);
   uint8_t visual_start[65536]; memcpy(visual_start,SmRoomRuntimeVram(visual),sizeof(visual_start));
   for (unsigned frame=0; frame<60; ++frame) {
     assert(SmRoomRuntimeStepVisible(visual,x+64,y,x-64,y-64,213));

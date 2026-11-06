@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
   SmRoomPreviewSetRom(rom,size);
-  unsigned rooms=0, pixels=0, residents=0,ceres=0;
+  unsigned rooms=0, pixels=0, residents=0,ceres=0,uncapped=0;
   for (unsigned i=0; i<world->room_count; ++i) {
     const SmWorldRoom *r=&world->rooms[i];
     Word(0x79b,r->header); Word(0x7bb,r->default_state);
@@ -36,7 +36,29 @@ int main(int argc, char **argv) {
     memcpy(before,ram,sizeof(ram));
     SmRoomPreviewPrepare(ram,-213,-32,r->width*256+213,r->height*256+32);
     unsigned n=SmRoomPreviewCount();
-    if (r->area==6) { assert(n); ++ceres; }
+    if (r->area==6) {
+      assert(n);++ceres;
+      for (unsigned d=0; d<r->door_count; ++d) {
+        const SmWorldDoor *door=&world->doors[r->first_door+d];assert(door->direction<4 && door->reciprocal);
+        const SmWorldRoom *to=SmWorldFindRoom(world,door->destination);assert(to);
+        unsigned matches=0;
+        for (unsigned b=0; b<to->door_count; ++b) {
+          const SmWorldDoor *back=&world->doors[to->first_door+b];
+          matches+=back->destination==r->header && (back->direction&3)==((door->direction&3)^1) &&
+              back->block_x==door->arrival_x && back->block_y==door->arrival_y;
+        }
+        assert(matches==1 && door->arrival_x/16==door->arrival_screen_x && door->arrival_y/16==door->arrival_screen_y);++uncapped;
+      }
+      uint16_t neighbor=r->header==0xdf45 ? 0xdf8d : r->header==0xdf8d ? 0xdf45 : 0;
+      if (neighbor) {
+        bool found=false;
+        for (unsigned j=0; j<n; ++j) {
+          SmRoomPlacement p;assert(SmRoomPreviewPlacement(j,&p));
+          if (p.room==neighbor) { assert(p.x==(neighbor==0xdf8d ? 256 : -256) && p.y==(neighbor==0xdf8d ? 512 : -512));found=true; }
+        }
+        assert(found);
+      }
+    }
     if (n) ++rooms;
     else printf("room %04X: no visible planar preview\n",r->header);
     residents+=n;
@@ -52,7 +74,7 @@ int main(int argc, char **argv) {
     assert(SmRoomPreviewCount()==n);
   }
   printf("%u/%u rooms with previews, %u resident decodes, %u sampled pixels\n",rooms,world->room_count,residents,pixels);
-  assert(rooms>100 && pixels>1000 && ceres==6);
+  assert(rooms>100 && pixels>1000 && ceres==6 && uncapped==10);
   SmRoomPreviewSetRom(NULL,0);
   assert(!SmRoomPreviewCount());
   free(world); free(rom); return 0;

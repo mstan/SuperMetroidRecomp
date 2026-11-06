@@ -15,6 +15,7 @@
 #include "sm_pause_options.h"
 #include "mods/sm_return_to_title_plugin.h"
 #include "sm_activity.h"
+#include "sm_rooms.h"
 
 /* Wait replacements unwind compiled calls to the interruptible scheduler.
  * The original ROM bytes own the WRAM handshake and return-frame pop; the
@@ -58,7 +59,9 @@ RecompReturn HleSmDetermineWhichEnemiesToProcess(CpuState *cpu) {
     /* PHB; the generated tail owns PHK/PLB and the entire original queue. */
     sm_prologue_cycles(cpu, 3);
     cpu_write8(cpu, 0, cpu->S, cpu->DB); --cpu->S;
-    return sm_native_tail(cpu, body, entry, entry_s, hrv, 3);
+    RecompReturn result=sm_native_tail(cpu, body, entry, entry_s, hrv, 3);
+    if (result==RECOMP_RETURN_NORMAL && !SmRoomsFilterActiveQueues(g_ram)) abort();
+    return result;
   }
   RecompReturn result = interp_tier_run_call_frame(cpu, entry, entry, 3, NULL);
 #if SM_VIEW_ACTIVITY
@@ -68,6 +71,7 @@ RecompReturn HleSmDetermineWhichEnemiesToProcess(CpuState *cpu) {
     warned = true;
   }
 #endif
+  if (result==RECOMP_RETURN_NORMAL && !SmRoomsFilterActiveQueues(g_ram)) abort();
   return result;
 }
 

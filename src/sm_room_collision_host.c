@@ -17,7 +17,8 @@ bool SmRoomCollisionFrameBegin(void) {
       0x94a2a8,0x94a337,0x94a3bb,0x94a3c3,0x94a3cd,0x94a44d,0x94a455,0x94a45f,0x94a4c6,0x94a530};
   const uint32_t eprojs[]={0x868886,0x86889e,0x86889d,0x8688b5};
   const uint32_t actors[]={0xa0c845,0xa0c879};
-  const uint32_t entities[]={0xa08fd4,0xa09168,0x868104,0x868124,0x868091,0x8680fe,0xa09419,0x938070,0x9381d0};
+  const uint32_t entities[]={0xa08fd4,0xa09168,0x868104,0x868124,0x868118,0x868091,0x8680fe,0xa09419,0x938070,0x9381d0};
+  const uint32_t contacts[]={0xa0a07a,0xa09a5a,0xa0a143,0xa09b7f,0xa0a236,0xa09d23,0xa09923,0xa099f9,0x86efea};
   entity_phase=0;
   for (unsigned i=0; i<sizeof(entities)/sizeof(*entities); ++i)
     if (!snes_mod_hook_arm(entities[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
@@ -26,6 +27,8 @@ bool SmRoomCollisionFrameBegin(void) {
     if (!snes_mod_hook_arm(eprojs[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<sizeof(actors)/sizeof(*actors); ++i)
     if (!snes_mod_hook_arm(actors[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+  for (unsigned i=0; i<sizeof(contacts)/sizeof(*contacts); ++i)
+    if (!snes_mod_hook_arm(contacts[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<sizeof(shots)/sizeof(*shots); ++i)
     if (!snes_mod_hook_arm(shots[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   for (unsigned i=0; i<2; ++i)
@@ -38,7 +41,10 @@ bool SmRoomCollisionFrameBegin(void) {
 }
 uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
   unsigned pc=pc24&0x7fffff;
-  if (pc==0x208fd4) entity_phase=1;
+  if (pc==0x208fd4) {
+    entity_phase=1;
+    if (!SmRoomsFilterActiveQueues(cpu->ram)) abort();
+  }
   else if (pc==0x068104) entity_phase=2;
   else if (pc==0x209168 || pc==0x068124) entity_phase=0;
   else if ((pc==0x068091 || pc==0x0680fe) && cpu->A<36 && !(cpu->A&1))
@@ -47,7 +53,26 @@ uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
     SmRoomsEntityBorn(cpu->ram,cpu->ram,0,0,cpu->X/64,entity_phase);
   else if ((pc==0x138070 || pc==0x1381d0) && cpu->X<20 && !(cpu->X&1))
     SmRoomsEntityBorn(cpu->ram,cpu->ram,0,0,50+cpu->X/2,3);
+  else if (pc==0x068118 && cpu->X<36 && !(cpu->X&1) &&
+      !(SmRoomsActiveRules(cpu->ram,32+cpu->X/2)&SM_ROOM_SIMULATES)) return (pc24&0xff0000u)|0x811e;
   return 0;
+}
+uint32 SmRoomInteractionHook(CpuState *cpu,uint32 pc24) {
+  if (!g_sm_video.enhanced) return 0;
+  unsigned pc=pc24&0xffff,index,slot,target;
+  if ((pc24&0x7fffff)==0x06efea) {
+    index=cpu->X;if (index>=36 || (index&1)) return 0;
+    slot=32+index/2;target=0xf0aa; /* native PLY/PLX/RTS, after lifespan decrement */
+  } else if (pc==0x9923 || pc==0x99f9) {
+    index=cpu->X;if (index>=36 || (index&1)) return 0;
+    slot=32+index/2;target=pc==0x9923 ? 0x996b : 0x9a59;
+  } else {
+    index=SmShotWord(cpu->ram,0xe54);if (index>=2048 || (index&63)) return 0;
+    slot=index/64;
+    target=pc==0xa07a ? 0xa0b7 : pc==0x9a5a ? 0x9b7e : pc==0xa143 ? 0xa15e :
+        pc==0x9b7f ? 0x9d16 : pc==0xa236 ? 0xa251 : 0x9d65;
+  }
+  return (SmRoomsActiveRules(cpu->ram,slot)&SM_ROOM_INTERACTS) ? 0 : (pc24&0xff0000u)|target;
 }
 static bool active_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
   (void)context;return SmRoomsEprojTile(source,source,0,0,x,y,tile);

@@ -182,6 +182,24 @@ static bool ScriptedDoors(SmWorld *w, Reader r) {
   door->block_x=(int16_t)x; door->block_y=(int16_t)y;
   return true;
 }
+/* Uncapped headers do not carry cap block coordinates. Their native screen
+ * plus the opposed physical return trigger identifies the host-only anchor.
+ * Ambiguous/missing endpoints retain the native transition without inventing
+ * a continuous connection or placing scenery at the placeholder cap fields. */
+static const SmWorldDoor *UncappedAnchor(const SmWorld *w,const SmWorldDoor *door,const bool *physical) {
+  const SmWorldRoom *to=SmWorldFindRoom(w,door->destination);
+  const SmWorldDoor *match=NULL;
+  if (!to) return NULL;
+  for (unsigned j=0; j<to->door_count; ++j) {
+    unsigned index=to->first_door+j;const SmWorldDoor *back=&w->doors[index];
+    if (!physical[index] || back->destination!=door->source || (back->flags&0x80) ||
+        (back->direction&3)!=((door->direction&3)^1) ||
+        back->block_x/16!=door->arrival_screen_x || back->block_y/16!=door->arrival_screen_y) continue;
+    if (match) return NULL;
+    match=back;
+  }
+  return match;
+}
 bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   if (!w || !read) return false;
   memset(w,0,sizeof(*w)); Reader r={read,context};
@@ -229,14 +247,24 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
       if (j==255) return Fail(w,"unterminated PLM population",p);
     }
   }
+  bool physical[SM_WORLD_DOORS]={0};
+  for (unsigned i=0; i<w->door_count; ++i) physical[i]=w->doors[i].block_x>=0;
   if (!ScriptedDoors(w,r)) return false;
   for (unsigned i=0; i<w->door_count; ++i) {
     SmWorldDoor *d=&w->doors[i];
-    if (d->block_x<0) continue;
+    if (d->block_x<0 || d->direction>=4 || (d->flags&0x80)) continue;
+    const SmWorldDoor *back=UncappedAnchor(w,d,physical);
+    if (!back || (back->direction<4 && UncappedAnchor(w,back,physical)!=d)) continue;
+    d->arrival_x=(uint8_t)back->block_x;d->arrival_y=(uint8_t)back->block_y;d->reciprocal=true;
+  }
+  for (unsigned i=0; i<w->door_count; ++i) {
+    SmWorldDoor *d=&w->doors[i];
+    if (d->block_x<0 || (d->direction<4 && !(d->flags&0x80))) continue;
     const SmWorldRoom *to=SmWorldFindRoom(w,d->destination);
     if (to) for (unsigned j=0; j<to->door_count; ++j) {
       const SmWorldDoor *reverse=&w->doors[to->first_door+j];
-      if (reverse->block_x>=0 && reverse->destination==d->source) { d->reciprocal=true; break; }
+      if (reverse->block_x>=0 && reverse->destination==d->source &&
+          !(reverse->direction<4 && !(reverse->flags&0x80) && !reverse->reciprocal)) { d->reciprocal=true; break; }
     }
   }
   for (unsigned area=0; area<SM_WORLD_AREAS; ++area) {
@@ -300,7 +328,7 @@ unsigned SmWorldLayout(const SmWorld *w, int16_t xy[SM_WORLD_ROOMS][2]) {
     for (unsigned i=0; i<room->door_count; ++i) {
       const SmWorldDoor *door=&w->doors[room->first_door+i];
       const SmWorldRoom *other=SmWorldFindRoom(w,door->destination);
-      if (!other || door->block_x<0) continue;
+      if (!other || door->block_x<0 || (door->direction<4 && !(door->flags&0x80) && !door->reciprocal)) continue;
       int x=door->block_x, y=door->block_y;
       static const int dx[]={1,-1,0,0},dy[]={0,0,1,-1};
       unsigned direction=door->direction&3;

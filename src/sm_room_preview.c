@@ -130,7 +130,8 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
     for (unsigned i = 0; i < from.room->door_count && total < kResidents+1; ++i) {
       const SmWorldDoor *d = &world.doors[from.room->first_door+i];
       const SmWorldRoom *to = SmWorldFindRoom(&world,d->destination);
-      if (!to || seen[to-world.rooms] || d->block_x < 0 || (d->flags & 0x80)) continue;
+      if (!to || seen[to-world.rooms] || d->block_x < 0 || (d->flags & 0x80) ||
+          (d->direction<4 && !d->reciprocal)) continue;
       unsigned dir = d->direction & 3;
       static const int dx[] = {1,-1,0,0}, dy[] = {0,0,1,-1};
       int x = from.x + (d->block_x/16 + dx[dir] - d->arrival_x/16)*256;
@@ -215,7 +216,8 @@ bool SmRoomSceneSample(const SmRoomImage *p,int x,int y,int view_x,int view_y,ui
   unsigned block=word(p->ram+0x10002+2*((ly/16)*w+lx/16));
   if (block==0x83ff) return false;
   memset(layers,0,3*sizeof(*layers));
-  unsigned tile=image_tile(p,block,lx,ly), pixel=image_pixel(p,tile,lx,ly,0,4);
+  unsigned tile=image_tile(p,block,lx,ly);
+  unsigned pixel=image_pixel(p,tile,lx,ly,(p->ram[0x5d]&15)*8192,4);
   if (pixel) layers[0]=(uint16_t)(((tile&0x2000 ? 12 : 8)<<12) | (((tile>>10)&7)*16+pixel));
   int cx=view_x-v->x,cy=view_y-v->y;
   int bx=lx-cx+parallax(cx,p->ram[0x91b]),by=ly-cy+parallax(cy,p->ram[0x91c]);
@@ -227,7 +229,7 @@ bool SmRoomSceneSample(const SmRoomImage *p,int x,int y,int view_x,int view_y,ui
     unsigned tx=((unsigned)bx/8)&63,ty=((unsigned)by/8)&31;
     tile=word(p->vram+0x9000+2*((tx&31)+ty*32+(tx>=32 ? 1024 : 0)));
   }
-  pixel=valid ? image_pixel(p,tile,bx,by,0,4) : 0;
+  pixel=valid ? image_pixel(p,tile,bx,by,(p->ram[0x5d]>>4)*8192,4) : 0;
   if (pixel) layers[1]=(uint16_t)(((tile&0x2000 ? 11 : 7)<<12) | 0x100 | (((tile>>10)&7)*16+pixel));
   unsigned type=word(p->ram+0x196e);
   if (type==2 || type==4 || type==6) {

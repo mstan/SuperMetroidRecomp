@@ -201,6 +201,22 @@ static uint32_t rom_long(const SmRoomRuntime *r,uint32_t a) {
 static uint32_t ram_long(const SmRoomRuntime *r,unsigned a) {
   return word(r->ram+a) | (uint32_t)r->ram[a+2]<<16;
 }
+static bool fixed_graphics(SmRoomRuntime *r) {
+  unsigned list=word(r->ram+0x7d1);if (!list) return true;
+  for (unsigned i=0; i<32; ++i) {
+    uint32_t at=0xb40000u+list+i*4;unsigned id=(unsigned)rom_long(r,at)&65535;
+    if (id==65535) return true;
+    unsigned size=(unsigned)rom_long(r,0xa00000u+id)&65535;
+    if (!(size&0x8000) || r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id)) continue;
+    unsigned flags=(unsigned)rom_long(r,at+2)&65535,target=(((flags&0xf000)>>4)|0x6000)*2;size&=0x7fff;
+    if ((size&1) || target>sizeof(r->vram) || size>sizeof(r->vram)-target) {
+      fail(r,"invalid fixed resident graphics",id);return false;
+    }
+    uint32_t source=rom_long(r,0xa00036u+id);
+    for (unsigned j=0; j<size; ++j) r->vram[target+j]=r->read(r->context,source+j);
+  }
+  fail(r,"unterminated fixed resident graphics",list);return false;
+}
 static bool remember_door(SmRoomRuntime *r,unsigned block,unsigned orientation) {
   for (unsigned i=0; i<r->door_count; ++i) if (r->door_blocks[i]==block) return true;
   if (r->door_count==128) { fail(r,"resident door capacity",block); return false; }
@@ -236,6 +252,7 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   r->simulation_enemies=r->interaction_enemies=UINT32_MAX;
   r->simulation_projectiles=r->interaction_projectiles=(1u<<18)-1;
   memcpy(r->ram,active,sizeof(r->ram));
+  memset(r->ram+0xef78,0,64); /* fresh room: never inherit another room's B4 effects */
   memset(r->ram+0x10000,0,0x10000);
   /* Room-local actors, projectiles, PLMs, FX and sprite submissions cannot
    * inherit the active room's occupants. Keep equipment/progression globals. */
@@ -284,6 +301,12 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   }
   memcpy(r->ram+0xc000,r->ram+0xc200,512);
   if (!initialize_doors(r,state)) return r;
+  /* Fixed non-boss tiles may be room scenery (E23F supplies the Ceres lab).
+   * Loading immutable bytes must not initialize or activate enemy logic. */
+  if (!fixed_graphics(r)) return r;
+  if (((unsigned)rom_long(r,0x8f0018u+state)&65535)==0xc97b) {
+    r->ram[0x5d]=0x66;put(r,0x7eb,9); /* validated scenic stores from C97B; no room/boss script call */
+  }
   /* A disabled population must not make kill-quota doors believe that the
    * room has already been cleared. Preserve the cartridge's actual quota. */
   unsigned quota=0;
@@ -357,16 +380,10 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
   if (!r || r->error[0]) return false;
   put(r,0xaf6,samus_x); put(r,0xafa,samus_y);
   put(r,0x911,camera_x); put(r,0x915,camera_y);
-  if (!r->actors) return true;
+  if (!r->actors) return call(r,0xb4bc82,3); /* native cosmetic sprites do not require enemy logic */
   if (!call(r,0xa08eb6,3) || !SmActivityAugmentQueues(r->ram,extra)) return false;
-  if (r->simulation_enemies!=UINT32_MAX) for (unsigned list=0; list<2; ++list) {
-    unsigned base=list ? 0x17ec : 0x17ac,count=0;
-    for (unsigned i=0; i<32; ++i) {
-      unsigned index=word(r->ram+base+2*i);if (index==65535) break;
-      if (index>=2048 || (index&63)) { fail(r,"invalid resident activity index",index);return false; }
-      if (r->simulation_enemies&(1u<<(index/64))) { put(r,base+2*count,(int)index);++count; }
-    }
-    put(r,base+2*count,65535);put(r,list ? 0x17a6 : 0x17a4,(int)count*2);
+  if (!SmActivityFilterQueues(r->ram,r->simulation_enemies,r->interaction_enemies)) {
+    fail(r,"invalid resident activity index",0);return false;
   }
   /* Native DrawEnemySprites consumes these eight per-layer queues. Our
    * immutable compositor draws the actors instead; retaining queue sizes

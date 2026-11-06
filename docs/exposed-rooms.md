@@ -446,6 +446,46 @@ sprite/foreground presentation. Earlier regression replays match 188/15/13
 checkpoints (`world-shots10-*`, `world-eprojs7-*`, `world-retained7-*`). Exact
 executable: `c49b928de155d3a12544f3bf504cccfaa3b8dc4a266faad27d2687c9f3626aa6`.
 
+### Native active-pool gates and Ceres scenery
+
+Foreign NPCs and enemy projectiles in the active native pools now obey their
+spatial room's logic setting without freeing or hiding occupied slots. Native
+touch, shot, bomb and pickup responses also require an open connection. Actors
+in the active room retain native behavior. With logic Off, ordinary objects
+freeze after crossing into a neighboring room; environmental effects continue.
+Private B4 cosmetic sprites now tick and render with their own graphics and
+palettes in both modes, including the highest native slot. New contexts clear
+copied sprite IDs; current-build capture/restore preserves owned effects.
+
+Ceres uncapped door placements now derive unique reciprocal anchors from real
+type-9 blocks, preserving native headers and rejecting ambiguous anchors.
+All ten reciprocal anchors across six rooms pass the owned-ROM preview check.
+The E0B5 laboratory stripes were caused by missing fixed graphics with logic
+Off and an ignored BG12NBA character base. Scenery now loads those immutable
+nonboss graphics and the validated Ceres background settings without running
+boss initialization or room-progression scripts. Rendering samples each
+background layer's native character base independently.
+
+Combined candidate SHA256:
+`dd43d3d28fa8f44d217d8b3f065218f0293046ccac35b32c07fc703da32be537`.
+`active-gates-integrated2-result.json` exits 0: the game builds, all 28 CTests
+pass, owned-ROM runtime/manager probes pass, and the live controller gates pass.
+Replays match 188 shot, 16 projectile, 13 retained-projectile, 102 retained-actor
+and 102 active-pool checkpoints in each logic mode. The native active-pool
+fixture takes 20 damage with logic On and none with Off while foreign slots
+remain allocated. A fresh pickup check on the same executable holds health at
+100 behind the closed connection, then awards exactly five health after real
+controller shots open it (`active-gates-pickup-live4-result.json`, exit 0).
+
+Fresh Ceres On/Off checks traverse all five links from DF45 through E0B5 in
+gameplay. The first link has zero world-camera discontinuity between adjacent
+native frames. Both pre-entry lab captures show clean walls/floor; Ridley is
+absent before entry, then initializes and advances after actual entry.
+Evidence: `ceres-candidate2-on2/` and `ceres-candidate2-off2/`. Progression-helper
+locks, escape steam, boss defeat/audio and other-door camera continuity remain
+unverified. Sprite effects still use resource-room clipping; complete spatial
+ownership after closing a crossed portal remains open.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -464,8 +504,7 @@ current-build restore and replay. Six acceptance areas remain open:
    Retained enemy-projectile transfer/contact now passes live On/Off checks.
    Shared native actor movers now use foreign terrain and pass the live
    leftward transfer above; broader actor paths/encounters remain to qualify.
-   Native Root masks for foreign objects,
-   resource retention beyond the original room's visibility, area weapons and
+   Resource retention beyond the original room's visibility, area weapons and
    complete ownership still need implementation. Native health/ammo rewards
    and grab release pass the bounded runtime/manager checks above; natural
    live collection during traversal remains to qualify. Walls and closed doors
@@ -476,8 +515,9 @@ current-build restore and replay. Six acceptance areas remain open:
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors. The reproduced departed-room native-
    viewport padding gap is now fixed and live-qualified.
-4. Qualify live Ceres scenery/traversal and dormant encounter helpers. Its graph
-   and tileset decoding now cover all six rooms; live gameplay is outstanding.
+4. Finish special encounters and progression: Ceres helper locks, escape steam,
+   boss defeat/audio and camera continuity at the remaining doors. Basic live
+   scenery and five-link continuous traversal now pass in both logic modes.
 5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
    determinism, representative native gameplay and matched runtime performance.
 6. Prepare a compact owner review with normal audio in a normal window, then

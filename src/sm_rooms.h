@@ -29,6 +29,9 @@ bool SmRoomsEprojTile(const uint8_t active[0x20000],const uint8_t source[0x20000
     int origin_x,int origin_y,int block_x,int block_y,SmEprojTile *tile);
 void SmRoomsEntityBorn(const uint8_t active[0x20000],const uint8_t source[0x20000],
     int origin_x,int origin_y,unsigned slot,unsigned phase);
+enum { SM_ROOM_SIMULATES=1,SM_ROOM_INTERACTS=2 };
+unsigned SmRoomsActiveRules(uint8_t active[0x20000],unsigned slot);
+bool SmRoomsFilterActiveQueues(uint8_t active[0x20000]);
 bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]);
 bool SmRoomsCrossing(const uint8_t active[0x20000], uint16_t *definition, SmRoomPlacement *destination);
 bool SmRoomsHandoff(const uint8_t previous[0x20000], const uint16_t previous_vram[0x8000],
