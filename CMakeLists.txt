@@ -267,6 +267,30 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_executable(sm_world_dump tools/sm_world_dump.c src/mods/sm_world.c)
     target_include_directories(sm_world_dump PRIVATE src/mods)
     add_executable(sm_world_test tests/sm_world_test.c src/mods/sm_world.c)
+    # Owned-cartridge probes take explicit ROM/WRAM arguments; they are not
+    # synthetic CTest passes or release qualification by themselves.
+    add_executable(sm_room_preview_test tests/sm_room_preview_test.c
+        src/sm_room_preview.c src/mods/sm_world.c)
+    target_include_directories(sm_room_preview_test PRIVATE src)
+    add_executable(sm_room_runtime_test tests/sm_room_runtime_test.c
+        src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
+        ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
+    target_include_directories(sm_room_runtime_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_executable(sm_room_doors_test tests/sm_room_doors_test.c
+        src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
+        ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
+    target_include_directories(sm_room_doors_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_executable(sm_rooms_test tests/sm_rooms_test.c src/sm_rooms.c src/sm_room_preview.c
+        src/sm_room_runtime.c src/sm_room_collision.c src/sm_activity.c src/mods/sm_world.c
+        ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
+    target_include_directories(sm_rooms_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    foreach(target sm_room_preview_test sm_room_runtime_test sm_room_doors_test sm_rooms_test)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(${target} PRIVATE -UNDEBUG -Wall -Wextra)
+        endif()
+    endforeach()
     target_include_directories(sm_world_test PRIVATE src/mods)
     add_test(NAME sm_world_model COMMAND sm_world_test)
     add_executable(sm_map_test tests/sm_map_test.c src/mods/sm_world.c
@@ -313,6 +337,13 @@ endif()
 
 # Generated recompiler output (produced by tools/regen.sh; not committed).
 #
+if(BUILD_TESTING AND NOT ANDROID)
+    foreach(target sm_renderer_test sm_renderer_native_test sm_row_plan_test
+                   sm_render_capture_native sm_renderer_fullcopy_test sm_render_capture)
+        target_sources(${target} PRIVATE src/sm_room_preview.c src/mods/sm_world.c)
+    endforeach()
+endif()
+
 # SM_GEN_DIR is overridable so a build can be pointed at generated C emitted by
 # a DIFFERENT engine revision without disturbing this repo's src/gen. That is
 # what an engine A/B needs: same sources, same flags, two emits. SMK and F-Zero
@@ -343,6 +374,9 @@ set(SM_HOST_SOURCES
     src/sm_post_mortem.c  # the "sm" crash-report section (framework hook)
     src/sm_spc_player.c   # SPC upload interception
     ${SM_RENDERER_SOURCE} # read-only custom widescreen renderer
+    src/sm_room_preview.c # independent connected-room scenery
+    src/sm_room_runtime.c src/sm_rooms.c src/sm_seamless.c
+    src/sm_room_collision.c src/sm_room_collision_host.c
     src/sm_mode7.c        # SM's mode-7 object projection
     src/sm_display.c      # SM presentation geometry
     src/sm_video.c        # SM aspect/HUD policy + presentation clock

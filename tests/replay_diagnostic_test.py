@@ -79,6 +79,19 @@ class ReplayInspectorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "header"):
             replay.inspect(self.path)
 
+    def test_resident_room_state(self):
+        self.header = self.header.replace("SMREPLAY 1", "SMREPLAY 4").replace("MODE lle", "MODS 0badf00d\nMODE lle")
+        record = self.input.replace("1f", "df").rstrip() + " 213\n"
+        checks = self.complete.replace("V 13", "R 13 11223344\nV 13")
+        self.write(record + checks)
+        replay.inspect(self.path)
+        for invalid in (checks.replace("R 13 11223344\n", ""), checks.replace("R 13", "R 14"),
+                        checks.replace("11223344", "100000000")):
+            self.write(record + invalid)
+            with self.assertRaises(ValueError): replay.inspect(self.path)
+        self.write(record.replace("df", "100") + checks)
+        with self.assertRaises(ValueError): replay.inspect(self.path)
+
 
 if __name__ == "__main__":
     unittest.main()

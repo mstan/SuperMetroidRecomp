@@ -1,5 +1,6 @@
 #include "sm_world.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct Reader { SmWorldRead byte; void *context; } Reader;
@@ -12,7 +13,7 @@ static bool Fail(SmWorld *w, const char *why, uint32_t at) {
 }
 static bool Header(Reader r, uint16_t h) {
   uint32_t a = 0x8f0000u | h;
-  return h >= 0x9000 && h < 0xe000 && B(r,a+1) < SM_WORLD_AREAS &&
+  return h >= 0x9000 && h < 0xe200 && B(r,a+1) <= SM_WORLD_AREAS &&
     B(r,a+2) < 64 && B(r,a+3) < 31 && B(r,a+4) && B(r,a+4) <= 16 &&
     B(r,a+5) && B(r,a+5) <= 16 && W(r,a+9) >= 0x8000;
 }
@@ -86,6 +87,11 @@ static size_t Unpack(Reader r, uint32_t p, uint8_t *dst, size_t cap) {
   }
   return 0;
 }
+size_t SmWorldUnpack(SmWorldRead read, void *context, uint32_t source,
+                     uint8_t *destination, size_t capacity) {
+  if (!read || !destination || !(source & 0x8000)) return 0;
+  return Unpack((Reader){read, context}, source, destination, capacity);
+}
 static bool Drop(SmWorld *w,uint16_t room,uint16_t state,uint16_t plm,unsigned bts,unsigned x,unsigned y) {
   for (unsigned i=0; i<w->marker_count; ++i) {
     const SmWorldMarker *m=&w->markers[i];
@@ -94,6 +100,31 @@ static bool Drop(SmWorld *w,uint16_t room,uint16_t state,uint16_t plm,unsigned b
   if (w->marker_count==SM_WORLD_MARKERS) return Fail(w,"drop marker capacity",room);
   w->markers[w->marker_count++]=(SmWorldMarker){room,state,plm,(uint16_t)bts,(uint8_t)x,(uint8_t)y,SM_MAP_DROP,0,3};
   return true;
+}
+/* Some layouts retain duplicate type9 blocks with the same BTS. The opposed
+ * native header's cap/span or capless arrival screen identifies the authored
+ * source endpoint without guessing from scan order or screen edges alone. */
+static unsigned EndpointRank(Reader r,const SmWorldDoor *door,unsigned x,unsigned y) {
+  if (!door->destination || (door->flags&0x80)) return 0;
+  unsigned list=W(r,0x8f0009u+door->destination),dir=door->direction&3;
+  unsigned rank=0;
+  for (unsigned i=0; i<64; ++i) {
+    unsigned p=W(r,0x8f0000u+list+2*i);
+    if (p<0x88fc || p>=0xacf0) break;
+    uint32_t a=0x830000u+p;unsigned back=B(r,a+3);
+    if (W(r,a)!=door->source || (B(r,a+2)&0x80) || back>=8 || (back&3)!=(dir^1)) continue;
+    if (back<4) {
+      /* Capless arrivals name a native screen, not placeholder cap(0,0).
+       * A45C's two-cell Morph trigger straddles that screen boundary. The
+       * later unique physical-anchor checks still decide reciprocity. */
+      if (x/16==B(r,a+6) && y/16==B(r,a+7)) rank=1;
+      continue;
+    }
+    unsigned cx=B(r,a+4),cy=B(r,a+5);
+    if (dir<2 ? y>=cy && y<cy+4 && abs((int)x-(int)cx)<=3 :
+                x>=cx && x<cx+4 && abs((int)y-(int)cy)<=3) return 2;
+  }
+  return rank;
 }
 static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) {
   uint8_t data[65536];
@@ -125,7 +156,10 @@ static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) 
     unsigned index=bts&0x7f;
     if (index >= room->door_count) return Fail(w,"level door index outside list",room->header);
     SmWorldDoor *d=&w->doors[room->first_door+index];
-    if (d->block_x<0) { d->block_x=(int16_t)(i%(room->width*16)); d->block_y=(int16_t)(i/(room->width*16)); }
+    unsigned x=i%(room->width*16),y=i/(room->width*16);
+    if (d->block_x<0 || EndpointRank(r,d,x,y)>EndpointRank(r,d,(unsigned)d->block_x,(unsigned)d->block_y)) {
+      d->block_x=(int16_t)x;d->block_y=(int16_t)y;
+    }
   }
   return true;
 }
@@ -177,11 +211,33 @@ static bool ScriptedDoors(SmWorld *w, Reader r) {
   door->block_x=(int16_t)x; door->block_y=(int16_t)y;
   return true;
 }
+/* Uncapped headers do not carry cap block coordinates. Their native screen
+ * plus the opposed physical return trigger identifies the host-only anchor.
+ * Ambiguous/missing endpoints retain the native transition without inventing
+ * a continuous connection or placing scenery at the placeholder cap fields. */
+static const SmWorldDoor *UncappedAnchor(const SmWorld *w,const SmWorldDoor *door,const bool *physical) {
+  const SmWorldRoom *to=SmWorldFindRoom(w,door->destination);
+  const SmWorldDoor *match=NULL;
+  if (!to) return NULL;
+  for (unsigned j=0; j<to->door_count; ++j) {
+    unsigned index=to->first_door+j;const SmWorldDoor *back=&w->doors[index];
+    if (!physical[index] || back->destination!=door->source || (back->flags&0x80) ||
+        (back->direction&3)!=((door->direction&3)^1) ||
+        back->block_x/16!=door->arrival_screen_x || back->block_y/16!=door->arrival_screen_y) continue;
+    if (match) return NULL;
+    match=back;
+  }
+  return match;
+}
 bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   if (!w || !read) return false;
   memset(w,0,sizeof(*w)); Reader r={read,context};
   if (!Header(r,0x91f8)) return Fail(w,"stock Landing Site missing",0x8f91f8);
   w->rooms[w->room_count++].header=0x91f8;
+  /* Ceres is a disconnected cartridge graph. It has room scenery and doors,
+   * but no Zebes map or persistent exploration bitmap of its own. */
+  if (Header(r,0xdf45) && B(r,0x8fdf46)==SM_WORLD_AREAS)
+    w->rooms[w->room_count++].header=0xdf45;
   for (unsigned i=0; i<w->room_count; ++i) {
     SmWorldRoom *room=&w->rooms[i]; uint32_t a=0x8f0000u|room->header;
     room->area=B(r,a+1); room->x=B(r,a+2); room->y=B(r,a+3)+1;
@@ -220,14 +276,24 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
       if (j==255) return Fail(w,"unterminated PLM population",p);
     }
   }
+  bool physical[SM_WORLD_DOORS]={0};
+  for (unsigned i=0; i<w->door_count; ++i) physical[i]=w->doors[i].block_x>=0;
   if (!ScriptedDoors(w,r)) return false;
   for (unsigned i=0; i<w->door_count; ++i) {
     SmWorldDoor *d=&w->doors[i];
-    if (d->block_x<0) continue;
+    if (d->block_x<0 || d->direction>=4 || (d->flags&0x80)) continue;
+    const SmWorldDoor *back=UncappedAnchor(w,d,physical);
+    if (!back || (back->direction<4 && UncappedAnchor(w,back,physical)!=d)) continue;
+    d->arrival_x=(uint8_t)back->block_x;d->arrival_y=(uint8_t)back->block_y;d->reciprocal=true;
+  }
+  for (unsigned i=0; i<w->door_count; ++i) {
+    SmWorldDoor *d=&w->doors[i];
+    if (d->block_x<0 || (d->direction<4 && !(d->flags&0x80))) continue;
     const SmWorldRoom *to=SmWorldFindRoom(w,d->destination);
     if (to) for (unsigned j=0; j<to->door_count; ++j) {
       const SmWorldDoor *reverse=&w->doors[to->first_door+j];
-      if (reverse->block_x>=0 && reverse->destination==d->source) { d->reciprocal=true; break; }
+      if (reverse->block_x>=0 && reverse->destination==d->source &&
+          !(reverse->direction<4 && !(reverse->flags&0x80) && !reverse->reciprocal)) { d->reciprocal=true; break; }
     }
   }
   for (unsigned area=0; area<SM_WORLD_AREAS; ++area) {
@@ -237,6 +303,7 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   }
   for (unsigned n=0; n<w->room_count; ++n) {
     const SmWorldRoom *room=&w->rooms[n];
+    if (room->area>=SM_WORLD_AREAS) continue;
     for (unsigned y=room->y; y<room->y+room->height && y<32; ++y)
       for (unsigned x=room->x; x<room->x+room->width && x<64; ++x) {
         unsigned i=(x&31)+y*32+(x>=32?1024:0);
@@ -247,6 +314,10 @@ bool SmWorldLoad(SmWorld *w, SmWorldRead read, void *context) {
   return true;
 }
 uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read, void *context, const uint8_t *ram) {
+  return SmWorldRoomStateForDoor(room,read,context,ram,0);
+}
+uint16_t SmWorldRoomStateForDoor(const SmWorldRoom *room, SmWorldRead read,
+    void *context, const uint8_t *ram, uint16_t incoming_door) {
   if (!room || !ram || !read) return 0;
   if (Ram(ram,0x79b)==room->header) return Ram(ram,0x7bb);
   Reader r={read,context}; uint32_t p=0x8f0000u+room->header+11;
@@ -255,12 +326,13 @@ uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read, void *conte
     int n=Args(fn); if (n<0) return 0;
     unsigned arg=B(r,p+2); bool selected=false;
     switch (fn) {
+      case 0xe5eb: selected=incoming_door && W(r,p+2)==incoming_door; break;
       case 0xe5ff: selected=(ram[0xd82d]&1)!=0; break;
       case 0xe612: selected=(ram[0xd820+arg/8]&(1u<<(arg&7)))!=0; break;
       case 0xe629: selected=(ram[0xd828+room->area]&arg)!=0; break;
       case 0xe652: selected=(Ram(ram,0x9a4)&4) && Ram(ram,0x9c8); break;
       case 0xe669: selected=Ram(ram,0x9d0)!=0; break;
-      default: break; /* arrival-door condition is unknown for another room */
+      default: break;
     }
     if (selected) return W(r,p+2+(unsigned)n);
     p+=4+(unsigned)n;
@@ -285,7 +357,7 @@ unsigned SmWorldLayout(const SmWorld *w, int16_t xy[SM_WORLD_ROOMS][2]) {
     for (unsigned i=0; i<room->door_count; ++i) {
       const SmWorldDoor *door=&w->doors[room->first_door+i];
       const SmWorldRoom *other=SmWorldFindRoom(w,door->destination);
-      if (!other || door->block_x<0) continue;
+      if (!other || door->block_x<0 || (door->direction<4 && !(door->flags&0x80) && !door->reciprocal)) continue;
       int x=door->block_x, y=door->block_y;
       static const int dx[]={1,-1,0,0},dy[]={0,0,1,-1};
       unsigned direction=door->direction&3;

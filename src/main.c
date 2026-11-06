@@ -50,6 +50,7 @@
 
 #include "sm_display.h"
 #include "sm_renderer.h"
+#include "sm_rooms.h"
 #include "sm_video.h"
 #include "sm_pause_options.h"
 #include "sm_spc_player.h"
@@ -134,6 +135,7 @@ static void SmAfterConfig(void) {
 static void SmOnRomLoaded(const uint8_t *rom, size_t size) {
   SmReplayRomLoaded(rom, (unsigned)size);
   SmRendererSetRom(rom, size);
+  SmRoomsSetRom(rom,size);
 }
 
 static void SmOnReset(void) {

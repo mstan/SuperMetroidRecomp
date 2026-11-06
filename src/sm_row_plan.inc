@@ -18,7 +18,7 @@ static void native_background_range(const SnesRenderRegisters *p, const SmRaster
 
 static void native_compose_range(const SnesRenderRegisters *p, const SmRasterLine *line,
     SmViewport view,
-    const uint16_t backgrounds[3][SM_MAX_WIDTH], const uint16_t *objects,
+    const uint16_t backgrounds[3][SM_MAX_WIDTH], const uint16_t *objects,const uint8_t *object_owners,
     const uint8_t brightness[32], const SnesRenderWindowPlan *windows,
     int first, int end, uint32_t *out) {
   if (end <= first) return;
@@ -48,14 +48,15 @@ static void native_compose_range(const SnesRenderRegisters *p, const SmRasterLin
       if (candidate > sub) sub = candidate;
       candidate = objects[sx] & span->sub[3];
       if (candidate > sub) sub = candidate;
-      out[sx] = colour(p, line->palette, brightness, main, sub, span->color_window);
+      out[sx] = object_colour(p,line->palette,line->palette,brightness,main,sub,
+          span->color_window,objects[sx],object_owners ? object_owners[sx] : 255);
     }
   }
 }
 
 static void native_render_mode1_row(const SnesRenderRegisters *p, const SmRasterLine *line,
     const SmBackgroundLine background_lines[3], const uint16_t center[3][256],
-    const bool center_valid[3], const uint16_t *objects, int y, SmViewport view,
+    const bool center_valid[3], const uint16_t *objects,const uint8_t *object_owners,int y,SmViewport view,
     int matte_x, int matte_y, const uint8_t brightness[32],
     const SnesRenderWindowPlan *native_windows, const SnesRenderWindowPlan *margin_windows,
     const uint32_t *native_center, uint32_t *out) {
@@ -90,14 +91,14 @@ static void native_render_mode1_row(const SnesRenderRegisters *p, const SmRaster
               (unsigned)(first[side] + view.extra), (unsigned)(end[side] + view.extra), backgrounds[layer]);
     }
   }
-  native_compose_range(p, line, view, backgrounds, objects, brightness,
+  native_compose_range(p, line, view, backgrounds, objects, object_owners, brightness,
       margin_windows, first[0], end[0], out);
   if (native_center)
     memcpy(out + view.extra, native_center, 256 * sizeof(*out));
   else
-    native_compose_range(p, line, view, backgrounds, objects, brightness,
+    native_compose_range(p, line, view, backgrounds, objects, object_owners, brightness,
         native_windows, 0, 256, out);
-  native_compose_range(p, line, view, backgrounds, objects, brightness,
+  native_compose_range(p, line, view, backgrounds, objects, object_owners, brightness,
       margin_windows, first[1], end[1], out);
   /* Main's nonrectangular-room policy owns the finished margin pixel,
    * including OBJ and color math. Blank complete unused screens after

@@ -1,4 +1,5 @@
 #include "sm_renderer.h"
+#include "sm_room_preview.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -361,6 +362,29 @@ static void shared_hud_liquid_map(void) {
       assert(output[200 * view.width + x] == 0x00ff00);
     }
   }
+  /* The surface row must stop at the pool's solid bank. Test the native
+   * center as well as margins; the liquid body and open surface stay intact. */
+  word(0x196e,2);word(0x1962,201);ram[0x5e]=4;
+  for (unsigned x=48;x<53;++x) word(0x10002+2*(12*128+x),0x8001);
+  BeginFixtureFrame(ram,3);
+  for (unsigned y=1;y<=224;++y) {
+    ppu.hScroll[2]=773;ppu.vScroll[2]=y<192 ? 0 : 55;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  assert(SmRendererEndFrame(stock));
+  for (unsigned v=0;v<sizeof(views)/sizeof(views[0]);++v) for (unsigned phase=0;phase<3;++phase) {
+    SmViewport view=views[v];assert(SmRendererDraw(output,view,false,phase*.5));
+    assert(output[199*view.width+view.extra+8]==0);
+    assert(output[199*view.width+view.extra+96]==0xffffff);
+    assert(output[200*view.width+view.extra+8]==0x00ff00);
+  }
+  SmRoomImage *liquid=calloc(1,sizeof(*liquid));assert(liquid);
+  liquid->placement=(SmRoomPlacement){.width=2048,.height=256,.left=0,.top=0,.right=2048,.bottom=256};
+  memcpy(liquid->ram,ram,sizeof(ram));memcpy(liquid->vram,ppu.vram,sizeof(liquid->vram));
+  uint16_t layers[3];
+  assert(SmRoomSceneSample(liquid,776,199,768,0,layers) && !layers[2]);
+  assert(SmRoomSceneSample(liquid,864,199,768,0,layers) && layers[2]);
+  free(liquid);
   ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
 }
 
@@ -420,7 +444,7 @@ static void mother_brain_beam_margins(void) {
   memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom)); memset(&ppu,0,sizeof(ppu));
 }
 
-static void arena_staging(void) {
+static void arena_exposure(void) {
   const SmViewport views[] = {{256,0,4.0/3,true},{342,43,16.0/9,true},
                              {448,96,21.0/9,true},{682,213,32.0/9,true}};
   for (unsigned arena = 0; arena < 2; ++arena) for (unsigned opened = 0; opened < 2; ++opened) {
@@ -442,11 +466,376 @@ static void arena_staging(void) {
       for (int x=0;x<256;++x) assert(output[100*view.width+view.extra+x]==0xff0000);
       if (view.extra) {
         int x=arena ? -1 : 256;
-        assert(output[100*view.width+view.extra+x]==(opened ? 0xff0000u : 0));
+        assert(output[100*view.width+view.extra+x]==0xff0000u);
       }
     }
   }
   ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+}
+
+static void resident_publication(const char *path) {
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+  word(0x998,8); word(0x79b,0x91f8); word(0x7a5,16); word(0x7a7,16);
+  ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1; ppu.screenEnabled[0]=1; ppu.cgram[1]=31;
+  for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=0};
+  SmRoomImage *image=&scene->rooms[0];
+  image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+      .left=256,.top=0,.right=512,.bottom=256};
+  uint8_t *r=image->ram;
+  r[0x7a5]=r[0x7a7]=16; r[0xc003]=0x7c; r[0xc00a]=0xe0; r[0xc00b]=3;
+  r[0x69]=17; r[0x6b]=4; r[0x6e]=2; r[0x71]=65;
+  r[0x196e]=2; r[0x1962]=80; r[0x5e]=2;
+  for (unsigned y=0; y<8; ++y) { image->vram[2*y]=255; image->vram[0x4000+2*y]=255; }
+  for (unsigned a=0xb800; a<0xc000; a+=2) image->vram[a+1]=4;
+  SmRoomScene *rebased=malloc(SmRoomSceneBytes(1)); assert(rebased);
+  memcpy(rebased,scene,SmRoomSceneBytes(1)); rebased->seamless=1; rebased->camera_dx=128;
+  assert(SmRendererLatchRooms(scene));
+  r[0xc003]=0; r[0xc002]=31; /* The producer can reuse its publication immediately. */
+  free(scene);
+  BeginFixtureFrame(ram,1);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock));
+  SmViewport view={342,43,16.0/9,true};
+  assert(SmRendererDraw(output,view,false,1));
+  assert(output[100*view.width+view.extra+128]==0xff0000);
+  assert(output[60*view.width+view.extra+260]==0x0000ff);
+  assert(output[100*view.width+view.extra+260]==0x007b7b); /* Off still presents native liquid color math. */
+  size_t bytes=(size_t)view.width*224*sizeof(*output);
+  uint32_t *expected=malloc(bytes); assert(expected); memcpy(expected,output,bytes);
+  assert(SmRendererSaveCapture(path)); ResetFixtureRenderer();
+  assert(SmRendererLoadCapture(path) && SmRendererDraw(output,view,false,1));
+  assert(!memcmp(expected,output,bytes));
+  /* A rebased camera moves resident scenery into the native viewport. */
+  assert(SmRendererLatchRooms(rebased));
+  BeginFixtureFrame(ram,2);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock));
+  assert(SmRendererDraw(output,view,false,1));
+  assert(output[60*view.width+view.extra+32]==0xff0000);
+  assert(output[60*view.width+view.extra+200]==0x0000ff);
+  rebased->rooms[0].ram[0x196e]=10; rebased->rooms[0].ram[0x5b]=0x5c;
+  assert(SmRendererLatchRooms(rebased)); free(rebased);
+  BeginFixtureFrame(ram,3);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  assert(output[60*view.width+view.extra+200]==0x007b7b); /* Off weather still animates/composes BG3. */
+  free(expected); assert(!remove(path)); ResetFixtureRenderer();
+}
+
+static void resident_character_bases(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned layer=0; layer<2; ++layer) {
+    ResetFixtureRenderer();SmRendererSetRom(NULL,0);
+    memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=1;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0x69]=(uint8_t)(1u<<layer);
+    /* BG12NBA has independent character bases. Tile0 at base0 is a red
+     * decoy; BG1 at byte4000 is blue and BG2 at byte6000 is green. */
+    r[0x5d]=0x32;r[0xc002]=31;r[0xc005]=0x7c;r[0xc008]=0xe0;r[0xc009]=3;
+    for (unsigned row=0; row<8; ++row) {
+      image->vram[2*row]=255;
+      image->vram[0x4001+2*row]=255;
+      image->vram[0x6010+2*row]=255;
+    }
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[60*view.width+view.extra+260]==(layer ? 0x00ff00u : 0x0000ffu));
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
+static void resident_mode7_canvas(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned root_mode7=0; root_mode7<2; ++root_mode7)
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned camera=0; camera<=128; camera+=128) {
+    ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=root_mode7 ? 7 : 1;ppu.screenEnabled[0]=17;ppu.cgram[1]=31;
+    if (root_mode7) {
+      ppu.m7matrix[0]=ppu.m7matrix[3]=256;
+      for (unsigned i=0; i<0x4000; ++i) ppu.vram[i]=1;
+      for (unsigned i=0; i<64; ++i) ppu.vram[64+i]|=0x100;
+      ppu.obsel=2;ppu.cgram[129]=31<<10;ppu.oam[0]=250|(60<<8);ppu.oam[1]=0x3000;
+      for (unsigned y=0; y<8; ++y) ppu.vram[0x4000+y]=255;
+    } else {
+      ppu.bgTileAdr=1;for (unsigned y=0; y<8; ++y) ppu.vram[0x1000+y]=255;
+    }
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0xdf45,.state=0xdf71,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0x69]=1;
+    r[0xc002]=0xe0;r[0xc003]=3;r[0xc005]=0x7c;
+    if (!root_mode7) {
+      r[0x56]=7;r[0x783]=1;r[0x79]=r[0x7f]=1;
+      /* Independent native Mode7 map low bytes and packed pixel high bytes.
+       * Its right half is blue; a Mode1 decode cannot produce these swatches. */
+      for (unsigned i=0; i<0x4000; ++i) image->vram[2*i]=(uint8_t)((i%128)<16 ? 1 : 2);
+      for (unsigned i=0; i<64; ++i) { image->vram[2*(64+i)+1]=1;image->vram[2*(128+i)+1]=2; }
+    } else for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[60*view.width+view.extra+260-camera]==0x00ff00);
+    if (camera && !root_mode7) assert(output[60*view.width+view.extra+400-camera]==0x0000ff);
+    if (root_mode7) {
+      assert(output[60*view.width+view.extra+224-camera]==0xff0000);
+      assert(output[60*view.width+view.extra+250-camera]==0x0000ff); /* native OAM follows the same carried camera */
+    }
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
+static void resident_steam_pixels(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned frame=0; frame<2; ++frame) {
+    ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=17;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.ownership=1,.root_width=256,.root_height=256};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0xdfd7,.state=0xe003,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};image->object_rooms[0]=0xdfd7;
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0x52]=3;r[0x69]=17;r[0xc1a2]=0xe0;r[0xc1a3]=3;
+    r[0xf78]=0xff;r[0xf79]=0xe1;r[0xf7a]=24;r[0xf7e]=100;r[0xf88]=4;r[0xf96]=0;r[0xf97]=0xa;
+    r[0xf9a]=5;r[0xfa6]=0xa6;r[0xf94]=0x34;r[0xf95]=0x12;
+    unsigned map=frame ? 0xf160 : 0xf188,child=frame ? 0xf398 : 0xf3d2;
+    r[0xf8e]=(uint8_t)map;r[0xf8f]=(uint8_t)(map>>8);
+    /* Actual E1FF F188/F160 extended layout: byte count1, independent
+     * high byte10, then an8-byte x/y/spritemap/hitbox entry. */
+    unsigned at=0x130000+(map&32767);romword(at,0x1001);romword(at+6,child);romword(at+8,frame ? 0xf286 : 0xf2a2);
+    at=0x130000+(child&32767);romword(at,frame ? 4 : 1);
+    const uint8_t sprites[20]={0xf8,0x81,0xd7,0x7c,0x20,0xf8,0x81,0xe0,0x7e,0x20,0xf8,0x81,0xe8,0x9a,0x20,0xf8,0x81,0xf0,0x9c,0x20};
+    const uint8_t single[5]={0xf0,0x81,0xf8,0x7c,0x20};memcpy(rom+at+2,frame ? sprites : single,frame ? 20 : 5);
+    /* Synthetic solid texels exercise the actual native tile numbers and
+     * palette; cartridge graphic pixels are not embedded in this fixture. */
+    const unsigned tiles[]={0x7c,0x7e,0x9a,0x9c};
+    for (unsigned i=0; i<4; ++i) for (unsigned q=0; q<4; ++q) for (unsigned row=0; row<8; ++row)
+      image->vram[0xc000+32*(tiles[i]+(q&1)+(q/2)*16)+2*row]=255;
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    unsigned y=frame ? 85 : 100,x=frame ? 272 : 264;
+    for (unsigned i=0; i<16; ++i) assert(output[y*view.width+view.extra+x+i]==0x00ff00);
+    assert(output[y*view.width+view.extra+298]!=0x00ff00 && r[0xf94]==0x34 && r[0xf95]==0x12);free(scene);
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+}
+
+static void carried_native_objects(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  const int carries[]={-64,64,-212},native_y[]={100,100,7};
+  for (unsigned mode=0; mode<2; ++mode) for (unsigned logic=0; logic<2; ++logic)
+  for (unsigned test=0; test<3; ++test) {
+    ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=mode ? 7 : 1;ppu.screenEnabled[0]=17;
+    ppu.m7matrix[0]=ppu.m7matrix[3]=256;ppu.obsel=2;ppu.cgram[129]=31<<10;
+    ppu.oam[0]=128|((unsigned)native_y[test]<<8);ppu.oam[1]=0x3000;
+    for (unsigned y=0; y<8; ++y) ppu.vram[0x4000+y]=255;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(0));assert(scene);
+    *scene=(SmRoomScene){.version=4,.root=0x91f8,.logic=logic,.seamless=1,.camera_dy=carries[test]};
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    int expected=native_y[test]-carries[test],opposite=(native_y[test]+carries[test])&255;
+    assert(output[expected*view.width+view.extra+128]==0x0000ff);
+    if (opposite>=32 && opposite<224) assert(output[opposite*view.width+view.extra+128]!=0x0000ff);
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
+static void resident_in_native_padding(void) {
+  for (unsigned ownership=0; ownership<2; ++ownership) for (unsigned padded=0; padded<2; ++padded) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);word(0x79b,0x91f8);word(0x7a5,32);word(0x7a7,16);word(0x911,256);
+  if (padded) for (unsigned y=0; y<16; ++y) for (unsigned x=16; x<32; ++x) word(0x10002+2*(y*32+x),0x83ff);
+  ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=1;ppu.hScroll[0]=256;ppu.cgram[1]=31;
+  for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.ownership=ownership,.root_width=512,.root_height=256};
+  SmRoomImage *image=&scene->rooms[0];
+  image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+      .left=256,.top=0,.right=512,.bottom=256};
+  image->ram[0x7a5]=image->ram[0x7a7]=16;image->ram[0x69]=1;image->ram[0xc003]=0x7c;
+  for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+  assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+  for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+  const SmViewport view={342,43,16.0/9,true};
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  /* Physical ownership can overlap authored allocations, as in A45C's
+   * copied Morph tunnel. The same neighbor owns scenery and actors; Root
+   * keeps its own side, and publications without ownership keep native art. */
+  assert(output[80*view.width+view.extra+64]==(ownership || padded ? 0x0000ffu : 0xff0000u));
+  assert(output[80*view.width+view.extra-32]==0xff0000);
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+static void resident_projectile_pixels(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned camera=0; camera<=128; camera+=128)
+    for (unsigned blend=0; blend<4; ++blend) {
+      ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+      SmRendererSetRom(rom,sizeof(rom));
+      word(0x998,8); word(0x79b,0x91f8); word(0x7a5,16); word(0x7a7,16);
+      ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=17;
+      ppu.cgram[193]=31 | (31<<10); /* Root-owned missiles are magenta. */
+      for (unsigned y=0; y<8; ++y) ppu.vram[y]=255;
+      romword(0x99000,1); romword(0x99005,blend ? 0x3800 : 0x0800);
+      for (unsigned slot=0; slot<2; ++slot) {
+        unsigned offset=slot*2;
+        word(0xc40+offset,1); word(0xc18+offset,0x100); word(0xcb8+offset,0x9000);
+        word(0xb64+offset,260); word(0xb78+offset,slot ? 100 : 60);
+      }
+      SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
+      *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
+      SmRoomImage *image=&scene->rooms[0];
+      image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+          .left=256,.top=0,.right=512,.bottom=256};
+      uint8_t *r=image->ram;
+      r[0x7a5]=r[0x7a7]=16; r[0xc003]=0x7c; r[0xc00a]=0xe0; r[0xc00b]=3;
+      r[0xc182]=0xe0; r[0xc183]=3; /* Same OBJ palette index is green in this room. */
+      r[0xc102]=0xe0; r[0xc103]=3;
+      r[0x69]=blend==3 ? 1 : 17; r[0x6b]=blend==3 ? 16 : 4; r[0x6e]=2;
+      r[0x71]=blend==2 ? 80 : blend==3 ? 65 : 0;
+      r[0x196e]=2; r[0x1962]=80; r[0x5e]=2;
+      for (unsigned y=0; y<8; ++y) { image->vram[2*y]=255; image->vram[0x4000+2*y]=255; }
+      for (unsigned a=0xb800; a<0xc000; a+=2) image->vram[a+1]=4;
+      /* Resident actors have no captured Root OAM when the camera brings
+       * their room into the native viewport. They must be reconstructed there. */
+      r[0xf78]=0x7f; r[0xf79]=0xd0; r[0xf7a]=12; r[0xf7e]=70;
+      r[0xf8f]=0x90; r[0xfa6]=0xa2;
+      romword(0x111000,1); romword(0x111005,0x3000);
+      assert(SmRendererLatchRooms(scene)); free(scene);
+      BeginFixtureFrame(ram,1);
+      for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+      assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+      unsigned x=view.extra+260-camera;
+      assert(output[60*view.width+x]==(blend==1 || blend==2 ? 0xff00ffu : blend==3 ? 0x7b00ffu : 0x0000ffu));
+      assert(output[100*view.width+x]==(blend==1 ? 0xff00ffu : blend==2 ? 0x7b7b7bu : blend==3 ? 0x7b00ffu : 0x0000ffu));
+      if (blend==1) assert(output[70*view.width+view.extra+268-camera]==(logic ? 0x00ff00u : 0x0000ffu));
+    }
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+}
+static void resident_padding_keeps_root_objects(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned authored=0; authored<2; ++authored) {
+    ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,32);word(0x7a7,16);word(0x911,256);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.hScroll[0]=256;ppu.screenEnabled[0]=17;
+    ppu.cgram[1]=31;ppu.cgram[193]=31<<5;ppu.oam[0]=64|(80<<8);ppu.oam[1]=0x3800;
+    for (unsigned y=0; y<8; ++y) { ppu.vram[y]=255;ppu.vram[4096+y]=255; }
+    word(0xc40,1);word(0xc18,0x100);word(0xcb8,0x9000);word(0xb64,320);word(0xb78,80);
+    romword(0x99000,1);romword(0x99005,0x3800);
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.ownership=1,.root_width=512,.root_height=256};scene->object_rooms[50]=0x91f8;
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    image->ram[0x7a5]=image->ram[0x7a7]=16;image->ram[0x69]=1;image->ram[0xc003]=0x7c;
+    for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+    if (!authored) { image->ram[0x10002+2*(5*16+4)]=255;image->ram[0x10003+2*(5*16+4)]=0x83; }
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    /* Private allocation padding cannot claim a Root-owned native missile.
+     * An authored, disconnected foreign pixel still masks that same owner. */
+    uint32_t expected=authored ? 0x0000ffu : 0x00ff00u,actual=output[80*view.width+view.extra+64];
+    if (actual!=expected) fprintf(stderr,"private authored%u Root projectile RGB%06x expected%06x\n",authored,(unsigned)actual,(unsigned)expected);
+    assert(actual==expected);
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+}
+static void resident_world_objects(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned blend=0; blend<3; ++blend) for (unsigned ownership=0; ownership<5; ++ownership) {
+    ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=blend==2 ? 1 : 17;
+    ppu.screenEnabled[1]=blend==2 ? 16 : 0;ppu.cgwsel=2;ppu.cgadsub=blend==2 ? 65 : 0;
+    ppu.cgram[1]=31;ppu.cgram[193]=31<<5;
+    for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=ownership<3,
+        .ownership=ownership!=0,.root_width=256,.root_height=256};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0xc183]=0x7c;
+    image->object_rooms[32]=ownership==2 ? 0x9400 : ownership==4 ? 0 : 0x91f8;
+    for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+    r[0x1997]=1;r[0x1b6c]=0x90;r[0x1a4b]=0xf8;r[0x1a4c]=0xff;r[0x1a93]=60;
+    romword(0x69000,1);romword(0x69005,blend==1 ? 0x0800 : 0x3800);
+    /* A scene may retain the resource owner after its projectile enters the
+     * active room. Its signed local coordinate and private palette survive. */
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[60*view.width+view.extra+248]==(ownership==2 || ownership==4 ? 0xff0000u :
+        blend==0 ? 0x0000ffu : blend==1 ? 0xff0000u : 0x7b007bu));
+    assert(output[60*view.width+view.extra+247]==0xff0000);
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+}
+
+static void resident_sprite_objects(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  const unsigned offset=62; /* BC26/BC82/BD32 start at the highest native slot31. */
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned camera=0; camera<=128; camera+=128)
+  for (unsigned scenario=0; scenario<5; ++scenario) {
+    ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=17;ppu.cgram[129]=31;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.ownership=1,
+        .root_width=256,.root_height=256,.camera_dx=(int)camera};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0x69]=17;r[0xc102]=0xe0;r[0xc103]=3;r[0xc105]=0x7c;
+    /* The resident's native camera can point elsewhere. Use world position
+     * and the active camera, with the resident's own tiles and green palette. */
+    r[0x912]=4;r[0x916]=3;r[0xf1f8+offset]=60;r[0xeff8+offset]=1;
+    for (unsigned row=0; row<8; ++row) { image->vram[2*row]=255;image->vram[33+2*row]=255; }
+    for (unsigned instruction=0; instruction<3; ++instruction) {
+      romword(0x1a0010+4*instruction,8);romword(0x1a0012+4*instruction,instruction ? 0x9050 : 0x9040);
+    }
+    romword(0x1a1040,1);romword(0x1a1045,0x3000);
+    romword(0x1a1050,1);romword(0x1a1055,0x3001);
+    for (unsigned frame=0; frame<2; ++frame) {
+      unsigned instruction=frame && scenario==1 ? 0x8014 : frame && scenario==2 ? 0x8018 : 0x8010;
+      if (frame && scenario==3) instruction=0;
+      r[0xef78+offset]=(uint8_t)instruction;r[0xef79+offset]=(uint8_t)(instruction>>8);
+      r[0xf0f8+offset]=(uint8_t)(12+(frame ? scenario==4 ? 40 : 8 : 0));
+      assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,frame+1);
+      for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+      assert(SmRendererEndFrame(stock));
+    }
+    assert(SmRendererDraw(output,view,false,.5));
+    int expected=256+12+(scenario<=1 ? 4 : scenario==4 ? 40 : 8)-(int)camera;
+    uint32_t effect=scenario==1 || scenario==2 ? 0x0000ff : 0x00ff00;
+    for (int x=-view.extra; x<256+view.extra; ++x)
+      if (scenario!=3 && x>=expected && x<expected+8) {
+        assert(output[60*view.width+view.extra+x]==effect);
+      } else assert(output[60*view.width+view.extra+x]!=0x00ff00 && output[60*view.width+view.extra+x]!=0x0000ff);
+    assert(r[0xeff8+offset]==1); /* Drawing never advances the private instruction. */
+    free(scene);
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
 }
 
 static void eye_beam_margins(void) {
@@ -823,14 +1212,147 @@ static void nonrectangular_room_padding(void) {
   ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
 }
 
+static void native_transition_canvas(const char *path) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.native=1};
+  SmRoomImage *a=&scene->native_root,*b=&scene->rooms[0];
+  a->placement=(SmRoomPlacement){.room=0x91f8,.state=0x9213,.width=256,.height=256,.left=0,.top=0,.right=256,.bottom=256};
+  b->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  a->ram[0x7a5]=a->ram[0x7a7]=b->ram[0x7a5]=b->ram[0x7a7]=16;
+  a->ram[0x69]=b->ram[0x69]=1;a->ram[0xc002]=31;b->ram[0xc003]=0x7c;
+  for (unsigned y=0;y<8;++y) a->vram[y*2]=b->vram[y*2]=255;
+  word(0x998,11);word(0x7a5,16);word(0x7a7,16);
+  ppu.bgmode=1;ppu.inidisp=0x80;ppu.cgram[1]=0x03e0; /* incomplete/faded live resources */
+  const SmViewport view={342,43,16.0/9,true};
+  const unsigned phases[]={0xe36e,0xe310,0xe353,0xe36e,0xe38e,0xe3c0,0xe434,0xe434};
+  const int cameras[]={0,0,0,0,0,-256,-128,0};
+  for (unsigned frame=1;frame<=8;++frame) {
+    word(0x79b,frame==1 ? 0x91f8 : 0x9400);
+    word(0x99c,phases[frame-1]);
+    word(0x911,cameras[frame-1]);
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,frame);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock));
+    for (unsigned phase=0;phase<3;++phase) {
+      assert(SmRendererDraw(output,view,false,phase*.5));
+      assert(output[100*view.width+view.extra+64]==(frame<8 ? 0xff0000u : 0x0000ffu));
+      assert(output[100*view.width+view.extra+260]==(frame<8 ? 0x0000ffu : 0));
+    }
+  }
+  assert(SmRendererSaveCapture(path));ResetFixtureRenderer();
+  assert(SmRendererLoadCapture(path) && SmRendererDraw(output,view,false,1));
+  assert(output[100*view.width+view.extra+64]==0x0000ff);
+  free(scene);ResetFixtureRenderer();
+}
+
+static void native_transition_body(void) {
+  ResetFixtureRenderer();memset(rom,0,sizeof(rom));SmRendererSetRom(rom,sizeof(rom));
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  romword(0x9008d,0x9800);romword(0x91800,1);romword(0x91802,0);romword(0x91805,0x2010);
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.native=1};
+  SmRoomImage *a=&scene->native_root,*b=&scene->rooms[0];
+  a->placement=(SmRoomPlacement){.room=0x91f8,.state=0x9213,.width=256,.height=256,.left=0,.top=0,.right=256,.bottom=256};
+  b->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  a->ram[0x7a5]=a->ram[0x7a7]=b->ram[0x7a5]=b->ram[0x7a7]=16;
+  a->ram[0x69]=b->ram[0x69]=19;a->ram[0xc002]=31;b->ram[0xc003]=0x7c;
+  a->ram[0xc102]=0xe0;a->ram[0xc103]=3;
+  a->ram[0xaf6]=a->ram[0xb04]=240;a->ram[0xafa]=a->ram[0xb06]=120;
+  for (unsigned y=0;y<8;++y) { a->vram[y*2]=b->vram[y*2]=255;ppu.vram[256+y]=255; }
+  word(0x998,11);word(0xafa,120);word(0xb04,240);word(0xb06,120);
+  const int camera[]={0,0,-256,-240,-196},body[]={240,240,240,-12,-3},screen[]={240,240,240,228,193};
+  const unsigned phase[]={0xe36e,0xe38e,0xe3c0,0xe3c0,0xe4a9};
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned i=0;i<5;++i) {
+    word(0x79b,i ? 0x9400 : 0x91f8);word(0x99c,phase[i]);word(0x911,camera[i]);word(0xaf6,body[i]);
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,i+1);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[123*view.width+view.extra+screen[i]+3]==0x00ff00);
+  }
+  free(scene);ResetFixtureRenderer();
+}
+
+static void continued_solid_foreground(void) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);ram[0x5d]=1;
+  /* Stock 9AD9 also uses solid $8081, with the same four graphics as $83FF. */
+  for (unsigned i=0;i<256;++i) word(0x10002+2*i,i%16>=8 ? 0x8081 : 0x83ff);
+  for (unsigned y=0;y<8;++y) for (unsigned x=0;x<8;++x)
+    word(0x10002+2*(y*16+x),y==0 || y==7 || x==7 ? 0x8001 : 0);
+  for (unsigned i=0;i<4;++i) word(0xa008+2*i,1);
+  ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=1;ppu.cgram[1]=31;
+  for (unsigned y=0;y<8;++y) ppu.vram[4096+16+y]=255;
+  for (unsigned y=0;y<16;++y) for (unsigned x=0;x<16;++x)
+    ppu.vram[y*32+x]=y<2 || y>=14 || x>=14 ? 1 : 0;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.root=0x91f8,.count=1,.ownership=1,.root_width=256,.root_height=256};
+  SmRoomImage *other=&scene->rooms[0];
+  other->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  other->ram[0x7a5]=other->ram[0x7a7]=16;other->ram[0x69]=1;other->ram[0xc003]=0x7c;
+  for (unsigned y=0;y<8;++y) other->vram[2*y]=255;
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned frame=1;frame<=3;++frame) {
+    if (frame==2) { word(0x10002+2*(6*16+7),0);ppu.vram[12*32+14]=ppu.vram[12*32+15]=0; }
+    if (frame==3) {
+      /* Native loader presentation has no active widened HDMA window. Its
+       * continued padding must still use normal color-window evaluation. */
+      scene->native=1;
+      scene->native_root.placement=(SmRoomPlacement){.room=0x91f8,.state=0x9213,
+          .width=256,.height=256,.left=0,.top=0,.right=256,.bottom=256};
+      memcpy(scene->native_root.ram,ram,sizeof(ram));
+      memcpy(scene->native_root.vram,ppu.vram,sizeof(scene->native_root.vram));
+      scene->native_root.ram[0xc002]=31;
+      word(0x998,11);
+    }
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,frame);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[100*view.width+view.extra+48]==0); /* authored air remains exposed */
+    assert(output[100*view.width+view.extra+200]==(frame==1 ? 0xff0000u : 0));
+    assert(output[200*view.width+view.extra+48]==0xff0000); /* mixed-screen filler below the floor */
+    assert(output[100*view.width+view.extra+260]==0x0000ff); /* real connected canvas wins */
+  }
+  /* Both allocations contain padding here. The connected room's blue wall
+   * must not claim the active room's red foreground continuation. */
+  scene->native=0;word(0x998,8);
+  other->placement.x=other->placement.left=0;other->placement.right=256;
+  for (unsigned i=0;i<256;++i) {
+    unsigned v=i%16==0 ? 0x8002 : 0x83ff;
+    other->ram[0x10002+2*i]=(uint8_t)v;other->ram[0x10003+2*i]=(uint8_t)(v>>8);
+  }
+  for (unsigned i=0;i<4;++i) other->ram[0xa010+2*i]=1;
+  for (unsigned y=0;y<8;++y) other->vram[32+2*y]=255;
+  assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,4);
+  for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  assert(output[200*view.width+view.extra+48]==0xff0000);
+  free(scene);ResetFixtureRenderer();
+}
+
 int main(int argc, char **argv) {
+  native_transition_body();
+  continued_solid_foreground();
+  native_transition_canvas(argv[1]);
   native_center_provider();
   hud_bottom_anchor();
   pause_menu_fade();
   hud_colour_math_margins();
   shared_hud_liquid_map();
   mother_brain_beam_margins();
-  arena_staging();
+  arena_exposure();
+  resident_publication(argv[1]);
+  resident_character_bases();
+  resident_mode7_canvas();
+  resident_steam_pixels();
+  carried_native_objects();
+  resident_in_native_padding();
+  resident_padding_keeps_root_objects();
+  resident_projectile_pixels();
+  resident_world_objects();
+  resident_sprite_objects();
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();
@@ -2279,12 +2801,32 @@ int main(int argc, char **argv) {
       assert(output[100 * view.width + view.extra + pixel] ==
              (pixel >= expected_x && pixel < expected_x + 8 ? 0x00ff00u : 0));
   }
-  SmRendererSetInterpolationEnabled(true);
+  /* Before center ownership crosses a left/top hatch, native positions can
+   * be negative. The displayed owner and its interpolation must survive the
+   * 16-bit wrap, including player overlays on either renderer. */
+  ResetFixtureRenderer(); SmRendererSetInterpolationEnabled(true);
+  for (unsigned frame = 1; frame <= 3; ++frame) {
+    int x = 8 - (int)frame * 4;
+    word(0xb04, (unsigned)x); word(0xb06, 100);
+    word(0xaf6, (unsigned)x); word(0xafa, 100);
+    ppu.oam[0] = (uint16_t)((x & 255) | (100 << 8));
+    ppu.highOam[0] = x < 0 ? 1 : 0;
+    LatchFixtureState(ram); BeginFixtureFrame(ram, frame);
+    for (unsigned row = 1; row <= 224; ++row) SmRendererCaptureLine(&ppu, row);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output, view, false, 0.5));
+    SmPlayerView player;
+    assert(SmRendererGetPlayer(0.5, &player));
+    assert(player.x == (frame == 1 ? x : x + 2) && player.y == 100);
+    for (int pixel = -8; pixel < 16; ++pixel)
+      assert(output[100 * view.width + view.extra + pixel] ==
+          (pixel >= player.x && pixel < player.x + 8 ? 0x00ff00u : 0));
+  }
   ResetFixtureRenderer();
+  word(0xaf6, 65535); word(0xafa, 65534);
   LatchFixtureState(ram); /* Native renderer: OAM ownership without a raster capture. */
   SmPlayerView native_player;
   assert(SmRendererGetNativePlayer(&ppu,&native_player));
-  assert(native_player.x==(int)(ram[0xaf6]|ram[0xaf7]<<8) && native_player.y==100);
+  assert(native_player.x == -1 && native_player.y == -2);
   ppu.oam[0]^=1;
   assert(!SmRendererGetNativePlayer(&ppu,&native_player));
   puts("Super Metroid room tiles and immutable raster capture checks passed.");

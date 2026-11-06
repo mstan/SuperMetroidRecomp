@@ -55,6 +55,8 @@
 #include <string.h>
 
 #include "mod_hook.h"
+#include "sm_room_collision.h"
+#include "sm_video.h"
 #include "mod_runtime.h"
 #include "sm_mod_support.h"
 
@@ -112,11 +114,18 @@ static bool BreakableShotBlock(const CpuState *cpu) {
 
 /* BlockColl_{Horiz,Vert}_CheckColl: JSR (table,X), X = block type * 2. */
 uint32 SmCombatShotBlockDispatchHook(CpuState *cpu, uint32 pc24) {
-  (void)pc24;
+  if (g_sm_video.enhanced && g_sm_video.seamless) {
+    /* CheckColl's PHX preserves the original byte index even when a native
+     * extension block moves cur_block_index to a remote anchor. */
+    unsigned index=cpu->ram[(cpu->S+1)&65535] | cpu->ram[(cpu->S+2)&65535]<<8;
+    int collision=SmRoomCollisionBody(cpu->ram,(pc24&65535)==0x9527,index>>1);
+    if (collision>=0) { cpu->X=(uint16_t)collision; return 0; }
+  }
   if (g.shot_blocks && cpu->X == 0x18 && Breaking(cpu) && BreakableShotBlock(cpu))
     cpu->X = 0x1E;                                   /* bomb block handler */
   return 0;
 }
+bool SmCombatShotBlockDispatchActive(void) { return g.shot_blocks; }
 
 /* BlockColl_{Horiz,Vert}_BombBlock: JSL SpawnPLM with A = the PLM. */
 uint32 SmCombatShotBlockPlmHook(CpuState *cpu, uint32 pc24) {

@@ -13,7 +13,44 @@ static uint16_t word(const uint8_t *ram, unsigned at) {
 static void put(uint8_t *ram, unsigned at, unsigned value) {
   ram[at] = (uint8_t)value; ram[at + 1] = (uint8_t)(value >> 8);
 }
+bool SmActivityEnemyHorizontalVisible(const uint8_t *ram,unsigned index,unsigned extra,bool normal) {
+  if (!ram || index>=2048 || (index&63) || !SmActivityExtraValid(extra)) return false;
+  unsigned at=0xf78+index,x=word(ram,at+2),camera=word(ram,0x911),radius=normal ? word(ram,at+10) : 0;
+  return (int16_t)(radius+x-camera+extra)>=0 && (int16_t)(radius+camera+256+extra-x)>=0;
+}
 
+void SmActivityRebaseProjectiles(uint8_t ram[0x20000], int x, int y) {
+  for (unsigned i = 0; i < 10; ++i) {
+    unsigned offset = i * 2;
+    if (!word(ram, 0xc40 + offset) && !word(ram, 0xc18 + offset)) continue;
+    put(ram, 0xb64 + offset, word(ram, 0xb64 + offset) - x);
+    put(ram, 0xb78 + offset, word(ram, 0xb78 + offset) - y);
+  }
+  for (unsigned i = 0; i < 18; ++i) {
+    unsigned offset = i * 2;
+    if (word(ram, 0xd658 + offset)) {
+      put(ram, 0xd730 + offset, word(ram, 0xd730 + offset) - x);
+      put(ram, 0xd778 + offset, word(ram, 0xd778 + offset) - y);
+    }
+    if (word(ram, 0xd67c + offset)) {
+      put(ram, 0xd754 + offset, word(ram, 0xd754 + offset) - x);
+      put(ram, 0xd79c + offset, word(ram, 0xd79c + offset) - y);
+    }
+  }
+}
+
+bool SmActivityFilterQueues(uint8_t *ram,uint32_t simulation,uint32_t interaction) {
+  for (unsigned list=0; list<2; ++list) {
+    unsigned base=list ? 0x17ec : 0x17ac,count=0;uint32_t mask=list ? interaction : simulation;
+    for (unsigned i=0; i<32; ++i) {
+      unsigned index=word(ram,base+2*i);if (index==65535) break;
+      if (index>=2048 || (index&63)) return false;
+      if (mask&(1u<<(index/64))) { put(ram,base+2*count,index);++count; }
+    }
+    put(ram,base+2*count,65535);put(ram,list ? 0x17a6 : 0x17a4,count*2);
+  }
+  return true;
+}
 bool SmActivityAugmentQueues(uint8_t *ram, unsigned extra) {
   if (!SmActivityExtraValid(extra)) return false;
   /* Let the original ROM own deletion, always-active/frozen enemies, its

@@ -84,6 +84,7 @@ static void AtlasCenter(void) {
   int left=32767,top=32767,right=-32768,bottom=-32768;
   for (unsigned i=0; i<world.room_count; ++i) {
     const SmWorldRoom *r=&world.rooms[i];
+    if (r->area>=SM_WORLD_AREAS) continue;
     if (layout[i][0]<left) left=layout[i][0];
     if (layout[i][1]<top) top=layout[i][1];
     if (layout[i][0]+r->width>right) right=layout[i][0]+r->width;

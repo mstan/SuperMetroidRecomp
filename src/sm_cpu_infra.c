@@ -5,11 +5,19 @@
 #include "sm_video.h"
 #include "sm_renderer.h"
 #include "sm_activity.h"
+#include "sm_rooms.h"
+#include "sm_seamless.h"
+#include "sm_room_collision.h"
 #include "mods/sm_mod_overlay.h"
 
 static bool SmFrameBegin(uint32_t *inputs) {
   if (!SmActivityFrameBegin()) return false;
   if (!SmReplayBegin(inputs)) return false;
+  if (!SmRoomCollisionFrameBegin()) return false;
+  if (g_sm_video.enhanced && g_sm_video.seamless && !SmSeamlessDoor()) return false;
+  if (!SmRoomsNativeFrame(g_ram,g_ppu->vram,g_sm_video.enhanced)) return false;
+  if (!SmRoomsFrame(g_ram,g_sm_video.enhanced,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||
+      !SmRendererLatchRooms(SmRoomsScene())) return false;
   /* Playback may restore a checkpoint and change presentation at this exact
    * boundary, so latch objects after those changes. */
   if (g_sm_video.enhanced || g_sm_video.fps_enabled || SmActivityNetworkWide() || SmModOverlayActive())
@@ -19,7 +27,12 @@ static bool SmFrameBegin(uint32_t *inputs) {
 
 /* Called by the framework from SnesInit, once the machine exists. */
 static void SmInitialize(void) {
+  /* Resident rooms are carried by both the file-state extension and the
+   * rollback execution state. Reserve both chunks before pools can grow. */
+  RtlSetStateExtraBound(SmExecStateBound);
   SmActivityInitialize();
+  SmRoomsSetDoorEvent(SmActiveDoorEvent);
+  SmRoomsSetEnemyReaction(SmActiveEnemyBlock);
   /* Add Super Metroid's object to the crash/exit report. Registered through
    * the framework hook rather than by forking post_mortem.c, which is how
    * this port previously carried its own 833-line copy of that file. */

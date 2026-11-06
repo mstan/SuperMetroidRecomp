@@ -25,15 +25,16 @@ def inspect(path):
         raise ValueError("oversized replay segment")
     lines = path.read_text(encoding="utf-8").splitlines()
     # Format 3 adds a MODS line: the gameplay-mod set's identity.
-    mods = lines[0] == "SMREPLAY 3"
+    resident = lines[0] == "SMREPLAY 4"
+    mods = resident or lines[0] == "SMREPLAY 3"
     header = 5 if mods else 4
-    if (len(lines) < header or lines[0] not in ("SMREPLAY 1", "SMREPLAY 2", "SMREPLAY 3") or
+    if (len(lines) < header or lines[0] not in ("SMREPLAY 1", "SMREPLAY 2", "SMREPLAY 3", "SMREPLAY 4") or
             len(lines[1].split()) != 5 or not lines[1].startswith("BUILD ") or
             len(lines[2].split()) != 2 or not lines[2].startswith("ROM ") or
             (mods and (len(lines[3].split()) != 2 or not lines[3].startswith("MODS "))) or
             lines[header - 1] != "MODE lle"):
         raise ValueError("unsupported or truncated replay header")
-    activity = lines[0] in ("SMREPLAY 2", "SMREPLAY 3")
+    activity = lines[0] in ("SMREPLAY 2", "SMREPLAY 3", "SMREPLAY 4")
     if not 0 <= int(lines[2].split()[1], 16) <= 0xffffffff:
         raise ValueError("invalid ROM identity")
     state_path = path.with_name(path.name + ".sav")
@@ -41,6 +42,7 @@ def inspect(path):
         raise ValueError("oversized machine checkpoint sidecar")
     frames = checkpoints = 0
     pending = raster_pending = checkpoint = False
+    resident_pending = False
     next_frame = None
     with state_path.open("rb") as states:
         for number, line in enumerate(lines[header:], header + 1):
@@ -63,7 +65,7 @@ def inspect(path):
                     if activity and not 0 <= int(fields[6]) <= 214:
                         raise ValueError("invalid simulation viewport")
                     if not (0 <= frame <= 0xffffffff and 0 <= word <= 0xffffffff and
-                            0 <= flags <= 63 and 0 <= aspect < 5 and
+                            0 <= flags <= (255 if resident else 63) and 0 <= aspect < 5 and
                             fps in (0, 60, 90, 120, 144, 165, 240, 360) and
                             (next_frame is None or next_frame == frame)):
                         raise ValueError("invalid input/settings or discontinuity without checkpoint")
@@ -73,6 +75,12 @@ def inspect(path):
                     if int(fields[1]) != next_frame or any(not 0 <= int(h, 16) <= 0xffffffff for h in fields[2:]):
                         raise ValueError("invalid completed-frame check")
                     pending = False
+                    resident_pending = resident
+                    raster_pending = not resident
+                elif fields[0] == "R" and len(fields) == 3 and resident_pending:
+                    if int(fields[1]) != next_frame or not 0 <= int(fields[2],16) <= 0xffffffff:
+                        raise ValueError("invalid resident room checkpoint")
+                    resident_pending = False
                     raster_pending = True
                 elif fields[0] == "V" and len(fields) == 4 and raster_pending:
                     width, ratio = int(fields[2]), float(fields[3])
@@ -85,10 +93,10 @@ def inspect(path):
                     raise ValueError("unexpected replay record")
             except (IndexError, ValueError) as error:
                 raise ValueError(f"record {number}: {error}") from error
-    if not checkpoints or (not frames and not pending and not raster_pending):
+    if not checkpoints or (not frames and not pending and not raster_pending and not resident_pending):
         raise ValueError("replay has no input executions")
     print(f"{lines[1]}; {frames} completed executions, {checkpoints} machine checkpoints")
-    if pending or raster_pending:
+    if pending or raster_pending or resident_pending:
         print("Final input is incomplete: playback will execute it to reproduce the hang/crash and return failure if it completes.")
     return lines
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "sm_video.h"
+#include "sm_room_scene.h"
 #include "snes/ppu.h"
 #include "snes/hd_jobs.h"
 void SmRendererSetHdEnabled(bool enabled);
@@ -14,6 +15,7 @@ void SmRendererSetInterpolationEnabled(bool enabled);
  * must match the captured PPU before its owner state becomes displayable;
  * delayed uploads retain the last verified front-buffer publication. */
 void SmRendererLatchObjectState(const uint8_t ram[0x20000]);
+bool SmRendererLatchRooms(const SmRoomScene *scene);
 void SmRendererBeginFrame(const uint8_t ram[0x20000], unsigned number);
 bool SmRendererClaimNativeLine(const Ppu *p, unsigned line);
 unsigned SmRendererNativeLines(void);

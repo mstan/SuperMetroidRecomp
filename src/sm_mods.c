@@ -49,7 +49,7 @@ static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out) {
   COPY(out->source_name, "SuperMetroidRecomp presentation features");
   COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]);
-  out->enabled = enabled(i); out->option_count = i ? 1 : 2;
+  out->enabled = enabled(i); out->option_count = i ? 1 : 4;
   COPY(out->status, out->enabled ? "Enabled" : "Disabled");
   return 1;
 }
@@ -57,7 +57,7 @@ static int option_get(void *ctx, const char *package, const char *feature,
                       int index, RecompLauncherCModOption *out) {
   (void)ctx;
   int kind = identity(package, feature);
-  if (!out || kind < 0 || index < 0 || index >= (kind ? 1 : 2)) return 0;
+  if (!out || kind < 0 || index < 0 || index >= (kind ? 1 : 4)) return 0;
   memset(out, 0, sizeof(*out)); out->type = RECOMP_MOD_OPTION_CHOICE; out->step = 1;
   if (kind == 1) {
     COPY(out->id, "fps"); COPY(out->label, "Presentation FPS");
@@ -70,11 +70,21 @@ static int option_get(void *ctx, const char *package, const char *feature,
     COPY(out->description, "Fit adapts to the window between 4:3 and 32:9.");
     COPY(out->value, SmAspectName(video->aspect));
     COPY(out->default_value, "Fit"); out->choice_count = 4;
-  } else {
+  } else if (index==1) {
     COPY(out->id, "hud"); COPY(out->label, "HUD anchoring");
     COPY(out->description, "Energy at the left edge, minimap at the right, weapons centered.");
     COPY(out->value, video->hud_anchored ? "Edges" : "Center");
     COPY(out->default_value, "Edges"); out->choice_count = 2;
+  } else if (index==2) {
+    COPY(out->id,"neighbor-logic"); COPY(out->label,"Neighboring room logic");
+    COPY(out->description,"Run enemies and gameplay actors in neighboring rooms. Off keeps animated scenery and doors. Applies when a room loads.");
+    COPY(out->value,video->neighboring_logic ? "On" : "Off");
+    COPY(out->default_value,"On"); out->choice_count=2;
+  } else {
+    COPY(out->id,"transitions"); COPY(out->label,"Room transitions");
+    COPY(out->description,"Continuous keeps the world and camera connected across doors. Native uses the original transition animation.");
+    COPY(out->value,video->seamless ? "Continuous" : "Native");
+    COPY(out->default_value,"Continuous"); out->choice_count=2;
   }
   return 1;
 }
@@ -82,6 +92,8 @@ static const char *choice(int kind, const char *option, int index) {
   if (!option || index < 0) return NULL;
   if (kind == 0 && !strcmp(option, "aspect") && index < 4) return aspects[index];
   if (kind == 0 && !strcmp(option, "hud") && index < 2) return index ? "Center" : "Edges";
+  if (kind == 0 && !strcmp(option,"neighbor-logic") && index<2) return index ? "Off" : "On";
+  if (kind == 0 && !strcmp(option,"transitions") && index<2) return index ? "Native" : "Continuous";
   if (kind == 1 && !strcmp(option, "fps") && index < 8) return rates[index];
   return NULL;
 }
@@ -110,7 +122,7 @@ static int set_option(void *ctx, const char *package, const char *feature,
   (void)ctx;
   int kind = identity(package, feature);
   if (kind < 0 || !value) return 0;
-  if (!kind && option && !strcmp(option, "aspect") && !SmActivityGeometryMutable()) {
+  if (!kind && option && strcmp(option,"hud") && !SmActivityGeometryMutable()) {
     COPY(error, "The initial host view stays fixed during this netplay match."); return 0;
   }
   for (int i = 0; i < 8; ++i) {
@@ -118,6 +130,8 @@ static int set_option(void *ctx, const char *package, const char *feature,
     if (!candidate || strcmp(candidate, value)) continue;
     if (kind) video->fps = i ? (unsigned)atoi(value) : 0;
     else if (!strcmp(option, "hud")) video->hud_anchored = i == 0;
+    else if (!strcmp(option,"neighbor-logic")) video->neighboring_logic=i==0;
+    else if (!strcmp(option,"transitions")) video->seamless=i==0;
     else return SmParseAspect(value, &video->aspect);
     return 1;
   }

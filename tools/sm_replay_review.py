@@ -75,18 +75,23 @@ class ReviewGame:
                 f'[Sound]\nEnableAudio=1\nVolume={0 if self.headless else 100}\nAudioFreq=32000\nAudioChannels=2\nAudioSamples=512\n'
                 f'[Controller]\nSourceP1={source}\nSourceP2=0\nSourceP3=0\nSourceP4=0\n'
                 '[GamepadMap]\nEnableGamepad1=true\nEnableGamepad2=false\nEnableGamepad3=false\nEnableGamepad4=false\n'
-                '[KeyMap]\nPause=Shift+p\nPauseDimmed=p\n[Rewind]\nEnabled=0\n')
+                f"[KeyMap]\nPause=Shift+p\nPauseDimmed=p\n[Rewind]\nEnabled={int(case.get('rewind_enabled',False))}\n")
         (self.runtime/'config.ini').write_text(config,encoding='utf-8')
         aspect=self.manifest.get('aspect','16:9')
         (self.runtime/'sm-video.ini').write_text(f'[SuperMetroidVideo]\nEnhancedRenderer=1\nAspect={aspect}\nPresentationEnabled=1\nPresentationFPS=120\n'
-            f"HudAnchored={int(case['hud'])}\n",encoding='utf-8')
+            f"HudAnchored={int(case['hud'])}\n"
+            f"NeighboringRoomLogic={int(case.get('neighboring_logic',True))}\n"
+            f"SeamlessRooms={int(case.get('seamless',True))}\n",encoding='utf-8')
         env=os.environ.copy()
         for key in list(env):
             if key.startswith(('SDL_','SM_','SNESRECOMP_')):env.pop(key)
-        env.update(SM_REPLAY_RECORD='0',SNESRECOMP_DEBUG_PORT=str(port))
+        env.update(SM_REPLAY_RECORD='1' if self.manifest.get('record_replay',True) else '0',SNESRECOMP_DEBUG_PORT=str(port))
         if self.headless:
             env.update(SDL_VIDEODRIVER='dummy',SDL_VIDEO_DRIVER='dummy',SDL_AUDIODRIVER='dummy',SDL_AUDIO_DRIVER='dummy')
         run=case['id']+'-'+datetime.now().strftime('%H%M%S')
+        replay_dir=self.runtime/'replays'/run
+        replay_dir.mkdir(parents=True,exist_ok=True)
+        env['SM_REPLAY_DIR']=str(replay_dir)
         self.logs=[(self.runtime/(run+'-stdout.log')).open('wb'),(self.runtime/(run+'-stderr.log')).open('wb')]
         self.process=subprocess.Popen([str(self.exe),'--config',str(self.runtime/'config.ini'),'--paused','--no-launcher',self.manifest['rom']],
             cwd=self.runtime,env=env,stdout=self.logs[0],stderr=self.logs[1],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

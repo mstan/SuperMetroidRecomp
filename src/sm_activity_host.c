@@ -10,6 +10,7 @@
 
 static bool network_profile_valid, local_profile_valid, network_error;
 static unsigned network_extra, local_extra;
+static unsigned network_flags, local_flags;
 
 static unsigned local_view(void) {
 #if SM_VIEW_ACTIVITY
@@ -29,25 +30,33 @@ static bool network_active(void) {
 }
 #if defined(SNES_HAS_LOBBY_CLIENT)
 static void capture_profile(uint8_t out[2]) {
-  if (!local_profile_valid) { local_extra = local_view(); local_profile_valid = true; }
-  out[0] = (uint8_t)local_extra; out[1] = SM_VIEW_ACTIVITY ? (0xa0 | SM_ACTIVITY_PROFILE) : 0xa0;
+  if (!local_profile_valid) {
+    local_extra = local_view(); local_profile_valid = true;
+    local_flags=(g_sm_video.enhanced ? 4u : 0u) | (g_sm_video.neighboring_logic ? 8u : 0u) | (g_sm_video.seamless ? 16u : 0u);
+  }
+  out[0] = (uint8_t)local_extra; out[1] = (uint8_t)((SM_VIEW_ACTIVITY ? (0xa0 | SM_ACTIVITY_PROFILE) : 0xa0) | local_flags);
 }
 static void apply_profile(const uint8_t in[2]) {
   unsigned expected = SM_VIEW_ACTIVITY ? (0xa0 | SM_ACTIVITY_PROFILE) : 0xa0;
-  if (in[1] != expected || !SmActivityExtraValid(in[0]) ||
-      (network_profile_valid && network_extra != in[0])) {
+  if ((in[1]&0xe3) != expected || !SmActivityExtraValid(in[0]) ||
+      (network_profile_valid && (network_extra != in[0] || network_flags!=(in[1]&28u)))) {
     if (!network_error) fprintf(stderr, "[sm-activity] incompatible or changing netplay viewport profile\n");
     network_error = true; snesrecomp_request_exit(); return;
   }
   if (!network_profile_valid)
     fprintf(stderr, "[sm-activity] netplay viewport profile=%u extra=%u fixed for this match\n", expected, in[0]);
   network_extra = in[0]; network_profile_valid = true;
+  network_flags=in[1]&28u;
+  g_sm_video.enhanced=(network_flags&4)!=0;
+  g_sm_video.neighboring_logic=(network_flags&8)!=0;
+  g_sm_video.seamless=(network_flags&16)!=0;
   SmActivityRestore(network_extra);
 }
 #endif
 void SmActivityInitialize(void) {
   network_profile_valid = local_profile_valid = network_error = false;
   network_extra = local_extra = 0; SmActivityRestore(0);
+  network_flags=local_flags=0;
 #if defined(SNES_HAS_LOBBY_CLIENT)
   snes_netplay_set_sync_byte_hooks(capture_profile, apply_profile);
 #endif

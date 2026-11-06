@@ -10,6 +10,7 @@ static void geometry(void) {
   SmVideoSettings s;
   SmVideoDefaults(&s);
   assert(s.enhanced && !s.fps_enabled && s.hud_anchored && s.aspect == SM_ASPECT_FIT);
+  assert(s.neighboring_logic && s.seamless);
   assert(SmCalculateViewport(&s, 5120, 1440).width == 682);
   s.enhanced = false;
   assert(SmCalculateViewport(&s, 5120, 1440).width == 256);
@@ -96,7 +97,7 @@ static void mods_and_persistence(const char *path) {
     assert(!strcmp(feature.source_url, "https://github.com/mstan/SuperMetroidRecomp"));
     assert(!strcmp(package.source_url, feature.source_url));
     assert(!package.enabled && !feature.enabled);
-    assert(feature.option_count == (index ? 1 : 2));
+    assert(feature.option_count == (index ? 1 : 4));
     for (int option_index = 0; option_index < feature.option_count; ++option_index) {
       RecompLauncherCModOption option;
       assert(p->feature_option_get(p->ctx, package.id, feature.id, option_index, &option));
@@ -128,12 +129,15 @@ static void mods_and_persistence(const char *path) {
   assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","hud","Center"));
   assert(p->feature_enable(p->ctx,"sm-presentation-fps","presentation-fps",1));
   assert(p->feature_set_option(p->ctx,"sm-presentation-fps","presentation-fps","fps","165"));
+  assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","neighbor-logic","Off"));
+  assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","transitions","Native"));
   assert(!p->feature_set_option(p->ctx,"sm-presentation-fps","presentation-fps","fps","165junk"));
   assert(!p->feature_set_option(p->ctx,"sm-presentation-fps","presentation-fps","fps","100"));
   assert(p->commit(p->ctx,NULL));
   assert(SmVideoLoad(&loaded,path));
   assert(loaded.enhanced && loaded.fps_enabled && loaded.fps==165);
   assert(loaded.aspect==SM_ASPECT_32_9 && !loaded.hud_anchored);
+  assert(!loaded.neighboring_logic && !loaded.seamless);
   assert(p->feature_enable(p->ctx,"sm-widescreen","widescreen",0));
   assert(s.fps_enabled && s.aspect==SM_ASPECT_32_9);
   assert(p->feature_enable(p->ctx,"sm-presentation-fps","presentation-fps",0));
@@ -153,6 +157,11 @@ static void mods_and_persistence(const char *path) {
   assert(SmVideoLoad(&loaded,path));
   assert(!loaded.enhanced && !loaded.fps_enabled);
   assert(remove(path)==0);
+  FILE *legacy=fopen(path,"w"); assert(legacy);
+  fputs("[SuperMetroidVideo]\nEnhancedRenderer=0\nAspect=21:9\n",legacy); assert(!fclose(legacy));
+  assert(SmVideoLoad(&loaded,path));
+  assert(!loaded.enhanced && loaded.aspect==SM_ASPECT_21_9 && loaded.neighboring_logic && loaded.seamless);
+  assert(!remove(path));
 }
 int main(int argc,char **argv) {
   assert(argc==2);
