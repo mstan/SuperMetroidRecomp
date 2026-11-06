@@ -163,6 +163,67 @@ static bool active_door(const uint8_t *ram,const SmWorldDoor *d) {
   unsigned block=(unsigned)d->block_y*w+(unsigned)d->block_x;
   return (word(ram+0x10002+2*block)>>12)==9 && (ram[0x16402+block]&127)==d->index;
 }
+static bool interaction_entrance(const uint8_t *ram,unsigned incoming,unsigned phase) {
+  if (phase==SM_DOOR_SHUT || phase==SM_DOOR_CLOSING) return false;
+  if (!SmDoorHasArrivalCap(read_rom(NULL,0x830003u+incoming))) return true;
+  unsigned x=read_rom(NULL,0x830004u+incoming),y=read_rom(NULL,0x830005u+incoming);
+  unsigned w=word(ram+0x7a5),h=word(ram+0x7a7);
+  if (x>=w || y>=h) return false;
+  /* A blue opening PLM can remain resident while its blocks are already air.
+   * Physical hatch collision, rather than PLM lifetime, admits interaction. */
+  unsigned type=word(ram+0x10002+2*(y*w+x))>>12;
+  return type==0 || type==4;
+}
+static void interaction_rooms(const uint8_t *active,bool reachable[SM_ROOM_RESIDENTS+1]) {
+  DoorContext contexts[SM_ROOM_RESIDENTS+1]={{active,NULL,root,word(active+0x7bb),0,0}};
+  memset(reachable,0,(SM_ROOM_RESIDENTS+1)*sizeof(*reachable));reachable[0]=true;
+  for (unsigned i=0; i<count; ++i) {
+    const SmRoomPlacement *p=&residents[i].placement;
+    contexts[i+1]=(DoorContext){SmRoomRuntimeRam(residents[i].runtime),residents[i].runtime,p->room,p->state,p->x,p->y};
+  }
+  for (unsigned pass=0; pass<count; ++pass) {
+    bool changed=false;
+    for (unsigned i=0; i<link_count; ++i) {
+      const DoorLink *link=&links[i];
+      unsigned room_a=read_rom(NULL,0x830000u+link->b) | read_rom(NULL,0x830001u+link->b)<<8;
+      unsigned room_b=read_rom(NULL,0x830000u+link->a) | read_rom(NULL,0x830001u+link->a)<<8;
+      int a=-1,b=-1;
+      for (unsigned j=0; j<=count; ++j) {
+        if (contexts[j].room==room_a && contexts[j].state==link->state_a) a=(int)j;
+        if (contexts[j].room==room_b && contexts[j].state==link->state_b) b=(int)j;
+      }
+      if (a<0 || b<0 || reachable[a]==reachable[b]) continue;
+      if (!interaction_entrance(contexts[a].ram,link->b,link->phase_a) ||
+          !interaction_entrance(contexts[b].ram,link->a,link->phase_b)) continue;
+      /* Links also describe scenery behind inactive/special exits. Gameplay
+       * requires the actual current-state planar type-9 anchors on both sides. */
+      unsigned n=0;const SmWorldDoor *out=SmRoomPreviewDoors((uint16_t)room_a,&n),*door_a=NULL,*door_b=NULL;
+      for (unsigned j=0; j<n; ++j) if (out[j].definition==link->a) door_a=&out[j];
+      out=SmRoomPreviewDoors((uint16_t)room_b,&n);
+      for (unsigned j=0; j<n; ++j) if (out[j].definition==link->b) door_b=&out[j];
+      if (!door_a || !door_b || !planar_shape(door_a) || !planar_shape(door_b) ||
+          !active_door(contexts[a].ram,door_a) || !active_door(contexts[b].ram,door_b)) continue;
+      reachable[a]=reachable[b]=true;changed=true;
+    }
+    if (!changed) break;
+  }
+}
+static unsigned resident_shots(const uint8_t *active,const SmRoomPlacement *p) {
+  unsigned mask=0;
+  for (unsigned i=0; i<10; ++i) {
+    if (!word(active+0xc18+2*i) || !word(active+0xc40+2*i) || (word(active+0xc04+2*i)&16)) continue;
+    int x=(int16_t)word(active+0xb64+2*i),y=(int16_t)word(active+0xb78+2*i);
+    if (x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
+        x>=p->left && y>=p->top && x<p->right && y<p->bottom) mask|=1u<<i;
+  }
+  return mask;
+}
+static bool resident_body(const uint8_t *active,const SmRoomPlacement *p) {
+  int x=(int16_t)word(active+0xaf6),y=(int16_t)word(active+0xafa);
+  int rx=(int)word(active+0xafe),ry=(int)word(active+0xb00);
+  return x+rx>p->x && y+ry>p->y && x-rx<p->x+p->width && y-ry<p->y+p->height &&
+      x+rx>p->left && y+ry>p->top && x-rx<p->right && y-ry<p->bottom;
+}
 bool SmRoomsShotsActive(const uint8_t active[0x20000]) {
   if (!rom || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
   unsigned index=word(active+0xdde);
@@ -419,10 +480,13 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   }
   for (unsigned i=0; i<old_count; ++i) SmRoomRuntimeDestroy(old[i].runtime);
   if (!ok || !mirror_doors(active)) return false;
+  bool reachable[SM_ROOM_RESIDENTS+1];interaction_rooms(active,reachable);
   for (unsigned i=0; i<count; ++i) {
     const SmRoomPlacement *p=&residents[i].placement; SmRoomRuntime *runtime=residents[i].runtime;
     SmRoomRuntimeProgress(runtime,active);
-    if (!SmRoomRuntimeStepVisible(runtime,(int16_t)word(active+0xaf6)-p->x,(int16_t)word(active+0xafa)-p->y,
+    if ((reachable[i+1] && !SmRoomRuntimeHitShots(runtime,active,p->x,p->y,resident_shots(active,p))) ||
+        (reachable[i+1] && resident_body(active,p) && !SmRoomRuntimeTouch(runtime,active,p->x,p->y)) ||
+        !SmRoomRuntimeStepVisible(runtime,(int16_t)word(active+0xaf6)-p->x,(int16_t)word(active+0xafa)-p->y,
         x-p->x,y-p->y,extra) || !SmRoomRuntimeStepEffects(runtime)) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X: %s\n",root,p->room,SmRoomRuntimeError(runtime)); return false;
     }

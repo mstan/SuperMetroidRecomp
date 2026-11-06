@@ -312,6 +312,92 @@ bool SmRoomRuntimeDoorOpen(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orien
   r->cpu->a=(uint16_t)((unsigned)rom_long(r,0x949ea6u+2*(0x40+orientation))&65535);
   bool ok=call(r,0x8484e7,3); put(r,0xdde,(int)index); return ok;
 }
+bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask) {
+  if (!r || r->error[0] || !active) return false;
+  if (!r->actors || word(active+0xa78) || word(active+0x185e)) return true;
+  /* An ordinary impact has already consumed this shot's collision. Plasma's
+   * native piercing response leaves that bit clear and retains its own enemy
+   * invincibility timer. Never hit twice merely because ownership is remote. */
+  for (unsigned i=0; i<10; ++i)
+    if (!word(active+0xc18+2*i) || (word(active+0xc04+2*i)&16)) mask&=~(1u<<i);
+  mask&=1023;
+  if (!mask) return true;
+  uint8_t scratch[64],pool[SM_SHOT_POOL_BYTES],borrowed[SM_SHOT_POOL_BYTES];
+  memcpy(scratch,r->ram,sizeof(scratch));memcpy(pool,r->ram+SM_SHOT_POOL,sizeof(pool));
+  memcpy(borrowed,active+SM_SHOT_POOL,sizeof(borrowed));
+  const unsigned work[]={0xdde,0xe54,0x18a6,0xf378,0x183e,0x1840};
+  uint16_t saved[sizeof(work)/sizeof(*work)];
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  Interp816 previous=*r->cpu;
+  memcpy(r->ram+SM_SHOT_POOL,borrowed,sizeof(borrowed));SmShotTranslate(r->ram,-origin_x,-origin_y);
+  for (unsigned i=0; i<10; ++i) if (!(mask&(1u<<i))) {
+    put(r,0xc18+2*i,0);put(r,0xc40+2*i,0);
+  }
+  put(r,0x183e,(int)word(active+0x183e));put(r,0x1840,(int)word(active+0x1840));
+  r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
+  r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
+  bool ok=true;
+  for (unsigned i=0; ok && i<32; ++i) {
+    unsigned index=word(r->ram+0x17ac+2*i);
+    if (index==65535) break;
+    if (index>=2048 || (index&63)) { fail(r,"invalid resident collision index",index);ok=false;break; }
+    unsigned at=0xf78+index;
+    if (!word(r->ram+at) || (word(r->ram+at+14)&0x400) || word(r->ram+at+40)) continue;
+    bool multi=(word(r->ram+at+16)&4)!=0;
+    put(r,0xe54,(int)index);
+    ok=call(r,multi ? 0xa09b7f : 0xa0a143,2);
+    if (ok && word(r->ram+at)) ok=call(r,multi ? 0xa09d23 : 0xa0a236,2);
+  }
+  if (ok) {
+    SmShotTranslate(r->ram,origin_x,origin_y);
+    memcpy(active+SM_SHOT_POOL,r->ram+SM_SHOT_POOL,sizeof(pool));
+    /* Restore filtered slots instead of exporting their temporary zero types.
+     * All eighteen native per-slot arrays (including linked supers) stay in
+     * their original slots; shared counters retain native mutations. */
+    for (unsigned a=0; a<18; ++a) for (unsigned i=0; i<10; ++i) if (!(mask&(1u<<i)))
+      memcpy(active+SM_SHOT_POOL+20*a+2*i,borrowed+20*a+2*i,2);
+    memcpy(active+0x183e,r->ram+0x183e,4);
+  }
+  memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+SM_SHOT_POOL,pool,sizeof(pool));
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) put(r,work[i],saved[i]);
+  *r->cpu=previous;
+  return ok;
+}
+bool SmRoomRuntimeTouch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y) {
+  if (!r || r->error[0] || !active) return false;
+  if (!r->actors || word(active+0xa78) || word(active+0x185e)) return true;
+  enum { PLAYER=0x9a2, PLAYER_BYTES=0xb64-PLAYER };
+  uint8_t scratch[64],player[PLAYER_BYTES],input[24],timers[4];
+  memcpy(scratch,r->ram,sizeof(scratch));memcpy(player,r->ram+PLAYER,sizeof(player));
+  memcpy(input,r->ram+0x8b,sizeof(input));memcpy(timers,r->ram+0x18a8,sizeof(timers));
+  const unsigned work[]={0xe54,0x18a6,0xf378};uint16_t saved[3];
+  for (unsigned i=0; i<3; ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  Interp816 previous=*r->cpu;
+  memcpy(r->ram+PLAYER,active+PLAYER,sizeof(player));memcpy(r->ram+0x8b,active+0x8b,sizeof(input));
+  memcpy(r->ram+0x18a8,active+0x18a8,sizeof(timers));
+  const unsigned positions[]={0xaf6,0xafa,0xb10,0xb14};
+  for (unsigned i=0; i<4; ++i) put(r,positions[i],(int)word(r->ram+positions[i])-(i&1 ? origin_y : origin_x));
+  r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
+  r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
+  bool ok=true;
+  for (unsigned i=0; ok && i<32; ++i) {
+    unsigned index=word(r->ram+0x17ac+2*i);
+    if (index==65535) break;
+    if (index>=2048 || (index&63)) { fail(r,"invalid resident contact index",index);ok=false;break; }
+    unsigned at=0xf78+index;
+    if (!word(r->ram+at) || (word(r->ram+at+14)&0x400) || word(r->ram+at+40)) continue;
+    put(r,0xe54,(int)index);
+    ok=call(r,(word(r->ram+at+16)&4) ? 0xa09a5a : 0xa0a07a,2);
+  }
+  if (ok) {
+    for (unsigned i=0; i<4; ++i) put(r,positions[i],(int)word(r->ram+positions[i])+(i&1 ? origin_y : origin_x));
+    memcpy(active+PLAYER,r->ram+PLAYER,sizeof(player));memcpy(active+0x18a8,r->ram+0x18a8,sizeof(timers));
+  }
+  memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+PLAYER,player,sizeof(player));
+  memcpy(r->ram+0x8b,input,sizeof(input));memcpy(r->ram+0x18a8,timers,sizeof(timers));
+  for (unsigned i=0; i<3; ++i) put(r,work[i],saved[i]);
+  *r->cpu=previous;return ok;
+}
 bool SmRoomRuntimeDoorClose(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orientation) {
   if (!r || r->error[0] || orientation>=4 || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;
   unsigned block=y*word(r->ram+0x7a5)+x;

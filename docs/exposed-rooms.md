@@ -274,6 +274,23 @@ cap. Production progress remains intact. `projectile-build1` queues supported
 strict generation/full build/CTest; `qualify_world_shots.py` prepares the real
 controller-shot gate. Neither is recorded as passed yet.
 
+Neighbor weapon/contact responses now borrow the active linked weapon slots
+and player view for the cartridge's native hitbox/vulnerability/shot/touch AI.
+Only weapon mutations, player effects and native super-hit shake cross back;
+the private CPU, borrowed slots/player data and work indices are restored.
+The world admits these responses only across current-state planar connections
+whose actual cap blocks are air, with projectile centers/body overlap assigned
+to the resident's clipped allocation. An opening blue PLM may remain alive after
+its blocks become air, so its animation phase alone cannot reject a valid hit.
+`enemy-hit-server1` and `enemy-hit-manager4` pass native nonfatal enemy hits,
+masked slot isolation, consumed-shot duplicate rejection, open/closed connection
+and logic Off checks, and exact whole-manager hit restore. `enemy-touch-server1`
+passes native damage/knockback, invincibility, world-coordinate preservation,
+bounded player output and exact restore. These are owned-ROM probes; live
+controller trajectories/contact and general actor/enemy-projectile ownership
+remain unqualified. The current full build started before these last manager
+changes and needs an incremental rebuild before their live checks.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -293,8 +310,11 @@ the remaining scene/correctness gates are unfinished.
    original path. Qualify retained actors and entry scripts beyond the two
    current round trips. Player/beam coordinate continuity is now qualified for
    those cases; it does not establish general actor/projectile world physics.
-3. Implement cross-open-door combat and projectile/actor transfer without
-   duplicated hits/rewards. Walls and closed doors must block interaction.
+3. Finish and live-qualify cross-open-door combat and projectile/actor transfer
+   without duplicated hits/rewards. Native weapon/contact responses and ordinary
+   open/closed/Off routing now pass probes. Physical actor/enemy-projectile
+   transfer, pickups/rewards, area weapons and complete ownership still need
+   implementation. Walls and closed doors must block interaction.
 4. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors.

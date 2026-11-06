@@ -105,6 +105,73 @@ static void uncapped_entrance(const uint8_t *rom) {
   memcpy(active,original,sizeof(active));
   puts("uncapped native arrival keeps its geometric link and never inserts a corner bubble");
 }
+static const uint8_t *hall(void) {
+  const SmRoomScene *scene=SmRoomsScene();
+  for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==0x93aa) return scene->rooms[i].ram;
+  assert(0 && "resident hall missing");return NULL;
+}
+static void beam(int x,int y) {
+  memset(active+SM_SHOT_POOL,0,SM_SHOT_POOL_BYTES);
+  put(0xb64,x);put(0xb78,y);put(0xbb4,4);put(0xbc8,4);
+  put(0xc18,0x8000);put(0xc2c,2);put(0xc40,0x8123);put(0xcce,1);
+}
+static void world_combat(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  int target_x=0,target_y=0;
+  for (unsigned run=0; run<2; ++run) {
+    bool logic=run==0;
+    memcpy(active,original,sizeof(active));memset(active+SM_SHOT_POOL,0,SM_SHOT_POOL_BYTES);
+    SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    unsigned cap=0x10002+2*(22*144+142);
+    active[cap+1]=(uint8_t)((active[cap+1]&15)|0xc0);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    const uint8_t *ram=hall();unsigned enemy=SmShotWord(ram,0x17ac),health=0;
+    if (logic) {
+      assert(enemy<2048 && !(enemy&63));enemy+=0xf78;health=SmShotWord(ram,enemy+20);
+      target_x=(int)SmShotWord(ram,enemy+2)+2304;target_y=(int)SmShotWord(ram,enemy+6)+256;
+      assert(health>2);
+    }
+    beam(target_x,target_y);
+    uint8_t pool[SM_SHOT_POOL_BYTES];memcpy(pool,active+SM_SHOT_POOL,sizeof(pool));
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    assert(!memcmp(pool,active+SM_SHOT_POOL,sizeof(pool)));
+    if (logic) assert(SmShotWord(hall(),enemy+20)==health);
+    memset(active+SM_SHOT_POOL,0,SM_SHOT_POOL_BYTES);active[cap+1]&=15;
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    ram=hall();
+    if (logic) {
+      enemy=SmShotWord(ram,0x17ac);assert(enemy<2048);enemy+=0xf78;
+      target_x=(int)SmShotWord(ram,enemy+2)+2304;target_y=(int)SmShotWord(ram,enemy+6)+256;
+      health=SmShotWord(ram,enemy+20);assert(health>2);
+    }
+    beam(target_x,target_y);
+    static uint8_t before_hit[sizeof(active)],after_hit[sizeof(active)];memcpy(before_hit,active,sizeof(active));
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);assert(saved && end && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes);
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    if (logic) {
+      if (!(SmShotWord(active,0xc04)&16)) {
+        const uint8_t *r=hall();
+        fprintf(stderr,"world hit no impact: target %d,%d enemy %04X props %04X map %04X inv %u health %u source %04X bts %02X arrival %u\n",
+            target_x,target_y,SmShotWord(r,enemy),SmShotWord(r,enemy+14),SmShotWord(r,enemy+22),SmShotWord(r,enemy+40),
+            SmShotWord(r,enemy+20),SmShotWord(active,cap),active[0x16402+143+22*144],SmRoomsDoorPhase(0x893a));
+        for (unsigned k=0; k<32; ++k) if (SmShotWord(r,0xf78+64*k))
+          fprintf(stderr,"enemy %u id%04X pos%u,%u props%04X map%04X active%04X\n",k,SmShotWord(r,0xf78+64*k),
+              SmShotWord(r,0xf7a+64*k),SmShotWord(r,0xf7e +64*k),SmShotWord(r,0xf86+64*k),SmShotWord(r,0xf8e +64*k),SmShotWord(r,0x17ac+2*k));
+      }
+      assert(SmShotWord(active,0xc04)&16);
+      assert(SmShotWord(hall(),enemy) && SmShotWord(hall(),enemy+20)<health);
+    } else assert(!memcmp(before_hit+SM_SHOT_POOL,active+SM_SHOT_POOL,SM_SHOT_POOL_BYTES));
+    memcpy(after_hit,active,sizeof(active));size_t na=SmRoomsSave(end,bound);assert(na);
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,before_hit,sizeof(active));
+    assert(SmRoomsFrame(active,true,213,logic,true));size_t nb=SmRoomsSave(again,bound);
+    assert(nb==na && !memcmp(end,again,na) && !memcmp(active,after_hit,sizeof(active)));
+    free(saved);free(end);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("world enemy beam hits require an open native connection; Off, closed caps and exact hit restore pass");
+}
 int main(int argc,char **argv) {
   if (argc!=3 && argc!=4) return 2;
   samples();
@@ -167,6 +234,7 @@ int main(int argc,char **argv) {
   }
   world_shots(rom);
   uncapped_entrance(rom);
+  world_combat(rom);
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);
     assert((original[0x79b] | original[0x79c]<<8)==0x96ba);

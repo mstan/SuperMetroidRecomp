@@ -21,6 +21,13 @@ typedef bool (*SmRoomShotAir)(void *context,const uint8_t ram[0x20000],unsigned 
 /* Native block response only. Movement/slot ownership stays with the player. */
 int SmRoomRuntimeShot(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,
     int block_x,int block_y,bool horizontal,SmRoomShotAir air,void *context);
+/* The world selects eligible weapon slots. Native hitboxes/vulnerabilities,
+ * shot AI, death/drop state and weapon reactions remain cartridge-owned. */
+bool SmRoomRuntimeHitShots(SmRoomRuntime *room,uint8_t active[0x20000],
+    int origin_x,int origin_y,unsigned mask);
+/* Native actor contact with a borrowed player view. Only player effects cross
+ * back; room progression, CPU, camera and script state remain isolated. */
+bool SmRoomRuntimeTouch(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y);
 void SmRoomRuntimeProgress(SmRoomRuntime *room, const uint8_t active[0x20000]);
 void SmRoomRuntimeDoorBits(const SmRoomRuntime *room, uint8_t active[0x20000]);
 bool SmRoomRuntimeStepVisible(SmRoomRuntime *room, int samus_x, int samus_y,
