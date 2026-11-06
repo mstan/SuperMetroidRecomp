@@ -1221,6 +1221,34 @@ static void native_transition_canvas(const char *path) {
   free(scene);ResetFixtureRenderer();
 }
 
+static void native_transition_body(void) {
+  ResetFixtureRenderer();memset(rom,0,sizeof(rom));SmRendererSetRom(rom,sizeof(rom));
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  romword(0x9008d,0x9800);romword(0x91800,1);romword(0x91802,0);romword(0x91805,0x2010);
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.native=1};
+  SmRoomImage *a=&scene->native_root,*b=&scene->rooms[0];
+  a->placement=(SmRoomPlacement){.room=0x91f8,.state=0x9213,.width=256,.height=256,.left=0,.top=0,.right=256,.bottom=256};
+  b->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  a->ram[0x7a5]=a->ram[0x7a7]=b->ram[0x7a5]=b->ram[0x7a7]=16;
+  a->ram[0x69]=b->ram[0x69]=19;a->ram[0xc002]=31;b->ram[0xc003]=0x7c;
+  a->ram[0xc102]=0xe0;a->ram[0xc103]=3;
+  a->ram[0xaf6]=a->ram[0xb04]=240;a->ram[0xafa]=a->ram[0xb06]=120;
+  for (unsigned y=0;y<8;++y) { a->vram[y*2]=b->vram[y*2]=255;ppu.vram[256+y]=255; }
+  word(0x998,11);word(0xafa,120);word(0xb04,240);word(0xb06,120);
+  const int camera[]={0,0,-256,-240,-196},body[]={240,240,240,-12,-3},screen[]={240,240,240,228,193};
+  const unsigned phase[]={0xe36e,0xe38e,0xe3c0,0xe3c0,0xe4a9};
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned i=0;i<5;++i) {
+    word(0x79b,i ? 0x9400 : 0x91f8);word(0x99c,phase[i]);word(0x911,camera[i]);word(0xaf6,body[i]);
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,i+1);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[123*view.width+view.extra+screen[i]+3]==0x00ff00);
+  }
+  free(scene);ResetFixtureRenderer();
+}
+
 static void continued_solid_foreground(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
   word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);ram[0x5d]=1;
@@ -1265,6 +1293,7 @@ static void continued_solid_foreground(void) {
 }
 
 int main(int argc, char **argv) {
+  native_transition_body();
   continued_solid_foreground();
   native_transition_canvas(argv[1]);
   native_center_provider();

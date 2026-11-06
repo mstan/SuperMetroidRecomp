@@ -2380,6 +2380,16 @@ static void native_camera(const uint8_t *ram,const SmRoomScene *rooms,int *x,int
   const uint8_t *camera=read16(ram,0x99c)==0xe38e ? rooms->native_root.ram : ram;
   *x+=(int16_t)read16(camera,0x911);*y+=(int16_t)read16(camera,0x915);
 }
+static void native_body_origin(const uint8_t *ram,const SmRoomScene *rooms,int *x,int *y) {
+  native_origin(ram,rooms,x,y);
+  /* E3C0 can yield after rebasing Samus. Before that rebase, the old body
+   * lies outside the destination camera's screen; afterwards it is local. */
+  if (read16(ram,0x99c)==0xe3c0) {
+    int sx=(int16_t)(uint16_t)(read16(ram,0xaf6)-read16(ram,0x911));
+    int sy=(int16_t)(uint16_t)(read16(ram,0xafa)-read16(ram,0x915));
+    if (sx < -32 || sx>288 || sy < -32 || sy>288) *x=*y=0;
+  }
+}
 static bool native_world(uint32_t *out,SmViewport view,bool hud_anchored,const SmSourceFrame *f,
     const SmSourceFrame *previous,const SmRoomScene *rooms,double alpha) {
   const SmRoomImage *root=&rooms->native_root;
@@ -2413,10 +2423,11 @@ static bool native_world(uint32_t *out,SmViewport view,bool hud_anchored,const S
     /* Samus uses her native map and graphics, with room-independent body
      * coordinates. She remains visible while terrain VRAM is being replaced. */
     const uint8_t *body=f->object_state_valid ? f->object_ram : root->ram;
-    int bx,by;native_origin(body,rooms,&bx,&by);
-    if (read16(body,0x99c)==0xe3c0) bx=by=0; /* camera setup precedes body rebase */
-    int gx=(int16_t)(uint16_t)(read16(body,0xb04)-read16(body,0xaf6)+read16(body,0x911));
-    int gy=(int16_t)(uint16_t)(read16(body,0xb06)-read16(body,0xafa)+read16(body,0x915));
+    int bx,by;native_body_origin(body,rooms,&bx,&by);
+    /* Native loading freezes the last emitted spritemap coordinates. Their
+     * bias belongs to the departing pose, not the moving camera/body. */
+    int gx=(int16_t)(uint16_t)(read16(root->ram,0xb04)-read16(root->ram,0xaf6)+read16(root->ram,0x911));
+    int gy=(int16_t)(uint16_t)(read16(root->ram,0xb06)-read16(root->ram,0xafa)+read16(root->ram,0x915));
     if (abs(gx)>64 || abs(gy)>64) { gx=0;gy=-1; }
     bx+=(int16_t)read16(body,0xaf6)-cx+gx;by+=(int16_t)read16(body,0xafa)-cy+gy;
     SnesRenderRegisters obj={0};obj.obsel=body[0x52];
@@ -2435,8 +2446,7 @@ static bool native_world(uint32_t *out,SmViewport view,bool hud_anchored,const S
           cannon.high_oam[slot/4]&=(uint8_t)~(3u<<((slot%4)*2));
         }
       }
-      int ox,oy;native_origin(body,rooms,&ox,&oy);
-      if (read16(body,0x99c)==0xe3c0) ox=oy=0;
+      int ox,oy;native_body_origin(body,rooms,&ox,&oy);
       SmViewport shifted=view;shifted.extra+=ox+(int16_t)read16(body,0x911)-cx;
       sprites(&obj,&cannon,(int)y-oy-(int16_t)read16(body,0x915)+cy,shifted,gun,f,NULL,1,false);
       for (int sx=0;sx<view.width;++sx) if (gun[sx]>=player[sx]) player[sx]=gun[sx];
