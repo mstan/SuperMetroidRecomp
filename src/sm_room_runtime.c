@@ -925,6 +925,9 @@ bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool 
     if (block+3*step>=w*h) return false;
     for (unsigned k=0; k<4; ++k) {
       unsigned at=block+k*step;
+      /* The loader uploaded its own cap before promotion. Once an opening
+       * PLM has finished, no later draw repairs that tilemap automatically. */
+      if (redraw && word(ram+0x10002+2*at)!=word(r->ram+0x10002+2*at)) *redraw=true;
       ram[0x10002+2*at]=r->ram[0x10002+2*at]; ram[0x10003+2*at]=r->ram[0x10003+2*at];
       ram[0x16402+at]=r->ram[0x16402+at];
     }

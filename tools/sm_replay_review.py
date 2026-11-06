@@ -85,10 +85,13 @@ class ReviewGame:
         env=os.environ.copy()
         for key in list(env):
             if key.startswith(('SDL_','SM_','SNESRECOMP_')):env.pop(key)
-        env.update(SM_REPLAY_RECORD='0',SNESRECOMP_DEBUG_PORT=str(port))
+        env.update(SM_REPLAY_RECORD='1' if self.manifest.get('record_replay',True) else '0',SNESRECOMP_DEBUG_PORT=str(port))
         if self.headless:
             env.update(SDL_VIDEODRIVER='dummy',SDL_VIDEO_DRIVER='dummy',SDL_AUDIODRIVER='dummy',SDL_AUDIO_DRIVER='dummy')
         run=case['id']+'-'+datetime.now().strftime('%H%M%S')
+        replay_dir=self.runtime/'replays'/run
+        replay_dir.mkdir(parents=True,exist_ok=True)
+        env['SM_REPLAY_DIR']=str(replay_dir)
         self.logs=[(self.runtime/(run+'-stdout.log')).open('wb'),(self.runtime/(run+'-stderr.log')).open('wb')]
         self.process=subprocess.Popen([str(self.exe),'--config',str(self.runtime/'config.ini'),'--paused','--no-launcher',self.manifest['rom']],
             cwd=self.runtime,env=env,stdout=self.logs[0],stderr=self.logs[1],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

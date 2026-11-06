@@ -28,6 +28,7 @@ static unsigned link_count;
 static SmRoomDoorEvent door_event;
 static SmRoomEnemyReaction enemy_reaction;
 static SmRoomScene *publication;
+static SmRoomImage *native_root;
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
 static uint8_t read_rom(void *unused, uint32_t a) {
   (void)unused; size_t offset=((a>>16)&127)*32768u+(a&32767);
@@ -41,6 +42,7 @@ void SmRoomsReset(void) {
   camera_dx=camera_dy=0; rebased=false;
   memset(links,0,sizeof(links)); link_count=0;
   free(publication); publication=NULL;
+  free(native_root); native_root=NULL;
 }
 void SmRoomsSetRom(const uint8_t *image, size_t bytes) {
   SmRoomsReset(); rom=image; rom_bytes=bytes; SmRoomPreviewSetRom(image,bytes);
@@ -644,6 +646,28 @@ static int tile_collision(const uint8_t *ram,int x,int y) {
   }
   return 16;
 }
+bool SmRoomsEntryFrameAir(const uint8_t active[0x20000],unsigned slot) {
+  if (!seamless || word(active+0x998)!=8 || word(active+0x79b)!=root ||
+      word(active+0x79f)!=6 || (active[0x56]&7)!=7 || slot>=32) return false;
+  const uint8_t *e=active+0xf78+64*slot;
+  /* Parameter4 is the shaft's permanent Mode7 doorway frame. It is solid
+   * behind a native arrival; a center-crossing arrival still overlaps it. */
+  if (word(e)!=0xe23f || word(e+60)!=4) return false;
+  unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
+  for (unsigned i=0;i<n;++i) {
+    const SmWorldDoor *d=&doors[i];unsigned dir=d->direction&3,nb=0;
+    if (!d->reciprocal || dir>=2) continue;
+    const SmWorldDoor *back=SmRoomPreviewDoors(d->destination,&nb);
+    bool arriving=false;
+    for (unsigned j=0;j<nb;++j) if (back[j].definition==word(active+0x78d) &&
+        back[j].destination==root && (back[j].direction&3)==(dir^1)) arriving=true;
+    int px=(int16_t)word(active+0xaf6),py=(int16_t)word(active+0xafa),rx=(int)word(active+0xafe);
+    int ex=(int16_t)word(e+2),er=(int)word(e+10),plane=(d->block_x+(dir==0))*16;
+    if (arriving && py>=d->block_y*16 && py<(d->block_y+4)*16 &&
+        abs(ex-plane)<=48 && (dir==0 ? px+rx>ex-er && px<plane : px-rx<ex+er && px>=plane)) return true;
+  }
+  return false;
+}
 int SmRoomsCollisionBlock(const uint8_t active[0x20000],int bx,int by) {
   if (!seamless || word(active+0x79b)!=root || word(active+0x998)!=8) return -1;
   int w=(int)word(active+0x7a5),h=(int)word(active+0x7a7);
@@ -654,6 +678,27 @@ int SmRoomsCollisionBlock(const uint8_t active[0x20000],int bx,int by) {
     bool near=dir==0 ? bx>=d->block_x && bx<=d->block_x+3 :
         dir==1 ? bx<=d->block_x && bx>=d->block_x-3 :
         dir==2 ? by>=d->block_y && by<=d->block_y+3 : by<=d->block_y && by>=d->block_y-3;
+    /* The Ceres Mode7 setup replaces its incoming trigger with scenic wall
+     * cells. Native entry places the body inside that column; a continuous
+     * body still straddles it. Admit only the remainder of that actual entry.
+     * Once the trailing radius clears the inner edge, approaching from inside
+     * hits the original wall again. No tile, lock or progression bit changes. */
+    if (span && near && d->reciprocal && word(active+0x79f)==6 && (active[0x56]&7)==7 &&
+        !SmDoorHasArrivalCap(read_rom(NULL,0x830003u+word(active+0x78d)))) {
+      unsigned back_count=0;const SmWorldDoor *back=SmRoomPreviewDoors(d->destination,&back_count);
+      bool arriving=false;
+      for (unsigned j=0;j<back_count;++j) if (back[j].definition==word(active+0x78d) &&
+          back[j].destination==root && (back[j].direction&3)==(dir^1)) arriving=true;
+      int px=(int16_t)word(active+0xaf6),py=(int16_t)word(active+0xafa);
+      int rx=(int)word(active+0xafe),ry=(int)word(active+0xb00);
+      int inner=(dir<2 ? d->block_x : d->block_y)*16+((dir==1 || dir==3) ? 16 : 0);
+      bool straddles=dir==0 ? px+rx>inner && px<inner+16 :
+          dir==1 ? px-rx<inner && px>=inner-16 :
+          dir==2 ? py+ry>inner && py<inner+16 : py-ry<inner && py>=inner-16;
+      bool column=dir<2 ? bx==d->block_x : by==d->block_y;
+      if (arriving && straddles && column && bx>=0 && by>=0 && bx<w && by<h &&
+          (word(active+0x10002+2*(by*w+bx))>>12)==8) return 0;
+    }
     if (!span || !near || !active_door(active,d) || !planar_portal(d,&p)) continue;
     /* The source trigger itself becomes ordinary hatch air. Beyond its
      * plane sample the destination's real cap/wall cells, including when
@@ -798,9 +843,10 @@ static bool publish(void) {
   size_t bytes=SmRoomSceneBytes(count);
   SmRoomScene *next=calloc(1,bytes); if (!next) return false;
   const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)root);
-  *next=(SmRoomScene){.version=3,.count=count,.logic=logic,.seamless=seamless,.root=root,
+  *next=(SmRoomScene){.version=4,.count=count,.logic=logic,.seamless=seamless,.root=root,
       .camera_dx=camera_dx,.camera_dy=camera_dy,.ownership=room!=NULL,.open_rooms=active_world.open_rooms,
       .root_width=room ? room->width*256u : 0,.root_height=room ? room->height*256u : 0};
+  if (native_root) { next->native=1;next->native_root=*native_root; }
   for (unsigned j=0; j<WORLD_ENTITIES; ++j) next->object_rooms[j]=active_world.slots[j].room;
   for (unsigned i=0; i<count; ++i) {
     SmRoomImage *out=&next->rooms[i];
@@ -815,12 +861,28 @@ static bool publish(void) {
   }
   free(publication); publication=next; return true;
 }
+bool SmRoomsNativeFrame(const uint8_t active[0x20000],const uint16_t vram[0x8000],bool enabled) {
+  unsigned state=word(active+0x998);
+  if (!enabled || state<9 || state>13) { free(native_root);native_root=NULL;return true; }
+  if (native_root || word(active+0x79b)!=root) return true;
+  SmRoomPlacement destination;
+  if (!SmRoomsDoor((uint16_t)word(active+0x78d),&destination)) return true;
+  native_root=calloc(1,sizeof(*native_root));if (!native_root) return false;
+  native_root->placement=(SmRoomPlacement){.room=(uint16_t)root,.state=(uint16_t)word(active+0x7bb),
+      .width=(int)word(active+0x7a5)*16,.height=(int)word(active+0x7a7)*16,
+      .left=-65536,.top=-65536,.right=65536,.bottom=65536};
+  memcpy(native_root->ram,active,sizeof(native_root->ram));
+  for (unsigned i=0;i<0x8000;++i) { native_root->vram[2*i]=(uint8_t)vram[i];native_root->vram[2*i+1]=(uint8_t)(vram[i]>>8); }
+  native_root->open_rooms=active_world.open_rooms;
+  for (unsigned i=0;i<50;++i) native_root->object_rooms[i]=active_world.slots[i].room;
+  return true;
+}
 bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
                     bool requested_logic, bool requested_seamless) {
   if (!enabled || !rom || rom_bytes!=0x300000) { SmRoomsReset(); return true; }
   unsigned game_state=word(active+0x998);
   if (game_state>=9 && game_state<=13) pending_entry=true;
-  if (game_state!=8) return true;
+  if (game_state!=8) return native_root ? publish() : true;
   unsigned current=word(active+0x79b);
   bool continuous_context=current==root || rebased;
   if ((current!=root || pending_entry) && !rebased) {
@@ -948,13 +1010,14 @@ typedef struct RoomsState {
   uint32_t links;
 } RoomsState;
 size_t SmRoomsStateBound(void) {
-  return sizeof(RoomsState)+SM_ROOM_RESIDENTS*(sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities))+sizeof(links)+sizeof(WorldEntities);
+  return sizeof(RoomsState)+SM_ROOM_RESIDENTS*(sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities))+sizeof(links)+sizeof(WorldEntities)+sizeof(SmRoomImage);
 }
 size_t SmRoomsSave(void *out, size_t capacity) {
   size_t unit=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities);
-  size_t bytes=sizeof(RoomsState)+count*unit+link_count*sizeof(DoorLink)+sizeof(WorldEntities);
+  size_t bytes=sizeof(RoomsState)+count*unit+link_count*sizeof(DoorLink)+sizeof(WorldEntities)+(native_root ? sizeof(SmRoomImage) : 0);
   if (!out || capacity<bytes) return 0;
-  RoomsState h={0x534d5257,5,count,root,logic,seamless,(uint32_t)unit,pending_entry,camera_dx,camera_dy,link_count};
+  /* pending_entry bit1 owns the optional immutable native-transition root. */
+  RoomsState h={0x534d5257,6,count,root,logic,seamless,(uint32_t)unit,(pending_entry ? 1u : 0u)|(native_root ? 2u : 0u),camera_dx,camera_dy,link_count};
   memcpy(out,&h,sizeof(h)); uint8_t *p=(uint8_t *)out+sizeof(h);
   for (unsigned i=0; i<count; ++i,p+=unit) {
     memcpy(p,&residents[i].placement,sizeof(SmRoomPlacement));
@@ -963,6 +1026,7 @@ size_t SmRoomsSave(void *out, size_t capacity) {
   }
   memcpy(p,links,link_count*sizeof(DoorLink));
   memcpy(p+link_count*sizeof(DoorLink),&active_world,sizeof(active_world));
+  if (native_root) memcpy(p+link_count*sizeof(DoorLink)+sizeof(active_world),native_root,sizeof(*native_root));
   return bytes;
 }
 static bool valid_entities(const WorldEntities *world,bool weapons,uint32_t room_mask) {
@@ -980,10 +1044,10 @@ bool SmRoomsValidate(const void *in, size_t size) {
   RoomsState h;
   if (!in || size<sizeof(h)) return false;
   memcpy(&h,in,sizeof(h));
-  if (h.magic!=0x534d5257 || h.version!=5 || h.count>SM_ROOM_RESIDENTS || h.root>65535 || h.links>MAX_LINKS ||
+  if (h.magic!=0x534d5257 || h.version!=6 || h.count>SM_ROOM_RESIDENTS || h.root>65535 || h.links>MAX_LINKS ||
       h.camera_dx < -4096 || h.camera_dx>4096 || h.camera_dy < -4096 || h.camera_dy>4096 ||
-      h.logic>1 || h.seamless>1 || h.pending_entry>1 || h.unit!=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities) ||
-      size!=sizeof(h)+(size_t)h.count*h.unit+h.links*sizeof(DoorLink)+sizeof(WorldEntities)) return false;
+      h.logic>1 || h.seamless>1 || h.pending_entry>3 || h.unit!=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities) ||
+      size!=sizeof(h)+(size_t)h.count*h.unit+h.links*sizeof(DoorLink)+sizeof(WorldEntities)+((h.pending_entry&2) ? sizeof(SmRoomImage) : 0)) return false;
   const uint8_t *p=(const uint8_t *)in+sizeof(h);
   for (unsigned i=0; i<h.count; ++i,p+=h.unit) {
     SmRoomPlacement v; memcpy(&v,p,sizeof(v));
@@ -1004,6 +1068,12 @@ bool SmRoomsValidate(const void *in, size_t size) {
     }
   }
   WorldEntities world;memcpy(&world,p+h.links*sizeof(DoorLink),sizeof(world));
+  if (h.pending_entry&2) {
+    SmRoomImage *image=malloc(sizeof(*image));if (!image) return false;
+    memcpy(image,p+h.links*sizeof(DoorLink)+sizeof(world),sizeof(*image));
+    bool valid=image->placement.room==h.root && SmRoomImageValid(image,(1u<<(h.count+1))-1);
+    free(image);if (!valid) return false;
+  }
   return valid_entities(&world,true,(1u<<(h.count+1))-1);
 }
 bool SmRoomsLoad(const void *in, size_t size) {
@@ -1025,9 +1095,15 @@ bool SmRoomsLoad(const void *in, size_t size) {
   }
   free(seed);
   if (!ok) { for (unsigned i=0; i<h.count; ++i) SmRoomRuntimeDestroy(next[i].runtime); return false; }
-  SmRoomsReset(); memcpy(residents,next,sizeof(next)); count=h.count; root=h.root;
+  SmRoomImage *next_native=NULL;
+  if (h.pending_entry&2) {
+    next_native=malloc(sizeof(*next_native));
+    if (!next_native) { for (unsigned i=0;i<h.count;++i) SmRoomRuntimeDestroy(next[i].runtime);return false; }
+    memcpy(next_native,p+h.links*sizeof(DoorLink)+sizeof(active_world),sizeof(*next_native));
+  }
+  SmRoomsReset();native_root=next_native; memcpy(residents,next,sizeof(next)); count=h.count; root=h.root;
   logic=h.logic!=0; seamless=h.seamless!=0;
-  pending_entry=h.pending_entry!=0;
+  pending_entry=(h.pending_entry&1)!=0;
   camera_dx=h.camera_dx; camera_dy=h.camera_dy;
   link_count=h.links; memcpy(links,p,link_count*sizeof(DoorLink));
   memcpy(&active_world,p+link_count*sizeof(DoorLink),sizeof(active_world));

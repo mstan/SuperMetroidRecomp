@@ -40,7 +40,13 @@ bool SmRoomCollisionFrameBegin(void) {
     if (enabled) fprintf(stderr,"[sm-rooms] missing generated collision hook $%06X\n",(unsigned)inside[i]);
     return !enabled;
   }
+  if (!snes_mod_hook_arm(0xa0a9e1,enabled) && enabled) return false;
   return true;
+}
+uint32 SmRoomSolidEntryHook(CpuState *cpu,uint32 pc24) {
+  if (g_sm_video.enhanced && g_sm_video.seamless && cpu->X<2048 && !(cpu->X&63) &&
+      SmRoomsEntryFrameAir(cpu->ram,cpu->X/64)) return (pc24&0xff0000u)|0xa9e9;
+  return 0;
 }
 uint32 SmRoomActivityHook(CpuState *cpu,uint32 pc24) {
   unsigned pc=pc24&65535,extra=SmActivityExtra();

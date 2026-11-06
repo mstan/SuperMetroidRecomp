@@ -99,6 +99,8 @@ static struct {
 #define SM_RASTER_FULL_COPY 0
 #endif
 static unsigned current;
+static const SmSourceFrame *foreground_key;
+static unsigned foreground_number;
 #if SM_NATIVE_RASTER
 static SnesRasterImage stock_images[2];
 static bool native_capture;
@@ -217,6 +219,7 @@ bool SmRendererSaveCapture(const char *path) {
   return save_capture(&frames[current], path);
 }
 bool SmRendererLoadCapture(const char *path) {
+  foreground_key=NULL;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
   memset(native_centers[current ^ 1], 0, sizeof(native_centers[0]));
 #endif
@@ -467,6 +470,7 @@ static bool bg2_owner_motion(const SmSourceFrame *f, const SmSourceFrame *old,
   return abs(world_dx) <= 32 && abs(world_dy) <= 32 && abs(*dx) <= 32 && abs(*dy) <= 32;
 }
 void SmRendererReset(void) {
+  foreground_key=NULL;
   free(pending_rooms); pending_rooms=NULL;
   free(frames[0].rooms); free(frames[1].rooms);
   scene_reset();
@@ -2094,11 +2098,56 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
                                 const uint8_t *object_owners,
                                 const SmRoomScene *rooms, const SmRoomScene *old_rooms, double alpha);
 
-static uint16_t private_vram[SM_ROOM_RESIDENTS][0x8000], private_palettes[SM_ROOM_RESIDENTS][256];
+static uint16_t private_vram[SM_ROOM_RESIDENTS+1][0x8000], private_palettes[SM_ROOM_RESIDENTS+1][256];
+static uint16_t foreground_fill[SM_ROOM_RESIDENTS+1][0x3200],foreground_distance[SM_ROOM_RESIDENTS+1][0x3200];
+static bool foreground_padding(const uint8_t *ram,unsigned block) {
+  /* Stock rooms also use other solid IDs for the very same padding art:
+   * 9AD9's $8081 and $83FF both contain four $2323 tiles. Derive those aliases
+   * from this room's definitions instead of guessing from its palette. */
+  return (block>>12)==8 && !memcmp(ram+0xa000+(block&1023)*8,ram+0xa000+1023*8,8);
+}
+static void foreground_map(const uint8_t *ram,unsigned owner) {
+  unsigned w=read16(ram,0x7a5),h=read16(ram,0x7a7);
+  memset(foreground_fill[owner],0,sizeof(foreground_fill[owner]));
+  memset(foreground_distance[owner],255,sizeof(foreground_distance[owner]));
+  if (!w || !h || (uint64_t)w*h>0x3200) return;
+  /* Four bounded sweeps extend only the cartridge's solid filler art.
+   * Actual air, secrets, items and changed blocks retain their native art. */
+  for (unsigned dir=0;dir<4;++dir) for (unsigned row=0;row<(dir<2 ? h : w);++row) {
+    unsigned block=0,distance=0,length=dir<2 ? w : h;
+    for (unsigned at=0;at<length;++at) {
+      unsigned col=(dir&1) ? length-1-at : at,x=dir<2 ? col : row,y=dir<2 ? row : col,index=y*w+x;
+      unsigned tile=read16(ram,0x10002+2*index);
+      if (!foreground_padding(ram,tile)) { block=(tile>>12)==8 ? tile : 0;distance=0;continue; }
+      ++distance;
+      if (block && distance<foreground_distance[owner][index]) {
+        foreground_fill[owner][index]=(uint16_t)block;foreground_distance[owner][index]=(uint16_t)distance;
+      }
+    }
+  }
+}
+static void prepare_foreground(const SmSourceFrame *f,const SmRoomScene *rooms) {
+  if (!rooms || (foreground_key==f && foreground_number==f->number)) return;
+  foreground_key=f;foreground_number=f->number;
+  foreground_map(rooms->native ? rooms->native_root.ram : f->ram,SM_ROOM_RESIDENTS);
+  for (unsigned i=0;i<rooms->count;++i) foreground_map(rooms->rooms[i].ram,i);
+}
+static bool foreground_block(const uint8_t *ram,unsigned owner,int x,int y,unsigned *block,unsigned *distance) {
+  int w=(int)read16(ram,0x7a5),h=(int)read16(ram,0x7a7);
+  if (!w || !h || (uint64_t)w*h>0x3200) return false;
+  int bx=x<0 ? -((-x+15)/16) : x/16,by=y<0 ? -((-y+15)/16) : y/16;
+  int cx=bx<0 ? 0 : bx>=w ? w-1 : bx,cy=by<0 ? 0 : by>=h ? h-1 : by;
+  unsigned index=(unsigned)(cy*w+cx),tile=read16(ram,0x10002+2*index),extra=(unsigned)(abs(bx-cx)+abs(by-cy));
+  if (!extra && !foreground_padding(ram,tile)) return false;
+  if (foreground_padding(ram,tile)) {
+    *block=foreground_fill[owner][index];*distance=foreground_distance[owner][index]+extra;
+  } else { *block=(tile>>12)==8 ? tile : 0;*distance=extra; }
+  return *block!=0;
+}
 static uint32_t object_colour(const SnesRenderRegisters *p,const uint16_t *background_palette,
     const uint16_t *active_palette,const uint8_t *brightness,uint16_t main,uint16_t sub,
     bool inside,uint16_t object,unsigned owner) {
-  const uint16_t *palette=owner<SM_ROOM_RESIDENTS ? private_palettes[owner] : active_palette;
+  const uint16_t *palette=owner<=SM_ROOM_RESIDENTS ? private_palettes[owner] : active_palette;
   return colour_palettes(p,main==object ? palette : background_palette,
       sub==object ? palette : background_palette,brightness,main,sub,inside);
 }
@@ -2250,9 +2299,183 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
   }
 }
 
+static void continue_foreground(SmViewport view,int y,int cx,int cy,const uint8_t *root_ram,
+    const uint16_t *root_vram,const uint16_t *root_palette,const SnesRenderRegisters *root_registers,
+    const uint16_t *objects,const uint8_t *owners,const uint8_t brightness[32],uint32_t *row,
+    const SmRoomScene *rooms,const SmWideWindow *wide) {
+  if (!rooms || y<32 || (!rooms->native && read16(root_ram,0x998)!=8)) return;
+  const SmWideWindow no_window={0};
+  if (!wide) wide=&no_window;
+  unsigned rw=read16(root_ram,0x7a5),rh=read16(root_ram,0x7a7);
+  if (!rw || !rh || (uint64_t)rw*rh>0x3200) return;
+  for (int sx=0;sx<view.width;++sx) {
+    int wx=cx+sx-view.extra,wy=cy+y+1;
+    unsigned required=~0u;
+    if (wx>=0 && wy>=0 && wx<(int)rw*16 && wy<(int)rh*16 &&
+        !foreground_padding(root_ram,read16(root_ram,0x10002+2*((wy/16)*(int)rw+wx/16)))) continue;
+    if (wx>=0 && wy>=0 && wx<(int)rw*16 && wy<(int)rh*16) required=SM_ROOM_RESIDENTS;
+    bool authored=false;
+    for (unsigned i=0;i<rooms->count;++i) {
+      const SmRoomImage *image=&rooms->rooms[i];const SmRoomPlacement *p=&image->placement;
+      if (wx<p->x || wy<p->y || wx>=p->x+p->width || wy>=p->y+p->height ||
+          wx<p->left || wy<p->top || wx>=p->right || wy>=p->bottom) continue;
+      unsigned tile=read16(image->ram,0x10002+2*(((wy-p->y)/16)*(p->width/16)+(wx-p->x)/16));
+      if (!foreground_padding(image->ram,tile)) { authored=true;break; }
+      required=i;break;
+    }
+    if (authored) continue;
+    unsigned block=0,distance=~0u,owner=SM_ROOM_RESIDENTS,candidate,cost;int lx=wx,ly=wy;
+    if ((required==~0u || required==SM_ROOM_RESIDENTS) &&
+        foreground_block(root_ram,SM_ROOM_RESIDENTS,wx,wy,&candidate,&cost)) { block=candidate;distance=cost; }
+    for (unsigned i=0;i<rooms->count;++i) {
+      if (required!=~0u && required!=i) continue;
+      const SmRoomPlacement *p=&rooms->rooms[i].placement;
+      if (wx<p->left || wx>=p->right || wy<p->top || wy>=p->bottom) continue;
+      if (foreground_block(rooms->rooms[i].ram,i,wx-p->x,wy-p->y,&candidate,&cost) && cost<distance) {
+        block=candidate;distance=cost;owner=i;lx=wx-p->x;ly=wy-p->y;
+      }
+    }
+    if (!block) continue;
+    const uint8_t *r=owner==SM_ROOM_RESIDENTS ? root_ram : rooms->rooms[owner].ram;
+    if ((r[0x56]&7)==7 && read16(r,0x783)) continue;
+    const uint16_t *vram=owner==SM_ROOM_RESIDENTS ? root_vram : private_vram[owner];
+    const uint16_t *palette=owner==SM_ROOM_RESIDENTS ? root_palette : private_palettes[owner];
+    SnesRenderRegisters p={0};
+    if (owner==SM_ROOM_RESIDENTS && root_registers) p=*root_registers;
+    else {
+      p.screenEnabled[0]=r[0x69] ? r[0x69] : 19;p.screenEnabled[1]=r[0x6b];
+      p.cgwsel=r[0x6e];p.cgadsub=r[0x71];p.fixedColor=(r[0x74]&31)|(r[0x75]&31)<<5|(r[0x76]&31)<<10;
+    }
+    unsigned tile=room_block_tile(r,block,lx,ly),tx=(lx&7)^((tile&0x4000) ? 7 : 0),ty=(ly&7)^((tile&0x8000) ? 7 : 0);
+    unsigned base=owner==SM_ROOM_RESIDENTS && root_registers ? (p.bgTileAdr&15)*4096 : (r[0x5d]&15)*4096;
+    unsigned pixel=tile_pixel(vram,base+(tile&1023)*16,(int)tx,(int)ty,4);
+    if (!pixel) continue;
+    uint16_t foreground=(uint16_t)(((tile&0x2000 ? 12 : 8)<<12)|(((tile>>10)&7)*16+pixel)),screens[2]={0x500,0x500};
+    for (unsigned sub=0;sub<2;++sub) {
+      if ((p.screenEnabled[sub]&1) && (!(p.screenWindowed[sub]&1) || !in_window(&p,0,sx-view.extra,view.extra,wide))) screens[sub]=foreground;
+      if ((p.screenEnabled[sub]&16) && objects[sx]>screens[sub] &&
+          (!(p.screenWindowed[sub]&16) || !in_window(&p,4,sx-view.extra,view.extra,wide))) screens[sub]=objects[sx];
+    }
+    row[sx]=object_colour(&p,palette,root_palette,brightness,screens[0],screens[1],
+        in_window(&p,5,sx-view.extra,view.extra,wide),objects[sx],owners[sx]);
+  }
+}
+
 #if SM_NATIVE_RASTER && SM_NATIVE_ROW_PLAN
 #include "sm_row_plan.inc"
 #endif
+
+/* During native loading the PPU deliberately contains mixed room resources.
+ * Keep its scrolling/body animation, but compose complete immutable canvases
+ * instead of brightening those transient tilemaps and faded palettes. */
+static void native_origin(const uint8_t *ram,const SmRoomScene *rooms,int *x,int *y) {
+  *x=*y=0;
+  if (read16(ram,0x79b)==rooms->root || read16(ram,0x99c)==0xe38e) return;
+  for (unsigned i=0;i<rooms->count;++i) if (rooms->rooms[i].placement.room==read16(ram,0x79b)) {
+    *x=rooms->rooms[i].placement.x;*y=rooms->rooms[i].placement.y;return;
+  }
+}
+static void native_camera(const uint8_t *ram,const SmRoomScene *rooms,int *x,int *y) {
+  native_origin(ram,rooms,x,y);
+  const uint8_t *camera=read16(ram,0x99c)==0xe38e ? rooms->native_root.ram : ram;
+  *x+=(int16_t)read16(camera,0x911);*y+=(int16_t)read16(camera,0x915);
+}
+static bool native_world(uint32_t *out,SmViewport view,bool hud_anchored,const SmSourceFrame *f,
+    const SmSourceFrame *previous,const SmRoomScene *rooms,double alpha) {
+  const SmRoomImage *root=&rooms->native_root;
+  for (unsigned i=0;i<0x8000;++i) private_vram[SM_ROOM_RESIDENTS][i]=(uint16_t)read16(root->vram,2*i);
+  for (unsigned i=0;i<256;++i) private_palettes[SM_ROOM_RESIDENTS][i]=(uint16_t)read16(root->ram,0xc000+2*i);
+  int cx,cy;native_camera(f->ram,rooms,&cx,&cy);
+  if (previous && previous->rooms && previous->rooms->native && previous->rooms->root==rooms->root && alpha<1) {
+    int ox,oy;native_camera(previous->ram,previous->rooms,&ox,&oy);
+    if (abs(ox-cx)<=32 && abs(oy-cy)<=32) { cx=lerp_pixel(ox,cx,alpha);cy=lerp_pixel(oy,cy,alpha); }
+  }
+  uint8_t brightness[32];for (unsigned i=0;i<32;++i) brightness[i]=(uint8_t)((i<<3)|(i>>2));
+  for (unsigned y=0;y<224;++y) {
+    uint32_t *row=out+y*view.width;
+    if (y<32) {
+      const uint32_t *native=f->stock+y*256;
+      if (hud_anchored) {
+        memcpy(row,native,80*sizeof(*row));memcpy(row+80+view.extra,native+80,128*sizeof(*row));
+        memcpy(row+208+2*view.extra,native+208,48*sizeof(*row));
+      } else memcpy(row+view.extra,native,256*sizeof(*row));
+      ++render_stats.hud_lines;continue;
+    }
+    ++render_stats.custom_lines;
+    uint16_t objects[SM_MAX_WIDTH],root_objects[SM_MAX_WIDTH],player[SM_MAX_WIDTH]={0};uint8_t owners[SM_MAX_WIDTH];
+    world_objects(view,(int)y,cx,cy,rooms,NULL,1,objects,owners);
+    memset(root_objects,0,sizeof(root_objects));
+    resident_objects(rooms,root,NULL,SM_ROOM_RESIDENTS,cx,cy,(int)y,view,1,true,root_objects);
+    for (int sx=0;sx<view.width;++sx) if (root_objects[sx] &&
+        object_wins(root_objects[sx],rooms->root,objects[sx],owners[sx]<rooms->count ? rooms->rooms[owners[sx]].placement.room : 65536)) {
+      objects[sx]=root_objects[sx];owners[sx]=SM_ROOM_RESIDENTS;
+    }
+    /* Samus uses her native map and graphics, with room-independent body
+     * coordinates. She remains visible while terrain VRAM is being replaced. */
+    const uint8_t *body=f->object_state_valid ? f->object_ram : root->ram;
+    int bx,by;native_origin(body,rooms,&bx,&by);
+    if (read16(body,0x99c)==0xe3c0) bx=by=0; /* camera setup precedes body rebase */
+    int gx=(int16_t)(uint16_t)(read16(body,0xb04)-read16(body,0xaf6)+read16(body,0x911));
+    int gy=(int16_t)(uint16_t)(read16(body,0xb06)-read16(body,0xafa)+read16(body,0x915));
+    if (abs(gx)>64 || abs(gy)>64) { gx=0;gy=-1; }
+    bx+=(int16_t)read16(body,0xaf6)-cx+gx;by+=(int16_t)read16(body,0xafa)-cy+gy;
+    SnesRenderRegisters obj={0};obj.obsel=body[0x52];
+    for (unsigned half=2;half-- >0;) {
+      unsigned index=read16(body,0xac8+2*half);
+      if (index>0x7fff || (half && !index)) continue;
+      const uint8_t *map=rom_bytes(0x92,0x808d+2*index,2);
+      if (map) enemy_map_pixels(&f->lines[y],&obj,0x92,read16(map,0),bx,by,0,0,(int)y,view,player,true,NULL);
+    }
+    if (f->object_state_valid) {
+      SmRasterLine cannon=f->lines[y];uint16_t gun[SM_MAX_WIDTH];
+      for (unsigned slot=0;slot<128;++slot) {
+        unsigned high=cannon.high_oam[slot/4]>>((slot%4)*2);
+        if (!samus_cannon_piece(f,cannon.oam[2*slot],cannon.oam[2*slot+1],high)) {
+          cannon.oam[2*slot]=0xf000;
+          cannon.high_oam[slot/4]&=(uint8_t)~(3u<<((slot%4)*2));
+        }
+      }
+      int ox,oy;native_origin(body,rooms,&ox,&oy);
+      if (read16(body,0x99c)==0xe3c0) ox=oy=0;
+      SmViewport shifted=view;shifted.extra+=ox+(int16_t)read16(body,0x911)-cx;
+      sprites(&obj,&cannon,(int)y-oy-(int16_t)read16(body,0x915)+cy,shifted,gun,f,NULL,1,false);
+      for (int sx=0;sx<view.width;++sx) if (gun[sx]>=player[sx]) player[sx]=gun[sx];
+    }
+    for (int sx=0;sx<view.width;++sx) {
+      const SmRoomImage *image=NULL;unsigned owner=SM_ROOM_RESIDENTS;uint16_t layers[3];
+      int wx=cx+sx-view.extra,wy=cy+(int)y+1;
+      for (unsigned i=0;i<rooms->count;++i) if (SmRoomSceneSample(&rooms->rooms[i],wx,wy,cx,cy,layers)) {
+        image=&rooms->rooms[i];owner=i;break;
+      }
+      if (!image && SmRoomSceneSample(root,wx,wy,cx,cy,layers)) image=root;
+      if (!image) continue;
+      const uint8_t *r=image->ram;SnesRenderRegisters p={0};
+      if ((r[0x56]&7)==7 && read16(r,0x783)) {
+        int16_t matrix[8];for (unsigned j=0;j<6;++j) matrix[j]=(int16_t)read16(r,0x78+2*j);
+        matrix[6]=(int16_t)(cx-image->placement.x);matrix[7]=(int16_t)(cy-image->placement.y);
+        SmMode7Line shaft=SmMode7Transform(matrix,r[0x5f],y+1);
+        unsigned pixel=SmMode7Sample(&shaft,private_vram[owner],sx-view.extra);
+        layers[0]=pixel ? (uint16_t)(0x5000|pixel) : 0;layers[1]=layers[2]=0;
+      }
+      p.cgwsel=r[0x6e];p.cgadsub=r[0x71];p.fixedColor=(r[0x74]&31)|(r[0x75]&31)<<5|(r[0x76]&31)<<10;
+      unsigned tm=r[0x69] ? r[0x69] : 19,ts=r[0x6b];uint16_t screens[2]={0x500,0x500};
+      for (unsigned layer=0;layer<3;++layer) {
+        if ((tm&(1u<<layer)) && layers[layer]>screens[0]) screens[0]=layers[layer];
+        if ((ts&(1u<<layer)) && layers[layer]>screens[1]) screens[1]=layers[layer];
+      }
+      uint16_t object=objects[sx];unsigned palette=owners[sx];
+      if (player[sx] && player[sx]>=object) { object=player[sx];palette=SM_ROOM_RESIDENTS; }
+      if ((tm&16) && object>screens[0]) screens[0]=object;
+      if ((ts&16) && object>screens[1]) screens[1]=object;
+      row[sx]=object_colour(&p,private_palettes[owner],private_palettes[SM_ROOM_RESIDENTS],brightness,
+          screens[0],screens[1],false,object,palette);
+      if (player[sx] && player[sx]>=objects[sx]) { objects[sx]=player[sx];owners[sx]=SM_ROOM_RESIDENTS; }
+    }
+    continue_foreground(view,(int)y,cx,cy,root->ram,private_vram[SM_ROOM_RESIDENTS],private_palettes[SM_ROOM_RESIDENTS],
+        NULL,objects,owners,brightness,row,rooms,NULL);
+  }
+  return true;
+}
 
 bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, double alpha) {
   SnesHdFrameDestroy(hd_frame); hd_frame = NULL;
@@ -2269,7 +2492,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   memset(out, 0, (size_t)viewport.width * 224 * sizeof(*out));
   unsigned state = read16(f->ram, 0x998);
   bool room = room_state(state);
-  const SmRoomScene *rooms=f->rooms && f->rooms->root==read16(f->ram,0x79b) ? f->rooms : NULL;
+  const SmRoomScene *rooms=f->rooms && (f->rooms->native || f->rooms->root==read16(f->ram,0x79b)) ? f->rooms : NULL;
   const SmRoomScene *old_rooms=previous && previous->rooms && rooms && previous->rooms->root==rooms->root ? previous->rooms : NULL;
   int camera_dx=rooms && rooms->seamless ? rooms->camera_dx : 0;
   int camera_dy=rooms && rooms->seamless ? rooms->camera_dy : 0;
@@ -2281,6 +2504,13 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   if (rooms) for (unsigned i=0; i<rooms->count; ++i) {
     for (unsigned j=0; j<0x8000; ++j) private_vram[i][j]=(uint16_t)read16(rooms->rooms[i].vram,2*j);
     for (unsigned j=0; j<256; ++j) private_palettes[i][j]=(uint16_t)read16(rooms->rooms[i].ram,0xc000+2*j);
+  }
+  prepare_foreground(f,rooms);
+  if (rooms && rooms->native) {
+#if SM_NATIVE_RASTER
+    if (!materialize_stock(f)) return false;
+#endif
+    return native_world(out,viewport,hud_anchored,f,previous,rooms,alpha);
   }
   if (room && viewport.extra)
     SmRoomPreviewPrepare(f->ram, (int16_t)read16(f->ram, 0x911)-viewport.extra-32,
@@ -2653,6 +2883,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       neighboring_scenery(viewport, y, matte_x, matte_y,
           read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width,
           objects,l->palette,object_owners,rooms,old_rooms,alpha);
+      if (!hud_tail) continue_foreground(viewport,y,matte_x,matte_y,f->ram,l->vram,l->palette,&scanout,
+          objects,object_owners,brightness,out+y*viewport.width,rooms,&wide_windows[y]);
       continue;
     }
 #endif
@@ -2764,6 +2996,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       neighboring_scenery(viewport, y, matte_x, matte_y,
           read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width,
           objects,l->palette,object_owners,rooms,old_rooms,alpha);
+    if (!hud_tail) continue_foreground(viewport,y,matte_x,matte_y,f->ram,l->vram,l->palette,&scanout,
+        objects,object_owners,brightness,out+y*viewport.width,rooms,&wide_windows[y]);
     if (hd_line) {
       memcpy(hd.native, out + y * viewport.width, viewport.width * 4);
       hd_ok &= SnesHdFrameSetLine(hd_frame, (unsigned)y, &hd); hd_rows[y] = true;

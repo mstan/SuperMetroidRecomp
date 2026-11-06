@@ -194,7 +194,12 @@ bool SmSeamlessDoor(void) {
   }
   interp816_set_brk_hook_enabled(b.cpu,false);
   int sx=(int16_t)word(g_ram+0xaf6)-p.x, sy=(int16_t)word(g_ram+0xafa)-p.y;
-  int cx=(int16_t)word(g_ram+0x911)-p.x,cy=(int16_t)word(g_ram+0x915)-p.y;
+  /* Native scrolling tests the authored screen under the camera's center.
+   * Carrying the old world camera into its registers can put that center in
+   * padding (9FE5 -> A011), where native autoscroll drives it off the room.
+   * Start at the cartridge's destination screen; SmRoomsHandoff carries the
+   * departing world view separately, preserving continuous presentation. */
+  int cx=definition[6]*256,cy=definition[7]*256+((definition[3]&3)==3 ? 32 : 0);
   bool ok=true;
   const struct { uint32_t pc; unsigned frame; } setup[]={
     {0x82ddf1,2},{0x82de12,2},{0x82de6f,2},{0x82def2,2},
@@ -243,8 +248,8 @@ bool SmSeamlessDoor(void) {
   if (ok) {
     bool redraw=false;
     ok=SmRoomsHandoff(previous,previous_vram,g_ram,g_ppu->vram,&p,definition[3]&3,&redraw);
-    /* A completed native grapple break has no PLM left to repaint it. Reuse
-     * the loader's native column upload after carrying that authored cell. */
+    /* Completed hatch openings and permanent grapple breaks may have no
+     * PLM left to repaint them. Refresh the loader's native column upload. */
     if (ok && redraw) ok=entry_call(&b,0x80a176,3);
   }
   if (ok) {

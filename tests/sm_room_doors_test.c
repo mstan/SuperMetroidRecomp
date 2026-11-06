@@ -68,8 +68,16 @@ int main(int argc,char **argv) {
       if (type!=12 || bts<0x40 || bts>0x43 || (blue&(1u<<(bts-0x40)))) continue;
       unsigned x=block%w,y=block/w;
       assert(SmRoomRuntimeDoorShot(r,x,y,0x300)); Tick(r,32); assert(!Open(r,x,y));
+      static uint8_t entered[sizeof(active)];
+      memcpy(entered,ram,sizeof(entered));
       Shot(r,x+(bts>=0x42 ? 2 : 0),y+(bts<0x42 ? 2 : 0),0x8000,bts-0x40);
       Tick(r,48); assert(Open(r,x,y));
+      /* Entry has already uploaded the closed cap to the native tilemap.
+       * A completed opening has no PLM left to repaint that stale graphic. */
+      bool redraw=false;
+      assert(SmRoomRuntimePromoteDoors(r,entered,&redraw) && redraw);
+      redraw=true;
+      assert(SmRoomRuntimePromoteDoors(r,entered,&redraw) && !redraw);
       assert(SmRoomRuntimeDoorClose(r,x,y,bts-0x40));
       assert(SmDoorPhase(Read,NULL,ram,x,y)==SM_DOOR_CLOSING); Tick(r,48); assert(!Open(r,x,y));
       assert(SmRoomRuntimeDoorShot(r,x,y,0)); Tick(r,48); assert(Open(r,x,y));
@@ -88,16 +96,16 @@ int main(int argc,char **argv) {
     SmRoomRuntime *r=Create(room,m->state); Tick(r,32); assert(!Open(r,m->x,m->y));
     uint8_t *receiver=malloc(sizeof(active)); uint16_t *tiles=calloc(0x8000,sizeof(*tiles)); assert(receiver && tiles);
     memcpy(receiver,SmRoomRuntimeRam(r),sizeof(active));
-    /* A real item slot belongs to entry/gameplay, even when a captured room
-     * also runs independent door animation. Its timer must not advance. */
-    receiver[0x1c37]=0xe3; receiver[0x1c38]=0xee;
+    /* Stations remain entry-only, even while resident item and hatch
+     * scenery animate. Their reserved timer must not advance. */
+    receiver[0x1c37]=0x6f; receiver[0x1c38]=0xb7;
     receiver[0x1cd7]=0x69; receiver[0x1cd8]=0x84;
     receiver[0xde1c]=123; receiver[0xde1d]=0;
     receiver[0x9c2]=0x56; receiver[0x9c3]=0x34;
     uint8_t opened_bits[64]; memcpy(opened_bits,SmRoomRuntimeRam(r)+0xd8b0,sizeof(opened_bits));
     assert(SmRoomRuntimeDoorOpen(r,m->x,m->y,m->direction));
     assert(SmRoomRuntimePromoteDoors(r,receiver,NULL));
-    assert(word(receiver+0x1c37)==0xeee3 && word(receiver+0x9c2)==0x3456);
+    assert(word(receiver+0x1c37)==0xb76f && word(receiver+0x9c2)==0x3456);
     SmRoomRuntime *promoted=Create(room,m->state);
     assert(SmRoomRuntimeCapture(promoted,receiver,tiles)); Tick(promoted,64);
     assert(Open(promoted,m->x,m->y) && word(SmRoomRuntimeRam(promoted)+0xde1c)==123);

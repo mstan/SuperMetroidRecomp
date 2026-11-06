@@ -102,7 +102,7 @@ class Rom:
 
 
 class Session:
-    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None, shared_resources=None, neighboring_logic=None, seamless=None, aspect='16:9'):
+    def __init__(self, exe, rom, output, port=0, floor=None, wide=False, interpreter_only=False, interpret_targets=(), seed_sram=None, capture_profile=True, features=None, hud_anchored=True, env_overrides=None, shared_resources=None, neighboring_logic=None, seamless=None, aspect='16:9', presentation_fps=0, paced=False):
         cache = Path(exe).resolve().parent / 'CMakeCache.txt'
         if cache.exists() and 'SNESRECOMP_ENABLE_TRACE:BOOL=OFF' in cache.read_text().splitlines():
             raise ValueError('TCP QA requires a build configured with -DSNESRECOMP_ENABLE_TRACE=ON')
@@ -116,16 +116,17 @@ class Session:
             shutil.copyfile(Path(seed_sram).resolve(strict=True), self.output / 'saves' / 'save.srm')
         self.journal = (self.output / 'commands.jsonl').open('w', encoding='utf-8')
         self.config = self.output / 'config.ini'
+        window_settings = 'WindowSize=960x540\nFullscreen=0\n' if presentation_fps else ''
         self.config.write_text(
-            '[General]\nAutosave=0\nSkipLauncher=1\nDisableFrameDelay=1\nRunAhead=0\n'
-            '[Graphics]\nWindowScale=2\nVSync=0\nRenderer=software\nNewRenderer=1\nNoSpriteLimits=0\n'
+            f'[General]\nAutosave=0\nSkipLauncher=1\nDisableFrameDelay={int(not paced)}\nRunAhead=0\n'
+            f'[Graphics]\n{window_settings}WindowScale=2\nVSync=0\nRenderer=software\nNewRenderer=1\nNoSpriteLimits={int(bool(presentation_fps))}\n'
             '[Sound]\nEnableAudio=1\nVolume=0\n'
             '[Controller]\nSourceP1=0\nSourceP2=0\nSourceP3=0\nSourceP4=0\n'
             '[GamepadMap]\nEnableGamepad1=false\nEnableGamepad2=false\n'
             'EnableGamepad3=false\nEnableGamepad4=false\n',
             encoding='utf-8')
         (self.output / 'sm-video.ini').write_text(
-            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect={aspect}\nPresentationEnabled=0\nHudAnchored={int(hud_anchored)}\n',
+            f'[SuperMetroidVideo]\nEnhancedRenderer={int(wide)}\nAspect={aspect}\nPresentationEnabled={int(bool(presentation_fps))}\nPresentationFPS={presentation_fps}\nHudAnchored={int(hud_anchored)}\n',
             encoding='utf-8')
         with (self.output / 'sm-video.ini').open('a',encoding='utf-8') as video_config:
             if neighboring_logic is not None:

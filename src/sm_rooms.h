@@ -14,12 +14,14 @@ int SmRoomsEnemyBlock(uint8_t active[0x20000],uint8_t source[0x20000],int origin
     bool horizontal,uint16_t *index);
 bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
                     bool requested_logic, bool requested_seamless);
+bool SmRoomsNativeFrame(const uint8_t active[0x20000],const uint16_t vram[0x8000],bool enabled);
 const SmRoomScene *SmRoomsScene(void);
 bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination);
 unsigned SmRoomsDoorPhase(uint16_t definition);
 /* Native collision keeps its own slope/solid responses. These queries only
  * replace samples belonging to an adjoining room at a planar doorway. */
 int SmRoomsCollisionBlock(const uint8_t active[0x20000], int block_x, int block_y);
+bool SmRoomsEntryFrameAir(const uint8_t active[0x20000], unsigned slot);
 bool SmRoomsShotsActive(const uint8_t active[0x20000]);
 bool SmRoomsShotDoorAir(const uint8_t ram[0x20000],int origin_x,int origin_y,unsigned block);
 /* -1 retains the active native response (with a corrected byte index).

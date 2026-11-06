@@ -456,7 +456,7 @@ static void resident_publication(const char *path) {
   ppu.inidisp=15; ppu.bgmode=1; ppu.bgTileAdr=1; ppu.screenEnabled[0]=1; ppu.cgram[1]=31;
   for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
   SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
-  *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=0};
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=0};
   SmRoomImage *image=&scene->rooms[0];
   image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
       .left=256,.top=0,.right=512,.bottom=256};
@@ -509,7 +509,7 @@ static void resident_character_bases(void) {
     word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
     ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=1;
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic};
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic};
     SmRoomImage *image=&scene->rooms[0];
     image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
         .left=256,.top=0,.right=512,.bottom=256};
@@ -547,7 +547,7 @@ static void resident_mode7_canvas(void) {
       ppu.bgTileAdr=1;for (unsigned y=0; y<8; ++y) ppu.vram[0x1000+y]=255;
     }
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
     SmRoomImage *image=&scene->rooms[0];
     image->placement=(SmRoomPlacement){.room=0xdf45,.state=0xdf71,.x=256,.width=256,.height=256,
         .left=256,.top=0,.right=512,.bottom=256};
@@ -580,7 +580,7 @@ static void resident_steam_pixels(void) {
     SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
     ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=17;
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic,.ownership=1,.root_width=256,.root_height=256};
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.ownership=1,.root_width=256,.root_height=256};
     SmRoomImage *image=&scene->rooms[0];
     image->placement=(SmRoomPlacement){.room=0xdfd7,.state=0xe003,.x=256,.width=256,.height=256,
         .left=256,.top=0,.right=512,.bottom=256};image->object_rooms[0]=0xdfd7;
@@ -622,7 +622,7 @@ static void carried_native_objects(void) {
     ppu.oam[0]=128|((unsigned)native_y[test]<<8);ppu.oam[1]=0x3000;
     for (unsigned y=0; y<8; ++y) ppu.vram[0x4000+y]=255;
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(0));assert(scene);
-    *scene=(SmRoomScene){.version=3,.root=0x91f8,.logic=logic,.seamless=1,.camera_dy=carries[test]};
+    *scene=(SmRoomScene){.version=4,.root=0x91f8,.logic=logic,.seamless=1,.camera_dy=carries[test]};
     assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
     for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
     assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
@@ -642,7 +642,7 @@ static void resident_in_native_padding(void) {
   ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=1;ppu.hScroll[0]=256;ppu.cgram[1]=31;
   for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
   SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-  *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.ownership=ownership,.root_width=512,.root_height=256};
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.ownership=ownership,.root_width=512,.root_height=256};
   SmRoomImage *image=&scene->rooms[0];
   image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
       .left=256,.top=0,.right=512,.bottom=256};
@@ -677,7 +677,7 @@ static void resident_projectile_pixels(void) {
         word(0xb64+offset,260); word(0xb78+offset,slot ? 100 : 60);
       }
       SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
-      *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
+      *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
       SmRoomImage *image=&scene->rooms[0];
       image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
           .left=256,.top=0,.right=512,.bottom=256};
@@ -718,7 +718,7 @@ static void resident_padding_keeps_root_objects(void) {
     word(0xc40,1);word(0xc18,0x100);word(0xcb8,0x9000);word(0xb64,320);word(0xb78,80);
     romword(0x99000,1);romword(0x99005,0x3800);
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.ownership=1,.root_width=512,.root_height=256};scene->object_rooms[50]=0x91f8;
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.ownership=1,.root_width=512,.root_height=256};scene->object_rooms[50]=0x91f8;
     SmRoomImage *image=&scene->rooms[0];
     image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
         .left=256,.top=0,.right=512,.bottom=256};
@@ -746,7 +746,7 @@ static void resident_world_objects(void) {
     ppu.cgram[1]=31;ppu.cgram[193]=31<<5;
     for (unsigned y=0; y<8; ++y) ppu.vram[4096+y]=255;
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=ownership<3,
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=ownership<3,
         .ownership=ownership!=0,.root_width=256,.root_height=256};
     SmRoomImage *image=&scene->rooms[0];
     image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
@@ -777,7 +777,7 @@ static void resident_sprite_objects(void) {
     SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
     ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=17;ppu.cgram[129]=31;
     SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
-    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.ownership=1,
+    *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.ownership=1,
         .root_width=256,.root_height=256,.camera_dx=(int)camera};
     SmRoomImage *image=&scene->rooms[0];
     image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
@@ -1188,7 +1188,85 @@ static void nonrectangular_room_padding(void) {
   ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
 }
 
+static void native_transition_canvas(const char *path) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0x91f8,.native=1};
+  SmRoomImage *a=&scene->native_root,*b=&scene->rooms[0];
+  a->placement=(SmRoomPlacement){.room=0x91f8,.state=0x9213,.width=256,.height=256,.left=0,.top=0,.right=256,.bottom=256};
+  b->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  a->ram[0x7a5]=a->ram[0x7a7]=b->ram[0x7a5]=b->ram[0x7a7]=16;
+  a->ram[0x69]=b->ram[0x69]=1;a->ram[0xc002]=31;b->ram[0xc003]=0x7c;
+  for (unsigned y=0;y<8;++y) a->vram[y*2]=b->vram[y*2]=255;
+  word(0x998,11);word(0x7a5,16);word(0x7a7,16);
+  ppu.bgmode=1;ppu.inidisp=0x80;ppu.cgram[1]=0x03e0; /* incomplete/faded live resources */
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned frame=1;frame<=4;++frame) {
+    word(0x79b,frame==1 ? 0x91f8 : 0x9400);
+    word(0x99c,frame==1 ? 0xe36e : frame==2 ? 0xe38e : 0xe434);
+    word(0x911,frame<=2 ? 0 : frame==3 ? -128 : 0);
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,frame);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock));
+    for (unsigned phase=0;phase<3;++phase) {
+      assert(SmRendererDraw(output,view,false,phase*.5));
+      assert(output[100*view.width+view.extra+64]==(frame<4 ? 0xff0000u : 0x0000ffu));
+      assert(output[100*view.width+view.extra+260]==(frame<4 ? 0x0000ffu : 0));
+    }
+  }
+  assert(SmRendererSaveCapture(path));ResetFixtureRenderer();
+  assert(SmRendererLoadCapture(path) && SmRendererDraw(output,view,false,1));
+  assert(output[100*view.width+view.extra+64]==0x0000ff);
+  free(scene);ResetFixtureRenderer();
+}
+
+static void continued_solid_foreground(void) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);ram[0x5d]=1;
+  /* Stock 9AD9 also uses solid $8081, with the same four graphics as $83FF. */
+  for (unsigned i=0;i<256;++i) word(0x10002+2*i,i%16>=8 ? 0x8081 : 0x83ff);
+  for (unsigned y=0;y<8;++y) for (unsigned x=0;x<8;++x)
+    word(0x10002+2*(y*16+x),y==0 || y==7 || x==7 ? 0x8001 : 0);
+  for (unsigned i=0;i<4;++i) word(0xa008+2*i,1);
+  ppu.inidisp=15;ppu.bgmode=1;ppu.bgTileAdr=1;ppu.screenEnabled[0]=1;ppu.cgram[1]=31;
+  for (unsigned y=0;y<8;++y) ppu.vram[4096+16+y]=255;
+  for (unsigned y=0;y<16;++y) for (unsigned x=0;x<16;++x)
+    ppu.vram[y*32+x]=y<2 || y>=14 || x>=14 ? 1 : 0;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+  *scene=(SmRoomScene){.version=4,.root=0x91f8,.count=1,.ownership=1,.root_width=256,.root_height=256};
+  SmRoomImage *other=&scene->rooms[0];
+  other->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  other->ram[0x7a5]=other->ram[0x7a7]=16;other->ram[0x69]=1;other->ram[0xc003]=0x7c;
+  for (unsigned y=0;y<8;++y) other->vram[2*y]=255;
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned frame=1;frame<=3;++frame) {
+    if (frame==2) { word(0x10002+2*(6*16+7),0);ppu.vram[12*32+14]=ppu.vram[12*32+15]=0; }
+    if (frame==3) {
+      /* Native loader presentation has no active widened HDMA window. Its
+       * continued padding must still use normal color-window evaluation. */
+      scene->native=1;
+      scene->native_root.placement=(SmRoomPlacement){.room=0x91f8,.state=0x9213,
+          .width=256,.height=256,.left=0,.top=0,.right=256,.bottom=256};
+      memcpy(scene->native_root.ram,ram,sizeof(ram));
+      memcpy(scene->native_root.vram,ppu.vram,sizeof(scene->native_root.vram));
+      scene->native_root.ram[0xc002]=31;
+      word(0x998,11);
+    }
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,frame);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[100*view.width+view.extra+48]==0); /* authored air remains exposed */
+    assert(output[100*view.width+view.extra+200]==(frame==1 ? 0xff0000u : 0));
+    assert(output[200*view.width+view.extra+48]==0xff0000); /* mixed-screen filler below the floor */
+    assert(output[100*view.width+view.extra+260]==0x0000ff); /* real connected canvas wins */
+  }
+  free(scene);ResetFixtureRenderer();
+}
+
 int main(int argc, char **argv) {
+  continued_solid_foreground();
+  native_transition_canvas(argv[1]);
   native_center_provider();
   hud_bottom_anchor();
   pause_menu_fade();

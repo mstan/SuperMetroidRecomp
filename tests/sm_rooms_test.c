@@ -558,6 +558,22 @@ int main(int argc,char **argv) {
   SmRoomsSetEnemyReaction(root_enemy);
   f=fopen(argv[2],"rb"); assert(f); assert(fread(active,1,sizeof(active),f)==sizeof(active)); fclose(f);
   memcpy(original,active,sizeof(active));
+  if (SmShotWord(original,0x79b)==0xdf45 && (original[0x56]&7)==7) {
+    for (unsigned logic=0; logic<2; ++logic) {
+      memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
+      assert(SmRoomsFrame(active,true,43,logic!=0,true));
+      put(0xaf6,254);put(0xafa,651);put(0xafe,6);
+      assert(SmRoomsEntryFrameAir(active,1));
+      put(0xaf6,210);assert(!SmRoomsEntryFrameAir(active,1));put(0xaf6,254);
+      assert(!SmRoomsEntryFrameAir(active,0));
+      assert(SmRoomsCollisionBlock(active,15,40)==0);
+      assert(SmRoomsCollisionBlock(active,15,42)!=0);
+      put(0xaf6,234);assert(SmRoomsCollisionBlock(active,15,40)==-1);
+      put(0xaf6,254);put(0x78d,0);assert(SmRoomsCollisionBlock(active,15,40)==-1);
+    }
+    puts("actual Ceres Mode7 incoming scenic wall admits a straddling body only; cleared body, unrelated wall and wrong entry stay solid, On/Off");
+    SmRoomsSetRom(NULL,0);free(rom);return 0;
+  }
   for (unsigned logic=0; logic<2; ++logic) {
     SmRoomsSetRom(rom,0x300000);
     for (unsigned frame=0; frame<60; ++frame) assert(SmRoomsFrame(active,true,213,logic!=0,true));
@@ -625,6 +641,28 @@ int main(int argc,char **argv) {
   world_power_bombs(rom);
   retained_projectile(rom);
   resource_retention(rom);
+  if (SmShotWord(original,0x79b)==0x91f8) {
+    static uint16_t native_vram[0x8000];
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
+    assert(SmRoomsFrame(active,true,213,true,false));
+    unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors(0x91f8,&n);bool found=false;
+    for (unsigned i=0;i<n;++i) {
+      SmRoomPlacement destination;
+      if (SmRoomsDoor(doors[i].definition,&destination)) { put(0x78d,doors[i].definition);found=true;break; }
+    }
+    assert(found);put(0x998,9);
+    assert(SmRoomsNativeFrame(active,native_vram,true) && SmRoomsFrame(active,true,213,true,false));
+    assert(SmRoomsScene()->native && SmRoomSceneValid(SmRoomsScene()));
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*again=malloc(bound);assert(saved && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes && SmRoomsValidate(saved,bytes));
+    assert(!SmRoomsValidate(saved,bytes-1));
+    assert(SmRoomsLoad(saved,bytes) && SmRoomsScene()->native);
+    assert(SmRoomsSave(again,bound)==bytes && !memcmp(saved,again,bytes));
+    put(0x998,8);assert(SmRoomsNativeFrame(active,native_vram,true));
+    assert(SmRoomsFrame(active,true,213,true,false) && !SmRoomsScene()->native);
+    free(saved);free(again);memcpy(active,original,sizeof(active));
+    puts("native transition owns departing resources and restores them byte-exactly; truncated images rejected and gameplay releases the cache");
+  }
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);
     assert((original[0x79b] | original[0x79c]<<8)==0x96ba);
