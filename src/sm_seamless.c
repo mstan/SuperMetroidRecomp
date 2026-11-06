@@ -129,6 +129,7 @@ bool SmActiveDoorEvent(unsigned x,unsigned y,unsigned orientation,bool closing) 
   interp816_free(b.cpu); return ok;
 }
 static bool open_entrance(EntryBus *b,const uint8_t *definition) {
+  if (!SmDoorHasArrivalCap(definition[3])) return true;
   unsigned block=definition[5]*word(g_ram+0x7a5)+definition[4];
   if (block>=word(g_ram+0x7a5)*word(g_ram+0x7a7)) return false;
   /* A valid door-block crossing already passed the outgoing cap. Play the

@@ -1,6 +1,7 @@
 #include "sm_room_runtime.h"
 #include "sm_activity.h"
 #include "sm_door.h"
+#include "sm_shot_view.h"
 #include "snes/interp816.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,8 @@ struct SmRoomRuntime {
   uint16_t door_blocks[128];
   uint8_t door_orientations[128];
   unsigned door_count;
+  SmRoomShotAir shot_air;
+  void *shot_context;
   char error[128];
 };
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
@@ -90,6 +93,9 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
   for (unsigned i=0; i<200000 && !r->error[0]; ++i) {
     if (c->pc==0xff00 && c->sp==0x1fff) return true;
     if (c->waiting || c->stopped) { fail(r,"room routine suspended",entry); return false; }
+    if (r->shot_air && (c->k&127)==0x14 && (c->pc==0xa1cd || c->pc==0xa1ee) &&
+        c->x==18 && r->shot_air(r->shot_context,r->ram,word(r->ram+0xdc4)))
+      c->x=0; /* this registered connection's trigger is ordinary shot air */
     interp816_runOpcode(c);
     if (r->error[0]) {
       size_t n=strlen(r->error);
@@ -155,7 +161,7 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   put(r,0x78d,incoming);
   put(r,0x7a5,room->width*16); put(r,0x7a7,room->height*16);
   put(r,0x7a9,room->width); put(r,0x7ab,room->height);
-  put(r,0x7b9,room->width*room->height*256);
+  put(r,0x7b9,room->width*room->height*512); /* native bound is a byte index */
   if (!call(r,0x82def2,2)) return r;
   for (unsigned i=0; i<512; ++i) r->ram[0xc200+i]=read(context,0x9a8000u+i);
   for (unsigned i=0; i<0x2000; ++i) r->vram[0x8000+i]=read(context,0x9ab200u+i);
@@ -271,6 +277,30 @@ bool SmRoomRuntimeDoorShot(SmRoomRuntime *r,unsigned x,unsigned y,uint16_t type)
   bool ok=call(r,0x8484e7,3);
   put(r,0xdde,(int)previous_index); put(r,0xc18,(int)previous_type);
   return ok;
+}
+int SmRoomRuntimeShot(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,
+    int x,int y,bool horizontal,SmRoomShotAir air,void *context) {
+  if (!r || r->error[0] || x<0 || y<0 || x>=(int)word(r->ram+0x7a5) ||
+      y>=(int)word(r->ram+0x7a7)) return -2;
+  uint8_t scratch[64],pool[SM_SHOT_POOL_BYTES];
+  memcpy(scratch,r->ram,sizeof(scratch)); memcpy(pool,r->ram+SM_SHOT_POOL,sizeof(pool));
+  const unsigned work[]={0xdde,0xdc4,0x1c27,0x1c29,0x1c2b};
+  uint16_t saved[sizeof(work)/sizeof(*work)];
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  Interp816 previous=*r->cpu;
+  SmShotInput(r->ram,active,-origin_x,-origin_y,horizontal);
+  r->cpu->x=(uint16_t)(2*(y*word(r->ram+0x7a5)+x));
+  r->cpu->db=0x94; r->cpu->dp=0; r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
+  r->cpu->i=true; r->cpu->waiting=r->cpu->stopped=false;
+  r->shot_air=air; r->shot_context=context;
+  bool ok=call(r,horizontal ? 0x94a1b5 : 0x94a1d6,2);
+  int result=ok ? (int)r->cpu->c : -2;
+  if (ok) SmShotOutput(active,r->ram,origin_x,origin_y);
+  r->shot_air=NULL; r->shot_context=NULL;
+  memcpy(r->ram,scratch,sizeof(scratch)); memcpy(r->ram+SM_SHOT_POOL,pool,sizeof(pool));
+  for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) put(r,work[i],saved[i]);
+  *r->cpu=previous;
+  return result;
 }
 bool SmRoomRuntimeDoorOpen(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orientation) {
   if (!r || r->error[0] || orientation>=4 || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;

@@ -3,6 +3,12 @@
 #include <stdint.h>
 #include "mods/sm_world.h"
 enum { SM_DOOR_SHUT, SM_DOOR_OPENING, SM_DOOR_OPEN, SM_DOOR_CLOSING };
+/* Native SpawnDoorClosingPLM indexes 8F:E68A with the full direction.
+ * Directions 0..3 have zero entries and no arrival cap; their cap X/Y
+ * fields can be placeholders and must never become synthetic bubbles. */
+static inline bool SmDoorHasArrivalCap(unsigned direction) {
+  return direction>=4 && direction<8;
+}
 static inline unsigned SmDoorWord(const uint8_t *p) { return p[0] | p[1]<<8; }
 static inline bool SmDoorHeader(unsigned h) {
   return h==0xc83e || (h>=0xc842 && h<=0xc8b4 && !((h-0xc842)%6)) ||

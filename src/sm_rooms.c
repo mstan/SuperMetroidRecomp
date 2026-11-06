@@ -2,6 +2,7 @@
 #include "sm_room_runtime.h"
 #include "sm_room_preview.h"
 #include "sm_door.h"
+#include "sm_shot_view.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,8 +76,14 @@ static bool mirror_doors(uint8_t active[0x20000]) {
         if (!reverse || out->definition>=reverse->definition) continue;
         if (next_count==MAX_LINKS) return false;
         unsigned ax=reverse->arrival_x,ay=reverse->arrival_y,bx=out->arrival_x,by=out->arrival_y;
+        bool cap_a=SmDoorHasArrivalCap(reverse->direction),cap_b=SmDoorHasArrivalCap(out->direction);
         DoorLink current={out->definition,reverse->definition,(uint16_t)a->state,(uint16_t)b->state,
-            (uint8_t)SmDoorPhase(read_rom,NULL,a->ram,ax,ay),(uint8_t)SmDoorPhase(read_rom,NULL,b->ram,bx,by),{0,0}};
+            (uint8_t)(cap_a ? SmDoorPhase(read_rom,NULL,a->ram,ax,ay) : SM_DOOR_OPEN),
+            (uint8_t)(cap_b ? SmDoorPhase(read_rom,NULL,b->ram,bx,by) : SM_DOOR_OPEN),{0,0}};
+        /* Retain the geometric link even for an uncapped entrance. Its
+         * constant open phase must not unlock an authored cap on the other
+         * side or insert a blue PLM into a placeholder room coordinate. */
+        if (!cap_a || !cap_b) { next[next_count++]=current; continue; }
         const DoorLink *old=NULL;
         for (unsigned k=0; k<link_count; ++k) if (links[k].a==current.a && links[k].b==current.b &&
             links[k].state_a==current.state_a && links[k].state_b==current.state_b) { old=&links[k]; break; }
@@ -114,17 +121,28 @@ bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination) {
   return false;
 }
 unsigned SmRoomsDoorPhase(uint16_t definition) {
-  for (unsigned i=0; i<count; ++i) if (residents[i].placement.incoming==definition)
+  for (unsigned i=0; i<count; ++i) if (residents[i].placement.incoming==definition) {
+    if (!SmDoorHasArrivalCap(read_rom(NULL,0x830003u+definition))) return SM_DOOR_OPEN;
     return SmDoorPhase(read_rom,NULL,SmRoomRuntimeRam(residents[i].runtime),
         read_rom(NULL,0x830004u+definition),read_rom(NULL,0x830005u+definition));
+  }
   return SM_DOOR_SHUT;
 }
 /* Only regular, reciprocal screen-edge hatches have this planar contract.
  * Sand falls, elevators and special warp headers retain their native path. */
+static bool planar_shape(const SmWorldDoor *d) {
+  unsigned dir=d->direction&3;
+  return d->reciprocal && !(d->flags&0x80) && d->block_x>=0 &&
+      (dir<2 ? (unsigned)d->block_x%16 : (unsigned)d->block_y%16)==(dir==0 || dir==2 ? 15u : 0u);
+}
+static bool linked_door(uint16_t definition) {
+  for (unsigned i=0; i<link_count; ++i)
+    if (links[i].a==definition || links[i].b==definition) return true;
+  return false;
+}
 static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p) {
   unsigned dir=d->direction&3;
-  if (!d->reciprocal || (d->flags&0x80) || d->block_x<0 ||
-      (dir<2 ? (unsigned)d->block_x%16 : (unsigned)d->block_y%16)!=(dir==0 || dir==2 ? 15u : 0u)) return false;
+  if (!planar_shape(d)) return false;
   bool paired=false;
   for (unsigned i=0; i<link_count; ++i) if (links[i].a==d->definition || links[i].b==d->definition) { paired=true; break; }
   if (!paired) return false;
@@ -144,6 +162,63 @@ static bool active_door(const uint8_t *ram,const SmWorldDoor *d) {
   if (d->block_x<0 || d->block_y<0 || (unsigned)d->block_x>=w || (unsigned)d->block_y>=h) return false;
   unsigned block=(unsigned)d->block_y*w+(unsigned)d->block_x;
   return (word(ram+0x10002+2*block)>>12)==9 && (ram[0x16402+block]&127)==d->index;
+}
+bool SmRoomsShotsActive(const uint8_t active[0x20000]) {
+  if (!rom || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
+  unsigned index=word(active+0xdde);
+  if (index>=20 || (index&1) || !word(active+0xc40+index)) return false;
+  unsigned category=word(active+0xc18+index)&0xf00;
+  return category<0x300; /* beams, missiles and supers; explosions have other paths */
+}
+bool SmRoomsShotDoorAir(const uint8_t ram[0x20000],int origin_x,int origin_y,unsigned block) {
+  unsigned w=word(ram+0x7a5),h=word(ram+0x7a7);
+  if (!w || block>=w*h || (word(ram+0x10002+2*block)>>12)!=9) return false;
+  int bx=(int)(block%w),by=(int)(block/w);
+  unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)word(ram+0x79b),&n);
+  static const int dx[4]={1,-1,0,0},dy[4]={0,0,1,-1};
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i]; unsigned dir=d->direction&3;
+    bool span=dir<2 ? bx==d->block_x && by>=d->block_y && by<d->block_y+4 :
+        by==d->block_y && bx>=d->block_x && bx<d->block_x+4;
+    if (!span || !planar_shape(d) || !active_door(ram,d) || !linked_door(d->definition)) continue;
+    int x=origin_x+(d->block_x/16+dx[dir]-d->arrival_x/16)*256;
+    int y=origin_y+(d->block_y/16+dy[dir]-d->arrival_y/16)*256;
+    if (d->destination==root && !x && !y) return true;
+    for (unsigned j=0; j<count; ++j) {
+      const SmRoomPlacement *p=&residents[j].placement;
+      if (p->room==d->destination && p->x==x && p->y==y) return true;
+    }
+  }
+  return false;
+}
+typedef struct ShotOrigin { int x,y; } ShotOrigin;
+static bool resident_shot_air(void *context,const uint8_t ram[0x20000],unsigned block) {
+  const ShotOrigin *p=context;
+  return SmRoomsShotDoorAir(ram,p->x,p->y,block);
+}
+int SmRoomsShotBlock(uint8_t active[0x20000],bool horizontal,uint16_t *index) {
+  int bx,by;
+  if (!index || !SmRoomsShotsActive(active) || !SmShotSample(active,horizontal,&bx,&by)) return -1;
+  int x=bx*16+8,y=by*16+8;
+  for (unsigned i=0; i<count; ++i) {
+    const SmRoomPlacement *p=&residents[i].placement;
+    if (x<p->x || y<p->y || x>=p->x+p->width || y>=p->y+p->height ||
+        x<p->left || x>=p->right || y<p->top || y>=p->bottom) continue;
+    ShotOrigin origin={p->x,p->y};
+    return SmRoomRuntimeShot(residents[i].runtime,active,p->x,p->y,
+        bx-p->x/16,by-p->y/16,horizontal,resident_shot_air,&origin);
+  }
+  int w=(int)word(active+0x7a5),h=(int)word(active+0x7a7);
+  if (bx>=0 && by>=0 && bx<w && by<h) {
+    unsigned block=(unsigned)(by*w+bx);
+    *index=(uint16_t)(block*2);
+    if (!SmRoomsShotDoorAir(active,0,0,block)) return -1;
+    return 0;
+  }
+  /* A room allocation ends at real walls, except at a registered connection.
+   * Do not let an unsigned row/column alias hit an unrelated native block. */
+  SmShotPut(active,0x28,(int)word(active+0x28)-1);
+  return 1;
 }
 static int tile_collision(const uint8_t *ram,int x,int y) {
   int w=(int)word(ram+0x7a5),h=(int)word(ram+0x7a7);
@@ -317,7 +392,9 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   rebased=false;
   follow_doorway(active,extra);
   int x=(int16_t)word(active+0x911)+camera_dx, y=(int16_t)word(active+0x915)+camera_dy;
-  SmRoomPreviewPrepare(active,x-(int)extra-32,y-32,x+256+(int)extra+32,y+256);
+  /* Match native projectile retention beyond the visible edges. A shot must
+   * not lose its room's collision just before its ordinary offscreen cull. */
+  SmRoomPreviewPrepare(active,x-(int)extra-64,y-64,x+256+(int)extra+64,y+288);
   Resident old[SM_ROOM_RESIDENTS]; unsigned old_count=count;
   memcpy(old,residents,sizeof(old)); memset(residents,0,sizeof(residents)); count=0;
   bool ok=true;

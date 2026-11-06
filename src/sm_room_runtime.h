@@ -17,6 +17,10 @@ bool SmRoomRuntimeStepDoors(SmRoomRuntime *room);
 bool SmRoomRuntimeDoorShot(SmRoomRuntime *room, unsigned block_x, unsigned block_y, uint16_t projectile_type);
 bool SmRoomRuntimeDoorOpen(SmRoomRuntime *room, unsigned block_x, unsigned block_y, unsigned orientation);
 bool SmRoomRuntimeDoorClose(SmRoomRuntime *room, unsigned block_x, unsigned block_y, unsigned orientation);
+typedef bool (*SmRoomShotAir)(void *context,const uint8_t ram[0x20000],unsigned block);
+/* Native block response only. Movement/slot ownership stays with the player. */
+int SmRoomRuntimeShot(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,
+    int block_x,int block_y,bool horizontal,SmRoomShotAir air,void *context);
 void SmRoomRuntimeProgress(SmRoomRuntime *room, const uint8_t active[0x20000]);
 void SmRoomRuntimeDoorBits(const SmRoomRuntime *room, uint8_t active[0x20000]);
 bool SmRoomRuntimeStepVisible(SmRoomRuntime *room, int samus_x, int samus_y,

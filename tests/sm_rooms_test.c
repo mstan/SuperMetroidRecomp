@@ -1,10 +1,30 @@
 #include "sm_rooms.h"
 #include "sm_room_collision.h"
+#include "sm_room_runtime.h"
+#include "sm_room_preview.h"
+#include "sm_shot_view.h"
+#include "sm_door.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 static uint8_t active[0x20000], original[0x20000];
+static uint8_t *cartridge;
+static uint8_t Read(void *unused,uint32_t address) {
+  (void)unused;unsigned offset=((address>>16)&127)*32768u+(address&32767);
+  return (address&0x8000) && offset<0x300000 ? cartridge[offset] : 255;
+}
+/* Owned-ROM provider for the active endpoint. The live game uses its actual
+ * active bus; this probe runs that endpoint's native PLMs in a private VM. */
+static bool root_door(unsigned x,unsigned y,unsigned direction,bool closing) {
+  static uint16_t vram[0x8000];
+  const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)SmShotWord(active,0x79b));
+  SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,(uint16_t)SmShotWord(active,0x7bb),0,active,false);
+  assert(r && SmRoomRuntimeCapture(r,active,vram));
+  bool ok=closing ? SmRoomRuntimeDoorClose(r,x,y,direction) : SmRoomRuntimeDoorOpen(r,x,y,direction);
+  for (unsigned i=0; ok && i<64; ++i) ok=SmRoomRuntimeStepDoors(r);
+  ok=ok && SmRoomRuntimePromoteDoors(r,active);SmRoomRuntimeDestroy(r);return ok;
+}
 static void put(unsigned at,int value) { active[at]=(uint8_t)value; active[at+1]=(uint8_t)((unsigned)value>>8); }
 static void samples(void) {
   /* Exercise both scan directions, half-body boundary overlap and the
@@ -31,11 +51,66 @@ static void samples(void) {
   }
   puts("native collision sample coordinates survive both boundary/scan-direction wraps");
 }
+static void world_shots(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned mode=0; mode<2; ++mode) {
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic!=0,mode!=0));
+    unsigned cap=0x10002+2*(22*144+142);
+    active[cap+1]=(uint8_t)((active[cap+1]&15)|0xc0);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic!=0,mode!=0));
+    put(0xdde,0);put(0xc18,0x8000);put(0xc40,0x8123);put(0xb64,2321);put(0xb78,392);
+    put(0xbb4,4);put(0xbc8,4);put(0x1a,0);put(0x1e,0);put(0x26,0);put(0x28,0);put(0x1c,2324);put(0x18,2321);
+    uint16_t index=0xffff;
+    assert(SmRoomsShotBlock(active,true,&index)==1 && SmShotWord(active,0x28)==65535);
+    assert(SmShotWord(active,0xb64)==2321 && SmShotWord(active,0xb78)==392);
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*a=malloc(bound),*b=malloc(bound);assert(saved && a && b);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes);
+    static uint8_t after_hit[0x20000];memcpy(after_hit,active,sizeof(active));
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic!=0,mode!=0));
+    const SmRoomScene *scene=SmRoomsScene();bool open=false;
+    for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==0x93aa)
+      open=(SmShotWord(scene->rooms[i].ram,0x10002+2*(6*32+1))>>12)==4 ||
+          (SmShotWord(scene->rooms[i].ram,0x10002+2*(6*32+1))>>12)==0;
+    assert(open);size_t na=SmRoomsSave(a,bound);assert(na);
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,after_hit,sizeof(active));
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic!=0,mode!=0));
+    size_t nb=SmRoomsSave(b,bound);assert(na==nb && !memcmp(a,b,na));
+    free(saved);free(a);free(b);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("inactive-face native beam hit, player slot ownership and exact mid-hit restore pass On/Off and Native/Continuous");
+}
+static void uncapped_entrance(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  for (unsigned d=0; d<8; ++d) {
+    unsigned header=Read(NULL,0x8fe68a+2*d) | Read(NULL,0x8fe68b+2*d)<<8;
+    assert(SmDoorHasArrivalCap(d)==(header!=0));
+  }
+  memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
+  put(0x915,1024);put(0xafa,1150);
+  for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,false,true));
+  assert(SmRoomsDoorPhase(0x8922)==SM_DOOR_OPEN);
+  const SmRoomScene *scene=SmRoomsScene();const uint8_t *ram=NULL;
+  for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==0x95d4) ram=scene->rooms[i].ram;
+  assert(ram);unsigned corner=SmShotWord(ram,0x10002);
+  unsigned cap=0x10002+2*(70*144+142);
+  active[cap+1]&=15; /* open only the real source cap */
+  for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,false,true));
+  scene=SmRoomsScene();ram=NULL;
+  for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==0x95d4) ram=scene->rooms[i].ram;
+  assert(ram && SmShotWord(ram,0x10002)==corner);
+  for (unsigned i=0; i<40; ++i)
+    assert(SmShotWord(ram,0x1c87+2*i)!=0 || !SmDoorHeader(SmShotWord(ram,0x1c37+2*i)));
+  memcpy(active,original,sizeof(active));
+  puts("uncapped native arrival keeps its geometric link and never inserts a corner bubble");
+}
 int main(int argc,char **argv) {
   if (argc!=3 && argc!=4) return 2;
   samples();
   uint8_t *rom=malloc(0x300000); assert(rom);
   FILE *f=fopen(argv[1],"rb"); assert(f); assert(fread(rom,1,0x300000,f)==0x300000); fclose(f);
+  cartridge=rom;
   f=fopen(argv[2],"rb"); assert(f); assert(fread(active,1,sizeof(active),f)==sizeof(active)); fclose(f);
   memcpy(original,active,sizeof(active));
   for (unsigned logic=0; logic<2; ++logic) {
@@ -90,6 +165,8 @@ int main(int argc,char **argv) {
     printf("logic %s: %u resident rooms, 60 native ticks, exact whole-manager save/load continuation; active RAM unchanged\n",logic ? "On" : "Off",SmRoomsScene()->count);
     free(saved); free(a); free(b);
   }
+  world_shots(rom);
+  uncapped_entrance(rom);
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);
     assert((original[0x79b] | original[0x79c]<<8)==0x96ba);

@@ -253,15 +253,41 @@ Earlier body3/body4 recordings, vertical setup attempts and SERVER's vertical4
 failure are diagnostic history, superseded by these current traversal checks.
 The standalone owned probe and the 61.8 MB local transfer ZIP were removed.
 
+The player-shot bridge uses native block responses rather than a second weapon
+simulation. Signed leading-edge/span samples defeat the cartridge's root-room
+allocation bounds and unsigned row aliases. A resident borrows the actual linked
+weapon pool only for its native block reaction, returns mutations in world
+coordinates, and restores its private CPU/workspace. Corrected resident room size
+to the cartridge's byte-index bound (512 bytes per screen, previously 256).
+Uncapped native directions 0..3 now retain their geometric connections without
+mirroring a bubble into placeholder arrival coordinates; the native closing-PLM
+table and lower Landing/95D4 regression establish that contract.
+
+Owned-ROM qualification ran on SERVER using the same GCC 15.2 C sources and
+the pinned native interpreter. `projectile-server3.log` and
+`projectile-owned-probes.json` retain all four blue orientations, locked colored
+ammunition/count rules, grey locks, inactive-face reactions with logic On/Off
+and Native/Continuous, exact mid-hit restoration and unchanged active ownership.
+The colored-door fixture clears only its private initial unlock bits so prior
+power-bomb qualification cannot turn its supposed locked cap into a native blue
+cap. Production progress remains intact. `projectile-build1` queues supported
+strict generation/full build/CTest; `qualify_world_shots.py` prepares the real
+controller-shot gate. Neither is recorded as passed yet.
+
 ## Outstanding implementation and qualification
 
-**Not release ready.** Continuous handoff exists and the horizontal assisted
-case works, but general seamless traversal and the complete door/combat contract
-remain unqualified. Do not represent the feature as complete or release it.
+**Not release ready.** Ordinary right/left and down/up continuous round trips
+are qualified with neighboring logic On and Off. Native inactive-room block
+reactions now pass owned-ROM probes, but the new generated hooks still need
+their full build and live controller-shot checks. General world combat and
+the remaining scene/correctness gates are unfinished.
 
-1. Connect shots/projectiles reaching an inactive door face to its native hit
-   handler. Qualify this separately from accepted-opening mirroring, which now
-   works, including native ammunition, lock and progression rules.
+1. Build and live-qualify the new world-space player shot bridge. Its native
+   block dispatcher already passes inactive-face hits, all four cap directions,
+   red/green/yellow ammunition rules, grey locks and exact mid-hit restore in
+   the owned-ROM probes. Movement and slot ownership stay on the active machine;
+   each block sample runs its owning room's cartridge response. Bomb/power-bomb
+   area paths and real controller-shot/replay qualification remain open.
 2. Extend the qualified regular-hatch traversal to exceptional geometry and
    broader foreign terrain. Three stock non-screen-edge records still use the
    original path. Qualify retained actors and entry scripts beyond the two
@@ -296,6 +322,12 @@ an exact pre-fix runtime, an owned-ROM copy and failed vertical diagnostics.
 Its useful vertical4 evidence was copied back as `server-vertical4-on/`.
 Remove that temporary remote workspace after retaining any remaining evidence
 needed at final cleanup; it contains no player saves or owner playtest.
+It also now contains `owned-shot-probe/`: a bounded 68 MB portable C compiler,
+the exact probe sources, owned-ROM fixture and two passing native probes.
+Clean that disposable compiler/source copy and its input ZIP at final cleanup;
+the local 31 MB `owned-server-input.zip` can be removed once inputs are retained
+in the worktree and source-hash record. The redundant local probe-only queue was
+cancelled after the SERVER qualification; the full build has its own live queue.
 The NES Metroid reference was checked in
 `F:/Projects/nesrecomp/MetroidNESRecomp/metroid_ws_actors.c`: its
 `guest_room_pair`, `collide_actor` and `commit_effects` provide the existing
