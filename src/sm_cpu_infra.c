@@ -26,6 +26,9 @@ static bool SmFrameBegin(uint32_t *inputs) {
 
 /* Called by the framework from SnesInit, once the machine exists. */
 static void SmInitialize(void) {
+  /* Resident rooms are carried by both the file-state extension and the
+   * rollback execution state. Reserve both chunks before pools can grow. */
+  RtlSetStateExtraBound(SmExecStateBound);
   SmActivityInitialize();
   SmRoomsSetDoorEvent(SmActiveDoorEvent);
   SmRoomsSetEnemyReaction(SmActiveEnemyBlock);

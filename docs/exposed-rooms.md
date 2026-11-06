@@ -690,9 +690,23 @@ physical-frame checks, complete resident state and final WRAM/VRAM/OAM/palette/
 SRAM match. The net-enabled build passes the existing two-peer handshake and
 settings-mismatch rejection gate (`net-cold1`); this is cold-boot evidence,
 not gameplay determinism acceptance. Fresh-build rollback probing reaches A011
-but then reports snapshot-save failures, which remain an unresolved blocker
-(`rollback-script2`). Its preceding old-build seed did not load and earns no
-gameplay acceptance. Rewind, live two-peer gameplay and performance remain open.
+but initially reported snapshot-save failures (`rollback-script2`). The title
+had not registered its resident file-state bound with the framework, which
+already reserves its separate execution-state bound. Registering both fixes
+the four-resident failure. Candidate9 net-enabled SHA-256
+`1b9c5ed8e2287c25e1685df046e0b74b1566c2aa122cd46adcfa1ce4bb6dccd2`
+passes the actual 9FE5 → A011 crossing and native continuation: baseline versus
+rollback probe every seven frames at depth eight produces identical complete
+resident state and final guest memory, with no failed save or replay divergence
+(`rollback-script4/5`). This fixture did not complete its attempted return trip.
+With output disabled, there are zero probe asymmetries. With audio output on,
+five symmetry notices all identify byte 99312, exactly `Dsp.sampleRead` in the
+native layout; rollback deliberately preserves that live output-consumer cursor.
+Guest partition replays and final WRAM/VRAM/OAM/palette/resident state still match
+(`rollback-audio1-qualified.json`). The preceding old-build seed did not load
+and earns no gameplay acceptance. Local debug control is intentionally disabled
+in netplay; the attempted TCP gameplay driver earns no pass and is discontinued.
+Rewind, supported human two-peer gameplay and performance remain open.
 
 ## Local evidence and retained work
 
