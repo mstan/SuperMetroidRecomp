@@ -66,6 +66,16 @@ static void UncappedCeres(bool missing,bool ambiguous) {
   Word(0x83ab58,0xdf45);Byte(0x83ab5b,1);Byte(0x83ab5f,2);
   if (ambiguous) { Word(0x8fe062,0xab64);Word(0x83ab64,0xdf45);Byte(0x83ab67,1);Byte(0x83ab6b,2); }
 }
+static void CappedLevel(uint32_t source,bool left) {
+  uint8_t data[770]={0};data[1]=2;
+  /* A buried duplicate precedes the four real hatch triggers in scan order.
+   * Only the latter agree with the reciprocal native arrival cap/span. */
+  unsigned buried=4*16+4;data[3+2*buried]=0x90;
+  for (unsigned row=6; row<10; ++row) data[3+2*(row*16+(left ? 0 : 15))]=0x90;
+  Byte(source++,0xe3);Byte(source++,1);
+  for (unsigned i=0; i<sizeof(data); ++i) Byte(source++,data[i]);
+  Byte(source,255);
+}
 int main(void) {
   Fixture(); assert(SmWorldLoad(&world,Read,NULL));
   assert(world.room_count==2 && world.door_count==2 && world.state_count==3 && world.marker_count==8);
@@ -182,6 +192,14 @@ int main(void) {
     assert(!out->reciprocal && !back->reciprocal && out->arrival_y==0 && back->arrival_y==0);
     assert(out->block_x==15 && out->block_y==38); /* retain real source metadata */
   }
+  Fixture();Long(0x8f920a,0xc68000);Long(0x8f9350,0xc68000);Long(0x8f940d,0xc78000);
+  CappedLevel(0xc68000,false);CappedLevel(0xc78000,true);
+  Byte(0x839004,1);Byte(0x839005,6);Byte(0x839010,13);Byte(0x839011,6);
+  assert(SmWorldLoad(&world,Read,NULL));
+  assert(world.doors[0].block_x==15 && world.doors[0].block_y==6);
+  assert(world.doors[1].block_x==0 && world.doors[1].block_y==6);
+  assert(world.doors[0].reciprocal && world.doors[1].reciprocal);
+  assert(Read(NULL,0x839004)==1 && Read(NULL,0x839005)==6 && Read(NULL,0x839010)==13 && Read(NULL,0x839011)==6);
   Fixture();
   Word(0x8f9203,0xffff); assert(!SmWorldLoad(&world,Read,NULL)); assert(strstr(world.error,"selector"));
   Fixture(); Byte(0xc0fffe,0x80); /* invalid absolute copy before any output */

@@ -21,6 +21,21 @@ int main(int argc, char **argv) {
   assert(fread(rom,1,size,f)==size); fclose(f);
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  /* A450 has buried duplicate BTS3 blocks at(86..89,32). The actual bottom
+   * hatch agrees with reciprocal A3FC's native cap(70,61), so both live
+   * D0B9->D017 hatches must embed the same destination allocation. */
+  const SmWorldRoom *d0b9=SmWorldFindRoom(world,0xd0b9);assert(d0b9);
+  unsigned a450=0;
+  for (unsigned i=0; i<d0b9->door_count; ++i) {
+    const SmWorldDoor *d=&world->doors[d0b9->first_door+i];
+    if (d->definition==0xa450) {
+      assert(d->destination==0xd017 && d->block_x==70 && d->block_y==63 && d->reciprocal);
+      assert(Read(NULL,0x83a400)==70 && Read(NULL,0x83a401)==61);
+      assert((d->block_x/16-d->arrival_x/16)*256==256 && (d->block_y/16+1-d->arrival_y/16)*256==1024);
+      ++a450;
+    }
+  }
+  assert(a450==1);
   unsigned interior=0;
   for (unsigned i=0; i<world->door_count; ++i) {
     const SmWorldDoor *d=&world->doors[i];unsigned dir=d->direction&3;

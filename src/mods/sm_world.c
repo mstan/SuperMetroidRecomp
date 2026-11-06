@@ -1,5 +1,6 @@
 #include "sm_world.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct Reader { SmWorldRead byte; void *context; } Reader;
@@ -100,6 +101,23 @@ static bool Drop(SmWorld *w,uint16_t room,uint16_t state,uint16_t plm,unsigned b
   w->markers[w->marker_count++]=(SmWorldMarker){room,state,plm,(uint16_t)bts,(uint8_t)x,(uint8_t)y,SM_MAP_DROP,0,3};
   return true;
 }
+/* Some layouts retain buried type9 blocks with the same BTS as a real hatch.
+ * The opposed native header's arrival cap identifies the authored source
+ * endpoint without guessing from scan order or a screen-edge preference. */
+static bool CappedEndpoint(Reader r,const SmWorldDoor *door,unsigned x,unsigned y) {
+  if (!door->destination || (door->flags&0x80)) return false;
+  unsigned list=W(r,0x8f0009u+door->destination),dir=door->direction&3;
+  for (unsigned i=0; i<64; ++i) {
+    unsigned p=W(r,0x8f0000u+list+2*i);
+    if (p<0x88fc || p>=0xacf0) break;
+    uint32_t a=0x830000u+p;unsigned back=B(r,a+3);
+    if (W(r,a)!=door->source || (B(r,a+2)&0x80) || back<4 || back>=8 || (back&3)!=(dir^1)) continue;
+    unsigned cx=B(r,a+4),cy=B(r,a+5);
+    if (dir<2 ? y>=cy && y<cy+4 && abs((int)x-(int)cx)<=3 :
+                x>=cx && x<cx+4 && abs((int)y-(int)cy)<=3) return true;
+  }
+  return false;
+}
 static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) {
   uint8_t data[65536];
   uint32_t source=L(r,0x8f0000u+state);
@@ -130,7 +148,10 @@ static bool LevelDoors(SmWorld *w, Reader r, SmWorldRoom *room, uint16_t state) 
     unsigned index=bts&0x7f;
     if (index >= room->door_count) return Fail(w,"level door index outside list",room->header);
     SmWorldDoor *d=&w->doors[room->first_door+index];
-    if (d->block_x<0) { d->block_x=(int16_t)(i%(room->width*16)); d->block_y=(int16_t)(i/(room->width*16)); }
+    unsigned x=i%(room->width*16),y=i/(room->width*16);
+    if (d->block_x<0 || (!CappedEndpoint(r,d,(unsigned)d->block_x,(unsigned)d->block_y) && CappedEndpoint(r,d,x,y))) {
+      d->block_x=(int16_t)x;d->block_y=(int16_t)y;
+    }
   }
   return true;
 }

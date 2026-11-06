@@ -610,6 +610,29 @@ static void resident_steam_pixels(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
 }
 
+static void carried_native_objects(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  const int carries[]={-64,64,-212},native_y[]={100,100,7};
+  for (unsigned mode=0; mode<2; ++mode) for (unsigned logic=0; logic<2; ++logic)
+  for (unsigned test=0; test<3; ++test) {
+    ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=mode ? 7 : 1;ppu.screenEnabled[0]=17;
+    ppu.m7matrix[0]=ppu.m7matrix[3]=256;ppu.obsel=2;ppu.cgram[129]=31<<10;
+    ppu.oam[0]=128|((unsigned)native_y[test]<<8);ppu.oam[1]=0x3000;
+    for (unsigned y=0; y<8; ++y) ppu.vram[0x4000+y]=255;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(0));assert(scene);
+    *scene=(SmRoomScene){.version=3,.root=0x91f8,.logic=logic,.seamless=1,.camera_dy=carries[test]};
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    int expected=native_y[test]-carries[test],opposite=(native_y[test]+carries[test])&255;
+    assert(output[expected*view.width+view.extra+128]==0x0000ff);
+    if (opposite>=32 && opposite<224) assert(output[opposite*view.width+view.extra+128]!=0x0000ff);
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
 static void resident_in_native_padding(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
@@ -1144,6 +1167,7 @@ int main(int argc, char **argv) {
   resident_character_bases();
   resident_mode7_canvas();
   resident_steam_pixels();
+  carried_native_objects();
   resident_in_native_padding();
   resident_projectile_pixels();
   resident_world_objects();

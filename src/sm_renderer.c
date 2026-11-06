@@ -2556,7 +2556,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
 #endif
     SmViewport object_view=viewport;
     int object_y=y;
-    if ((mode==1 || mode==7) && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y-=camera_dy; }
+    if ((mode==1 || mode==7) && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y+=camera_dy; }
     sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha, reuse_center);
     if ((viewport.extra || (rooms && rooms->ownership)) && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
