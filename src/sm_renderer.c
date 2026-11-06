@@ -2197,6 +2197,14 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
     p.cgwsel=r[0x6e]; p.cgadsub=r[0x71];
     p.fixedColor=(r[0x74]&31) | (r[0x75]&31)<<5 | (r[0x76]&31)<<10;
     unsigned tm=r[0x69] ? r[0x69] : 19,ts=r[0x6b];
+    bool mode7=(r[0x56]&7)==7 && read16(r,0x783)!=0;
+    SmMode7Line shaft={0};
+    if (mode7) {
+      int16_t matrix[8];
+      for (unsigned j=0; j<6; ++j) matrix[j]=(int16_t)read16(r,0x78+2*j);
+      matrix[6]=(int16_t)(camera_x-image->placement.x);matrix[7]=(int16_t)(camera_y-image->placement.y);
+      shaft=SmMode7Transform(matrix,r[0x5f],(unsigned)y+1);
+    }
     for (int sx=0; sx<view.width; ++sx) {
       int x=sx-view.extra,wx=camera_x+x,wy=camera_y+y+1;
       /* Native padding can face a neighboring canvas after a return, even
@@ -2204,6 +2212,13 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
       if (wx>=0 && wx<room_width && wy>=0 && wy<room_height && !padding[(wy/256)*16+wx/256]) continue;
       uint16_t layers[3],screens[2]={0x500,0x500};
       if (!SmRoomSceneSample(image,wx,wy,camera_x,camera_y,layers)) continue;
+      if (mode7) {
+        /* Mode7 stores an 8-bit map in each VRAM word's low byte and
+         * packed pixels in its high byte. Mode1 bitplanes turn that native
+         * shaft data into stripes. Preserve placement/portal clipping. */
+        unsigned pixel=SmMode7Sample(&shaft,private_vram[i],x);
+        layers[0]=pixel ? (uint16_t)(0x5000|pixel) : 0;layers[1]=layers[2]=0;
+      }
       for (unsigned layer=0; layer<3; ++layer) {
         if ((tm&(1u<<layer)) && layers[layer]>screens[0]) screens[0]=layers[layer];
         if ((ts&(1u<<layer)) && layers[layer]>screens[1]) screens[1]=layers[layer];
@@ -2477,6 +2492,11 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
         transform = SmMode7Interpolate(
             SmMode7Transform(old.m7matrix, old.m7sel, mode7_y), transform, alpha);
     }
+    if (mode==7 && rooms && y>=32 && !hud_tail) {
+      int vertical=scanout.m7sel&2 ? -camera_dy : camera_dy;
+      transform.origin_x+=camera_dx*transform.step_x+vertical*scanout.m7matrix[1];
+      transform.origin_y+=camera_dx*transform.step_y+vertical*scanout.m7matrix[3];
+    }
     SmBg2Object line_bg2 = bg2;
     line_bg2.parked = scanout.hScroll[1] == 256;
     /* Interpolate raster scroll registers, not the final composed image.
@@ -2521,10 +2541,10 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     unsigned enabled=scanout.screenEnabled[0] | scanout.screenEnabled[1];
     int matte_x=mode==1 && (enabled&1) ? background_lines[0].world_x : camera_x;
     int matte_y=mode==1 && (enabled&1) ? background_lines[0].world_y : camera_y;
-    if (mode==1 && y>=32 && !hud_tail) { matte_x+=camera_dx;matte_y+=camera_dy; }
+    if ((mode==1 || mode==7) && y>=32 && !hud_tail) { matte_x+=camera_dx;matte_y+=camera_dy; }
     uint16_t foreign_objects[SM_MAX_WIDTH];uint8_t foreign_owners[SM_MAX_WIDTH],object_owners[SM_MAX_WIDTH];
     memset(object_owners,255,(size_t)viewport.width);
-    world_objects(viewport,y,matte_x,matte_y,mode==1 && !hud_tail ? rooms : NULL,
+    world_objects(viewport,y,matte_x,matte_y,(mode==1 || mode==7) && !hud_tail ? rooms : NULL,
         old_rooms,alpha,foreign_objects,foreign_owners);
     bool reuse_center = false;
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
@@ -2536,7 +2556,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
 #endif
     SmViewport object_view=viewport;
     int object_y=y;
-    if (mode==1 && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y-=camera_dy; }
+    if ((mode==1 || mode==7) && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y-=camera_dy; }
     sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha, reuse_center);
     if ((viewport.extra || (rooms && rooms->ownership)) && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
@@ -2564,7 +2584,9 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
         mode7_pixels[sx] = parked_intro_ship && (sx < viewport.extra || sx >= viewport.extra + 256) ? 0 :
             SmMode7Sample(&transform, l->vram, sx - viewport.extra);
     SnesHdLine hd = {0};
-    bool hd_line = hd_frame && mode == 7 && !(scanout.setini & (64 | 8 | 1)) &&
+    /* A carried world can combine different room textures and palettes on
+     * one line. Its CPU composition is the complete native-row fallback. */
+    bool hd_line = hd_frame && mode == 7 && !(rooms && (rooms->count || displaced)) && !(scanout.setini & (64 | 8 | 1)) &&
         !(scanout.cgwsel & 1) && !((scanout.mosaic & 1) && (scanout.mosaic >> 4)) &&
         !((scanout.cgadsub & 64) && (scanout.cgwsel >> 6));
     if (hd_line) {
@@ -2735,7 +2757,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
         brightness, &wide_windows[y], out + y * viewport.width);
-    if (mode == 1)
+    if (mode == 1 || mode == 7)
       neighboring_scenery(viewport, y, matte_x, matte_y,
           read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width,
           objects,l->palette,object_owners,rooms,old_rooms,alpha);

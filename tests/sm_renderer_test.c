@@ -530,6 +530,49 @@ static void resident_character_bases(void) {
   ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
 }
 
+static void resident_mode7_canvas(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned root_mode7=0; root_mode7<2; ++root_mode7)
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned camera=0; camera<=128; camera+=128) {
+    ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+    word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=root_mode7 ? 7 : 1;ppu.screenEnabled[0]=17;ppu.cgram[1]=31;
+    if (root_mode7) {
+      ppu.m7matrix[0]=ppu.m7matrix[3]=256;
+      for (unsigned i=0; i<0x4000; ++i) ppu.vram[i]=1;
+      for (unsigned i=0; i<64; ++i) ppu.vram[64+i]|=0x100;
+      ppu.obsel=2;ppu.cgram[129]=31<<10;ppu.oam[0]=250|(60<<8);ppu.oam[1]=0x3000;
+      for (unsigned y=0; y<8; ++y) ppu.vram[0x4000+y]=255;
+    } else {
+      ppu.bgTileAdr=1;for (unsigned y=0; y<8; ++y) ppu.vram[0x1000+y]=255;
+    }
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0xdf45,.state=0xdf71,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0x69]=1;
+    r[0xc002]=0xe0;r[0xc003]=3;r[0xc005]=0x7c;
+    if (!root_mode7) {
+      r[0x56]=7;r[0x783]=1;r[0x79]=r[0x7f]=1;
+      /* Independent native Mode7 map low bytes and packed pixel high bytes.
+       * Its right half is blue; a Mode1 decode cannot produce these swatches. */
+      for (unsigned i=0; i<0x4000; ++i) image->vram[2*i]=(uint8_t)((i%128)<16 ? 1 : 2);
+      for (unsigned i=0; i<64; ++i) { image->vram[2*(64+i)+1]=1;image->vram[2*(128+i)+1]=2; }
+    } else for (unsigned y=0; y<8; ++y) image->vram[2*y]=255;
+    assert(SmRendererLatchRooms(scene));free(scene);BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    assert(output[60*view.width+view.extra+260-camera]==0x00ff00);
+    if (camera && !root_mode7) assert(output[60*view.width+view.extra+400-camera]==0x0000ff);
+    if (root_mode7) {
+      assert(output[60*view.width+view.extra+224-camera]==0xff0000);
+      assert(output[60*view.width+view.extra+250-camera]==0x0000ff); /* native OAM follows the same carried camera */
+    }
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
 static void resident_in_native_padding(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
@@ -1062,6 +1105,7 @@ int main(int argc, char **argv) {
   arena_exposure();
   resident_publication(argv[1]);
   resident_character_bases();
+  resident_mode7_canvas();
   resident_in_native_padding();
   resident_projectile_pixels();
   resident_world_objects();

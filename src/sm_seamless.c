@@ -258,6 +258,26 @@ bool SmSeamlessDoor(void) {
     put(0x590,0); memset(g_ram+0x570,0,32);
     for (unsigned i=0; i<128; ++i) put(0x370+4*i,0xf000);
     ok=entry_call(&b,0xa0884d,3) && entry_call(&b,0x82dfc7,2);
+    if (ok && word(g_ram+0x79b)==0xdf45 && word(g_ram+0x7df)==0xe51f &&
+        (g_ram[0x56]&7)==7 && word(g_ram+0x783)) {
+      /* A native transition processes this scenic HDMA setup before its
+       * first gameplay raster. Its initial D949 instruction selects Mode1;
+       * prime that one list now, then publish its native table/mode mirror.
+       * The music queue, gameplay handlers and timers do not run here. */
+      unsigned saved_index=word(g_ram+0x18b2);bool initialized=false;
+      for (unsigned i=0; ok && i<12; i+=2) if (word(g_ram+0x18cc+i)==0xd939) {
+        put(0x18b2,(int)i);b.cpu->x=(uint16_t)i;ok=entry_call(&b,0x88851c,2);
+        if (ok) {
+          g_ram[0x85]|=(uint8_t)word(g_ram+0x18b4+i);
+          cpu_write16(&b.bus,0,(uint16_t)(0x4302+(word(g_ram+0x18c0+i)&255)),(uint16_t)word(g_ram+0x18d8+i));
+          initialized=true;
+        }
+        break;
+      }
+      put(0x18b2,(int)saved_index);
+      ok=ok && initialized && entry_call(&b,0x8091ee,2);
+      if (ok) cpu_write8(&b.bus,0,0x420c,g_ram[0x85]);
+    }
   }
   if (ok) {
     /* The usual NMI uploads destination palette, OAM and pending requests. */

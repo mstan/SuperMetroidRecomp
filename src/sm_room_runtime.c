@@ -11,6 +11,7 @@
 enum { PLAYER_VIEW=0x9a2,PLAYER_VIEW_BYTES=0xb64-PLAYER_VIEW };
 typedef struct PlayerLoan {
   uint8_t player[PLAYER_VIEW_BYTES],input[24],timers[4];
+  uint8_t blast[10];
   uint16_t grapple[3];
   bool active,commit;
 } PlayerLoan;
@@ -61,6 +62,7 @@ static void player_end(SmRoomRuntime *r,bool success) {
   }
   memcpy(r->ram+PLAYER_VIEW,loan->player,PLAYER_VIEW_BYTES);
   memcpy(r->ram+0x8b,loan->input,24);memcpy(r->ram+0x18a8,loan->timers,4);
+  memcpy(r->ram+0xce2,loan->blast,sizeof(loan->blast));
   put(r,0xd08,loan->grapple[0]);put(r,0xd0c,loan->grapple[1]);put(r,0xd32,loan->grapple[2]);
   loan->active=false;
 }
@@ -69,6 +71,7 @@ static void player_begin(SmRoomRuntime *r,bool eligible) {
   PlayerLoan *loan=&r->player_loan;
   memcpy(loan->player,r->ram+PLAYER_VIEW,PLAYER_VIEW_BYTES);
   memcpy(loan->input,r->ram+0x8b,24);memcpy(loan->timers,r->ram+0x18a8,4);
+  memcpy(loan->blast,r->ram+0xce2,sizeof(loan->blast));
   loan->grapple[0]=(uint16_t)word(r->ram+0xd08);loan->grapple[1]=(uint16_t)word(r->ram+0xd0c);
   loan->grapple[2]=(uint16_t)word(r->ram+0xd32);
   memcpy(r->ram+PLAYER_VIEW,r->live_player+PLAYER_VIEW,PLAYER_VIEW_BYTES);
@@ -79,6 +82,9 @@ static void player_begin(SmRoomRuntime *r,bool eligible) {
   put(r,0xd08,eligible ? (int)word(r->live_player+0xd08)-r->player_x : 0x8000);
   put(r,0xd0c,eligible ? (int)word(r->live_player+0xd0c)-r->player_y : 0x8000);
   put(r,0xd32,eligible ? (int)word(r->live_player+0xd32) : 0xc4f0);
+  memcpy(r->ram+0xce2,r->live_player+0xce2,sizeof(loan->blast));
+  put(r,0xce2,(int)word(r->ram+0xce2)-r->player_x);put(r,0xce4,(int)word(r->ram+0xce4)-r->player_y);
+  if (!eligible) put(r,0xcea,0);
   loan->active=true;loan->commit=eligible;
 }
 static int ram_offset(uint32_t a) {
@@ -146,6 +152,8 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
     if (c->pc==0xff00 && c->sp==0x1fff) { player_end(r,true);return true; }
     if (c->waiting || c->stopped) { player_end(r,false);fail(r,"room routine suspended",entry); return false; }
     if ((c->k&127)==6) {
+      if (c->pc==0x8d5c && c->x<36 && !(c->x&1) && !(r->player_loan.active ? r->player_loan.commit :
+          (r->interaction_projectiles&(1u<<(c->x/2)))!=0)) c->pc=0x8d98;
       if (c->pc==0x811b) player_end(r,true);
       if (c->pc==0x8125 && c->x<36 && !(c->x&1))
         player_begin(r,r->player_eligible ? r->player_eligible(r->world_context,r->ram,32+c->x/2) :
@@ -265,7 +273,8 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   memset(r->ram+0xc0c,0,0x2000-0xc0c);
   memset(r->ram+0x370,0,0x400);
   memset(r->ram+0x619,0,0x24);
-  r->ram[0x52]=3; r->ram[0x55]=1; r->ram[0x5d]=0; r->ram[0x5e]=4;
+  r->ram[0x52]=3; r->ram[0x55]=1; r->ram[0x56]=9; r->ram[0x5d]=0; r->ram[0x5e]=4;
+  put(r,0x783,0); /* another room's Mode7 doorway cannot own this canvas */
   put(r,0xcadc,0); put(r,0xcade,0);
   r->cpu=interp816_init(r,read_bus,write_bus);
   if (!r->cpu) { free(r); return NULL; }
@@ -312,6 +321,14 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   if (!actors && !fixed_graphics(r)) return r;
   if (((unsigned)rom_long(r,0x8f0018u+state)&65535)==0xc97b) {
     r->ram[0x5d]=0x66;put(r,0x7eb,9); /* validated scenic stores from C97B; no room/boss script call */
+  }
+  if (room->header==0xdf45 && word(r->ram+0x7df)==0xe51f) {
+    /* E4E0's scenic state for the Ceres shaft, also used at its native
+     * initial spawn. The packed Mode7 map/characters already came from this
+     * state's tileset. Never run its entry PLM, room script or progression. */
+    r->ram[0x56]=7;r->ram[0x5f]=0;put(r,0x783,1);put(r,0x7eb,0x0709);
+    put(r,0x78,256);put(r,0x7a,0);put(r,0x7c,0);put(r,0x7e,256);
+    put(r,0x80,128);put(r,0x82,1008);
   }
   /* A disabled population must not make kill-quota doors believe that the
    * room has already been cleared. Preserve the cartridge's actual quota. */

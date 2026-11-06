@@ -528,8 +528,8 @@ parameter3 and Ridley are absent before entry; actual entry initializes both,
 the lock closes and physically blocks attempted return, and Ridley advances
 120 ticks. Off uses disclosed body positioning onto the real upper doorway
 platform. These checks do not establish natural boss defeat/escape/audio.
-The assisted escape-state elevator capture shows stripes; comparison with a
-natural/native-transition baseline and escape steam remain outstanding.
+The assisted elevator discrepancy is resolved by the Mode7 work below.
+Natural escape steam and audio remain separate acceptance checks.
 
 ### Native power-bomb enemy reactions
 
@@ -550,7 +550,53 @@ executions. The earlier controller fixtures had incorrect health/invincibility
 addresses and incomplete morph-pose handling; their failed prerequisites are
 retained and do not qualify gameplay. Power-bomb terrain and special projectile
 responses, broader grapple/weapon cases and complete cosmetic ownership remain
-open. The existing full live regression gate is running on this candidate.
+open. The full existing live regression gate also passes on this candidate
+(`powerbomb-regression-result.json`, exit 0), including invisible-resource
+continuation and release in both modes.
+
+### Mode7 escape shaft and native projectile blast views
+
+The striped escape shaft used native packed Mode7 graphics with a Mode1
+sampler. Its resident canvas now has the validated scenic matrix and native
+packed sampling. Active Mode7 composition includes neighboring canvases,
+camera carry and native OAM. Actual entry primes only the shaft's known native
+HDMA setup and publishes its channel/mode before the first raster; malformed
+setup restores the native transition. It does not advance music, gameplay or
+progression handlers. Fresh On/Off checks on
+`d7b026a7dcde8fd694cd61d98e1d1c7938c0753d244790a90ce306294c375b2c`
+show clean preentry and first-entry frames, PPU mode7, native packed data/matrix,
+zero adjacent-frame camera jump and entry-only helper progression after 49
+ticks (`ceres-mode7-scene3-on/`, `ceres-mode7-scene3-off/`).
+
+Bounded live player views also lend translated blast coordinates to native
+enemy-projectile scripts. The real Draygon turret projectile deletes itself
+and clears Root slowdown only when eligible; private blast/player fields are
+restored, occupied ineligible slots remain and continuation repeats exactly.
+The active native projectile blast response shares the spatial interaction
+gate. All 28 CTests and owned-ROM native checks pass for this combined build.
+The existing frame-state gate also passes pause/resume, same/fresh-process
+load and six invalid-input rejection cases before any guest mutation
+(`state-qualification1-result.json`, exit 0).
+
+### Human feature review
+
+`human-review1/` contains an immutable copy of the exact d7b026a7 build, five
+current-build guarded states, isolated saves/settings and the existing
+`tools/sm_replay_review.py` selector. Cases cover continuous On/Off doors,
+the native-transition option, lava/Fit/centered HUD and the Ceres shaft. The
+Ceres case explicitly discloses assisted escape prerequisites. Selector load,
+input release, pause/restart and notes storage checks pass for all five cases
+(`human-review-verify-result.json`, exit 0).
+
+The selector and first game are open for the owner, paused, with normal audio,
+Fullscreen0 and Fit. Per-case observations are stored in
+`human-review1/observations.json`; no owner acceptance has been inferred.
+Do not interrupt that running review. Technical qualification continues on
+separate muted profiles. Natural Ridley flee/progression is now reproduced
+without victory/result writes using the native health<30 trigger; neighboring
+E1FF steam missing with logic Off is a demonstrated remaining defect being
+fixed. Full rewind/run-ahead/netplay/performance and remaining feature gaps
+below still gate final closure and release.
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
 are qualified with neighboring logic On and Off. Native inactive-room shots

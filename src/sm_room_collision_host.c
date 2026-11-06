@@ -18,7 +18,7 @@ bool SmRoomCollisionFrameBegin(void) {
   const uint32_t eprojs[]={0x868886,0x86889e,0x86889d,0x8688b5};
   const uint32_t actors[]={0xa0c845,0xa0c879};
   const uint32_t entities[]={0xa08fd4,0xa09168,0xa0a391,0x868104,0x868124,0x868118,0x868091,0x8680fe,0xa09419,0x938070,0x9381d0};
-  const uint32_t contacts[]={0xa0a07a,0xa09a5a,0xa0a143,0xa09b7f,0xa0a236,0xa09d23,0xa09923,0xa099f9,0x86efea,0xa0a326};
+  const uint32_t contacts[]={0xa0a07a,0xa09a5a,0xa0a143,0xa09b7f,0xa0a236,0xa09d23,0xa09923,0xa099f9,0x86efea,0xa0a326,0x868d5c};
   entity_phase=0;
   for (unsigned i=0; i<sizeof(entities)/sizeof(*entities); ++i)
     if (!snes_mod_hook_arm(entities[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
@@ -61,7 +61,10 @@ uint32 SmRoomInteractionHook(CpuState *cpu,uint32 pc24) {
   if (!g_sm_video.enhanced) return 0;
   unsigned pc=pc24&0xffff,index,slot,target;
   if (pc==0xa326) entity_phase=1; /* native PB death/drop children inherit their actor's spatial room */
-  if ((pc24&0x7fffff)==0x06efea) {
+  if ((pc24&0x7fffff)==0x068d5c) {
+    index=cpu->X;if (index>=36 || (index&1)) return 0;
+    slot=32+index/2;target=0x8d98; /* RTS after PHX/PHY cleanup; no prologue was executed */
+  } else if ((pc24&0x7fffff)==0x06efea) {
     index=cpu->X;if (index>=36 || (index&1)) return 0;
     slot=32+index/2;target=0xf0aa; /* native PLY/PLX/RTS, after lifespan decrement */
   } else if (pc==0x9923 || pc==0x99f9) {
