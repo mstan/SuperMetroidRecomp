@@ -131,7 +131,7 @@ int main(void) {
       expected[sx] = colour(p, line.palette, brightness, screens[0], screens[1],
                              in_window(p, 5, x, view.extra, &wide));
     }
-    native_render_mode1_row(p, &line, backgrounds, center_pixels, center_valid, test_objects,
+    native_render_mode1_row(p, &line, backgrounds, center_pixels, center_valid, test_objects, NULL,
         y, view, matte_x, matte_y, brightness, &native, &margin, NULL, actual);
     for (int x = 0; x < width; ++x) {
       if (expected[x] != actual[x]) fprintf(stderr, "iteration=%u width=%d x=%d expected=%06x actual=%06x\n",
@@ -142,7 +142,7 @@ int main(void) {
      * center tiles are unusable. Margin windows/matte keep their oracle. */
     memset(center_pixels, 0xa5, sizeof(center_pixels));
     memset(actual, 0, sizeof(actual));
-    native_render_mode1_row(p, &line, backgrounds, center_pixels, center_valid, test_objects,
+    native_render_mode1_row(p, &line, backgrounds, center_pixels, center_valid, test_objects, NULL,
         y, view, matte_x, matte_y, brightness, &native, &margin, expected + view.extra, actual);
     for (int x = 0; x < width; ++x) assert(expected[x] == actual[x]);
   }
