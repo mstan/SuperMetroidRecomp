@@ -96,7 +96,7 @@ int main(int argc,char **argv) {
     receiver[0x9c2]=0x56; receiver[0x9c3]=0x34;
     uint8_t opened_bits[64]; memcpy(opened_bits,SmRoomRuntimeRam(r)+0xd8b0,sizeof(opened_bits));
     assert(SmRoomRuntimeDoorOpen(r,m->x,m->y,m->direction));
-    assert(SmRoomRuntimePromoteDoors(r,receiver));
+    assert(SmRoomRuntimePromoteDoors(r,receiver,NULL));
     assert(word(receiver+0x1c37)==0xeee3 && word(receiver+0x9c2)==0x3456);
     SmRoomRuntime *promoted=Create(room,m->state);
     assert(SmRoomRuntimeCapture(promoted,receiver,tiles)); Tick(promoted,64);

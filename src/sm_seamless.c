@@ -241,7 +241,11 @@ bool SmSeamlessDoor(void) {
        entry_call(&b,0x88d865,3) && entry_call(&b,0x82e071,3) && entry_call(&b,0x82e0d5,3);
   }
   if (ok) {
-    ok=SmRoomsHandoff(previous,previous_vram,g_ram,g_ppu->vram,&p,definition[3]&3);
+    bool redraw=false;
+    ok=SmRoomsHandoff(previous,previous_vram,g_ram,g_ppu->vram,&p,definition[3]&3,&redraw);
+    /* A completed native grapple break has no PLM left to repaint it. Reuse
+     * the loader's native column upload after carrying that authored cell. */
+    if (ok && redraw) ok=entry_call(&b,0x80a176,3);
   }
   if (ok) {
     /* This loader deliberately skips ResetProjectileData. Keep the single

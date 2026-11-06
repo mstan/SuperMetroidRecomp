@@ -143,6 +143,11 @@ and choose edge-anchored or centered HUD placement. **Presentation FPS** is a
 separate mod with Auto and fixed frame-rate targets. Fresh installs enable
 Widescreen with adaptive Fit; Presentation FPS starts off. Saved choices are preserved;
 turning both off uses stock rendering. Game logic retains its native timing.
+Widescreen exposes connected rooms and secret passages, including their animated
+scenery. **Neighboring room logic** defaults On; choose Off to suspend neighboring
+enemies while keeping scenery, environmental effects and door bubbles. The choice
+applies when a room loads. **Room transitions** defaults to Continuous, with Native
+available for the original door animation. Boss encounters still begin on entry.
 These features are experimental: full-game visual fidelity is not certified,
 and achievable FPS depends on hardware and the scene.
 

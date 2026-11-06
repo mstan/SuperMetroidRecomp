@@ -638,13 +638,13 @@ and ordinary enemy weapon hits now pass the built live controller gate,
 current-build restore and replay. Six acceptance areas remain open:
 
 1. Extend the qualified regular-hatch traversal to exceptional geometry and
-   broader foreign terrain. The apparent A450/A5A0 interior anchors came from
-   buried type-9 blocks; reciprocal native arrival caps now select the actual
-   hatches. A450 continuous On/Off and the Native option pass live controller
-   traversal; A5A0 and uncapped/nonreciprocal A45C still need disposition.
-   Qualify retained actors and entry scripts beyond the two
-   current round trips. Player/beam coordinate continuity is now qualified for
-   those cases; it does not establish general actor/projectile world physics.
+   broader foreign terrain. All three stock exceptional-door candidates are
+   now resolved: A450/A5A0 use reciprocal authored hatch anchors, and A45C uses
+   the actual uncapped Morph tunnel/arrival screen. Continuous On/Off and the
+   Native option pass actual controller traversal and complete replays. Native
+   actor visibility predicates now preserve the demonstrated visible Candy
+   flight in the widescreen margin; broader untested actor paths must not
+   be inferred from these representative checks.
 2. Finish and live-qualify cross-open-door combat and projectile/actor transfer
    without duplicated hits/rewards. Native weapon, actor-contact and enemy-
    projectile responses and ordinary open/closed/Off routing now pass probes.
@@ -652,25 +652,34 @@ current-build restore and replay. Six acceptance areas remain open:
    Shared native actor movers now use foreign terrain and pass the live
    leftward transfer above; broader actor paths/encounters remain to qualify.
    Resource retention now passes native and live invisible-pool checks. Native
-   power-bomb NPC reactions now pass; remaining area-weapon cases and complete
-   ownership still need work. Native health/ammo rewards
-   and grab release pass the bounded runtime/manager checks above; natural
-   live collection during traversal remains to qualify. Walls and closed doors
-   must block interaction.
+   power-bomb NPC reactions and native body attacks 1/2/3 now pass. Native
+   health/ammo rewards and grab release pass the bounded runtime/manager checks.
+   Native item collection, dialog, departure and reentry now pass live On/Off
+   checks without respawning the collected item. Grapple acquisition and native
+   foreign terrain pass native and live gates; the visible-actor reset and
+   completed permanent-block promotion corrections pass the combined native gate.
+   Walls and closed doors must continue to block interaction.
    The same-room 9FE5 29-tick crash is resolved by consuming native drawing
    queues; broader actor movement and bounded gameplay effects remain open.
-3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
-   qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
-   Fit resizing and both HUD anchors. The reproduced departed-room native-
-   viewport padding gap is now fixed and live-qualified.
+3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals.
+   Native neighboring items now initialize and animate with either logic mode,
+   preserve their graphics/phase on entry, and only collect through native input
+   after entry. Liquids and steam have native/live coverage. Transition motion,
+   intermediate high-FPS frames, Fit resizing and both HUD anchors still need
+   the prepared human visual judgment. The reproduced departed-room native-
+   viewport padding gap is fixed and live-qualified.
 4. Ceres progression mechanics now pass: fresh native encounter/flee earns the
    escape prerequisite, return entries preserve steam, and the native elevator
    advances through states 32/33/34 to actual Landing Site gameplay in both
    logic modes. Door/platform access is assisted; no successful escape state,
    velocity, fade timer or progression result is injected. Human listening
    judgment of encounter/escape audio remains pending.
-5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
-   determinism, representative native gameplay and matched runtime performance.
+5. Supported scripted run-ahead and rollback comparisons now pass real native
+   crossings and complete resident/guest-state equality; native item pickup
+   also matches run-ahead 0/1. Representative populated native throughput has
+   been measured without claiming an optimization win. Qualify the final
+   combined build and obtain supported two-peer gameplay and actual rewind
+   commit/input-ownership observations through the prepared supplemental case.
 6. The five-case owner review is open with normal audio in a normal window,
    using its immutable Candidate5 copy. No observations have been submitted yet.
    Preserve that running review; later candidates have additional steam and
@@ -713,8 +722,12 @@ Rewind, supported human two-peer gameplay and performance remain open.
 The second canonical hatch A5A0 also passes Candidate8 actual On/Off traversal,
 inspected screenshots and complete replays (112/116 checkpoints respectively),
 with world body delta `[2,0]`, camera delta `[0,0]`, paired caps open and all
-three destination NPCs. A45C remains a real accessible Morph tunnel defect;
-its native uncapped header and multiple entrances need a coherent correction.
+three destination NPCs. The subsequent Candidate11 corrects A45C's real uncapped
+Morph tunnel and overlapping room allocations. Actual On/Off round trips stay
+in state 8 with radius 7 and continuous body/camera coordinates; complete
+replays match 138/143 executions. The Native option retains states 9/11 and
+matches 377 executions. A450/A5A0 shared-path rechecks match 161/113 executions
+(`a45c-build3`, commit `9b14cf6`). All three exceptional-door candidates are closed.
 
 `ceres-escape-final1-on` repeats the fresh Candidate8 six-room route and actual
 native flee/earned escape. `ceres-escape-final2-on/off` resumes that same-build
@@ -754,6 +767,49 @@ These independent samples establish headroom for that workload; they are not
 an optimization comparison or a 120 FPS presentation-pacing claim. The first
 attempted Off run restored an On snapshot and is explicitly excluded from Off
 acceptance. Broader feature qualification and owner observations remain open.
+
+Native neighboring item scenery is implemented in `e298d5c`. The bounded list
+contains only the cartridge's 63 item headers plus existing doors; unrelated
+room scripts remain entry-only. Native seven-byte VRAM requests update private
+graphics, and promotion preserves the item's script phase, tiles and graphics
+independently of its PLM slot. The full native and 28-test gates pass
+(`item-scenery-main2`). Frozen ItemsCandidate12 SHA-256 is
+`9c06355baefb2248715cbf2d4c0cf08c99842ed6b5ac94838069f9beb2f55e26`.
+
+Live `items-live3` On/Off checks show Wave Beam before entry, enter through real
+shots/movement without collecting it, then use access-only positioning and
+native fire/contact to collect it and dismiss its native message. Wave's bit is
+1: beams change 0x1000 to 0x1001, and native item bit 68 is earned. Entry replays
+match 124 executions and pickup replays 586 in each mode. Native unpaused
+run-ahead 0/1 matches complete world and guest memory (`items-runahead1-qualified`);
+the initial fixture's wrong expected Wave bit is retained as an expectation
+failure, not a successful raw job. `items-return2` then performs actual native
+pickup/dialog, jump/fire/movement out to ADAD and back to ADDE, with the item
+absent in the visited resident and after reentry. Both complete replays match
+210 executions. Its predecessor stalled on native room geometry because its
+walking-only input did not jump; no production change was needed.
+
+The possible unsynchronized-options concern was rejected by source evidence:
+`sm_activity_host.c` already freezes enhanced rendering, neighboring logic,
+continuous/native transitions and simulation width in the existing two-byte
+netplay profile before gameplay. No additional network mechanism was added.
+
+The final Grapple implementation uses the native enemy scanner and terrain
+responses with translated coordinates and existing closed/Off masks. Root
+NoInteract targets retain precedence. Native timed response PLMs retain their
+phase, and authored permanent Grapple breaks survive PLM deletion and entry
+without replacing entry-script changes; the loader redraws those changed cells.
+The shared native AD70/ADE7 horizontal predicate now includes the simulation
+margin while retaining native vertical checks and narrow-view behavior. Stock
+Candy flight/reset and actual D646 permanent-block/native redraw checks pass
+with all 28 tests and full native runtime/manager/preview checks
+(`grapple-final-main1`, Candidate15 SHA-256
+`6d9228ac1c0efdcb826917ff4e6f041a1d1d8d28f5e18dd24201ba1111d60679`).
+The bounded focus check found no further demonstrated defect in this lane;
+broader untested weapon/room combinations are not new implementation work.
+One actual right+fire passage retains live native Grapple state C703 and a
+continuous world endpoint across D340/D5EC (`grapple-live-entry1-on`), rejecting
+the suspected missing rebase. This does not qualify connected/swinging entry.
 
 ## Local evidence and retained work
 

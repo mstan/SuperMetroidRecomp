@@ -9,6 +9,8 @@ enum { SM_ENEMY_POOL=0xf78,SM_ENEMY_BYTES=64 };
 /* -1 keeps the resource machine's native dispatch; 0/1 returns native carry;
  * -2 reports a bounded cartridge execution failure. */
 typedef int (*SmEnemyQuery)(void *context,uint8_t ram[0x20000],bool horizontal,uint16_t *index);
+/* Transient register result of the cartridge's grapple-block reaction. */
+typedef struct SmGrappleResult { uint16_t a,x,y;uint8_t flags; } SmGrappleResult;
 static inline bool SmEnemySample(const uint8_t *ram,bool horizontal,int *x,int *y) {
   unsigned index=SmShotWord(ram,0xe54);
   if (index>=2048 || (index&63) || !SmShotWord(ram,SM_ENEMY_POOL+index)) return false;

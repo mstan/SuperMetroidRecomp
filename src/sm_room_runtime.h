@@ -49,6 +49,13 @@ bool SmRoomRuntimeHitShots(SmRoomRuntime *room,uint8_t active[0x20000],
 /* Native blast geometry, vulnerability, damage/death and invincibility use
  * translated coordinates; interaction masks leave ineligible slots occupied. */
 bool SmRoomRuntimePowerBomb(SmRoomRuntime *room,const uint8_t active[0x20000],int origin_x,int origin_y);
+/* Native A0:9E9A acquisition, using the filtered interaction queue and a
+ * translated endpoint loan. Returns A, $12 and C/V; no enemy index escapes
+ * its owning pool. Native EnemyMain executes the selected grapple AI. */
+bool SmRoomRuntimeGrapple(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,
+    uint16_t *response,uint16_t *definition,uint8_t *flags);
+bool SmRoomRuntimeGrappleBlock(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,
+    SmGrappleResult *result);
 /* Native actor contact with a borrowed player view. Only player effects cross
  * back; room progression, CPU, camera and script state remain isolated. */
 bool SmRoomRuntimeTouch(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y);
@@ -68,7 +75,7 @@ bool SmRoomRuntimeCaptureActive(SmRoomRuntime *room,const uint8_t ram[0x20000],c
  * helpers that were deliberately absent from their resident population. */
 bool SmRoomRuntimeEntryOnly(const SmRoomRuntime *room,const uint8_t ram[0x20000]);
 void SmRoomRuntimePromote(const SmRoomRuntime *room, uint8_t ram[0x20000], uint16_t vram[0x8000]);
-bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *room, uint8_t ram[0x20000]);
+bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *room,uint8_t ram[0x20000],bool *redraw);
 const uint8_t *SmRoomRuntimeRam(const SmRoomRuntime *room);
 const uint8_t *SmRoomRuntimeVram(const SmRoomRuntime *room);
 const char *SmRoomRuntimeError(const SmRoomRuntime *room);

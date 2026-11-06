@@ -2,6 +2,7 @@
 #include "sm_video.h"
 #include "sm_rooms.h"
 #include "sm_shot_view.h"
+#include "sm_activity.h"
 #include "mod_hook.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,8 @@ bool SmRoomCollisionFrameBegin(void) {
   const uint32_t actors[]={0xa0c845,0xa0c879};
   const uint32_t entities[]={0xa08fd4,0xa09168,0xa0a391,0x868104,0x868124,0x868118,0x868091,0x8680fe,0xa09419,0x938070,0x9381d0};
   const uint32_t contacts[]={0xa0a07a,0xa09a5a,0xa0a143,0xa09b7f,0xa0a236,0xa09d23,0xa09923,0xa099f9,0x86efea,0xa0a326,0x868d5c};
+  const uint32_t viewport[]={0xa0ad79,0xa0ad85,0xa0adf5,0xa0ae05};
+  for (unsigned i=0; i<4; ++i) if (!snes_mod_hook_arm(viewport[i],SmActivityExtra()!=0)) return false;
   entity_phase=0;
   for (unsigned i=0; i<sizeof(entities)/sizeof(*entities); ++i)
     if (!snes_mod_hook_arm(entities[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
@@ -38,6 +41,13 @@ bool SmRoomCollisionFrameBegin(void) {
     return !enabled;
   }
   return true;
+}
+uint32 SmRoomActivityHook(CpuState *cpu,uint32 pc24) {
+  unsigned pc=pc24&65535,extra=SmActivityExtra();
+  if (extra && cpu->_flag_N && SmActivityEnemyHorizontalVisible(cpu->ram,SmShotWord(cpu->ram,0xe54),extra,pc==0xadf5 || pc==0xae05)) {
+    cpu->_flag_N=0;cpu->P&=(uint8_t)~0x80;
+  }
+  return 0;
 }
 uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
   unsigned pc=pc24&0x7fffff;

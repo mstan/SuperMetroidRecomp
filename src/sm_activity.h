@@ -12,6 +12,9 @@ bool SmActivityExtraValid(unsigned extra);
 void SmActivityRestore(unsigned extra);
 bool SmActivityAugmentQueues(uint8_t *ram, unsigned extra);
 bool SmActivityFilterQueues(uint8_t *ram,uint32_t simulation,uint32_t interaction);
+/* Shared horizontal part of native AD70/ADE7. Their original vertical
+ * branches still decide the result, including their distinct Y padding. */
+bool SmActivityEnemyHorizontalVisible(const uint8_t *ram,unsigned index,unsigned extra,bool normal);
 
 #if defined(SNES_HAS_LOBBY_CLIENT) && defined(RECOMP_LAUNCHER)
 #include "netplay/snes_netplay.h"

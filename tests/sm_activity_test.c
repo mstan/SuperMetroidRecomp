@@ -41,6 +41,17 @@ static void projectile_handoff(void) {
 }
 int main(void) {
   projectile_handoff();
+  setup();enemy(1,360,0);
+  assert(!SmActivityEnemyHorizontalVisible(ram,64,0,false) && SmActivityEnemyHorizontalVisible(ram,64,214,false));
+  for (unsigned normal=0; normal<2; ++normal) for (unsigned extra=0; extra<=214; extra+=107) {
+    int radius=normal ? 8 : 0;
+    enemy(1,-(int)extra-radius,0);assert(SmActivityEnemyHorizontalVisible(ram,64,extra,normal!=0));
+    enemy(1,-(int)extra-radius-1,0);assert(!SmActivityEnemyHorizontalVisible(ram,64,extra,normal!=0));
+    enemy(1,256+(int)extra+radius,0);assert(SmActivityEnemyHorizontalVisible(ram,64,extra,normal!=0));
+    enemy(1,257+(int)extra+radius,0);assert(!SmActivityEnemyHorizontalVisible(ram,64,extra,normal!=0));
+  }
+  put(0x911,0xff00);put(0xf7a+64,104);assert(SmActivityEnemyHorizontalVisible(ram,64,214,false));
+  assert(!SmActivityEnemyHorizontalVisible(ram,1,214,false) && !SmActivityEnemyHorizontalVisible(ram,64,215,false));
   const unsigned widths[]={43,96,213,214};
   for(unsigned k=0;k<4;k++) {
     unsigned extra=widths[k];setup();
@@ -68,5 +79,5 @@ int main(void) {
   assert(SmActivityAugmentQueues(ram,43));assert(get(0x17a4)==64 && get(0x17a6)==0 && get(0x17ec)==0xffff);
   memcpy(before,ram,sizeof(ram));
   assert(!SmActivityAugmentQueues(ram,215));assert(!memcmp(before,ram,sizeof(ram)));
-  puts("PASS: widened queue boundaries, slot order, exclusions, interaction, native identity and capacity");
+  puts("PASS: native viewport horizontal edges/radii/wrap, widened queues, slot order, exclusions, interaction and capacity");
 }

@@ -37,6 +37,7 @@ struct SmRoomRuntime {
   SmEnemyQuery enemy_query;
   bool enemy_reaction;
   unsigned world_phase;
+  unsigned view_extra; /* bounded StepVisible execution only, never serialized */
   uint32_t simulation_enemies,simulation_projectiles,interaction_enemies,interaction_projectiles;
   SmEprojLoan eproj_loan;
   uint8_t *live_player;
@@ -171,6 +172,9 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
       }
     }
     if ((c->k&127)==0x20) {
+      if (r->view_extra && c->n && (c->pc==0xad79 || c->pc==0xad85 || c->pc==0xadf5 || c->pc==0xae05) &&
+          SmActivityEnemyHorizontalVisible(r->ram,word(r->ram+0xe54),r->view_extra,c->pc==0xadf5 || c->pc==0xae05))
+        c->n=false; /* widen only the native horizontal BMI; Y tests/return still execute */
       if (c->pc==0xa391) player_end(r,true);
       if (c->pc==0xa326) {
         unsigned index=word(r->ram+0xe54);
@@ -239,6 +243,9 @@ static bool remember_door(SmRoomRuntime *r,unsigned block,unsigned orientation) 
 }
 static bool item_plm(unsigned header) {
   return header>=0xeed7 && header<=0xefcf && !((header-0xeed7)&3);
+}
+static bool grapple_plm(unsigned header) {
+  return header>=0xd0d8 && header<=0xd0e8 && !(header&3);
 }
 static bool scenic_plm(unsigned header) {
   return SmDoorHeader(header) || item_plm(header);
@@ -458,7 +465,7 @@ bool SmRoomRuntimeActors(const SmRoomRuntime *r) { return r && r->actors; }
 bool SmRoomRuntimeStep(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y) {
   return SmRoomRuntimeStepVisible(r,samus_x,samus_y,camera_x,camera_y,0);
 }
-bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y, unsigned extra) {
+static bool step_visible(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y, unsigned extra) {
   if (!r || r->error[0]) return false;
   put(r,0xaf6,samus_x); put(r,0xafa,samus_y);
   put(r,0x911,camera_x); put(r,0x915,camera_y);
@@ -479,13 +486,19 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
   memset(r->ram+0xf68,0,16);
   return ok && (!r->actors || call(r,0x868104,3)); /* visual-only EPs run once in StepEffects */
 }
+bool SmRoomRuntimeStepVisible(SmRoomRuntime *r,int samus_x,int samus_y,int camera_x,int camera_y,unsigned extra) {
+  if (!r) return false;
+  unsigned previous=r->view_extra;r->view_extra=extra;
+  bool ok=step_visible(r,samus_x,samus_y,camera_x,camera_y,extra);
+  r->view_extra=previous;return ok;
+}
 static bool step_plms(SmRoomRuntime *r,bool items) {
   if (!r || r->error[0]) return false;
   uint16_t pre[40]={0},timer[40]={0}; bool suspended[40]={0},present=false;
   for (unsigned i=0; i<40; ++i) {
     unsigned header=word(r->ram+0x1c37+2*i);
     if (!header) continue;
-    if (items ? item_plm(header) : SmDoorHeader(header)) { present=true;continue; }
+    if (items ? item_plm(header) : SmDoorHeader(header) || grapple_plm(header)) { present=true;continue; }
     /* Each native family advances once. Reserve the other family, stations
      * and entry scripts without executing their pre-instruction or draw. */
     suspended[i]=true; pre[i]=(uint16_t)word(r->ram+0x1cd7+2*i);
@@ -669,6 +682,64 @@ bool SmRoomRuntimePowerBomb(SmRoomRuntime *r,const uint8_t active[0x20000],int o
   for (unsigned i=0; i<4; ++i) put(r,work[i],saved[i]);
   r->world_phase=phase;*r->cpu=previous;return ok;
 }
+bool SmRoomRuntimeGrapple(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,
+    uint16_t *response,uint16_t *definition,uint8_t *flags) {
+  if (!r || r->error[0] || !active || !response || !definition || !flags) return false;
+  if (*definition || !r->interaction_enemies || word(active+0xd32)==0xc4f0) return true;
+  uint8_t scratch[64],queue[66],stack[256];
+  memcpy(scratch,r->ram,sizeof(scratch));memcpy(queue,r->ram+0x17ec,sizeof(queue));
+  memcpy(stack,r->ram+0x1f00,sizeof(stack));
+  const unsigned work[]={0xe54,0x18a6,0x17aa,0x17a6,0xd08,0xd0c,0xd32};uint16_t saved[7];
+  for (unsigned i=0; i<7; ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  Interp816 previous=*r->cpu;unsigned bytes=0;bool ok=true;
+  for (unsigned i=0; i<32; ++i) {
+    unsigned index=word(queue+2*i);if (index==65535) break;
+    if (index>=2048 || (index&63)) { fail(r,"invalid resident grapple index",index);ok=false;break; }
+    if ((r->interaction_enemies&(1u<<(index/64))) && word(r->ram+0xf78+index)) {
+      put(r,0x17ec+bytes,(int)index);bytes+=2;
+    }
+  }
+  put(r,0x17ec+bytes,65535);put(r,0x17a6,(int)bytes);
+  put(r,0xd08,(int)word(active+0xd08)-origin_x);put(r,0xd0c,(int)word(active+0xd0c)-origin_y);
+  put(r,0xd32,(int)word(active+0xd32));
+  r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
+  r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
+  if (ok) ok=call(r,0xa09e9a,3);
+  if (ok && word(r->ram+0x12)) {
+    *response=r->cpu->a;*definition=(uint16_t)word(r->ram+0x12);
+    *flags=(uint8_t)((r->cpu->c ? 1 : 0) | (r->cpu->v ? 0x40 : 0));
+    SmShotPut(active,0xd08,(int)word(r->ram+0xd08)+origin_x);
+    SmShotPut(active,0xd0c,(int)word(r->ram+0xd0c)+origin_y);
+  }
+  memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+0x17ec,queue,sizeof(queue));
+  memcpy(r->ram+0x1f00,stack,sizeof(stack));
+  for (unsigned i=0; i<7; ++i) put(r,work[i],saved[i]);
+  *r->cpu=previous;return ok;
+}
+bool SmRoomRuntimeGrappleBlock(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,
+    SmGrappleResult *result) {
+  if (!r || r->error[0] || !active || !result || r->player_loan.active) return false;
+  uint8_t scratch[64],stack[256],math[8];
+  memcpy(scratch,r->ram,sizeof(scratch));memcpy(stack,r->ram+0x1f00,sizeof(stack));memcpy(math,r->math,sizeof(math));
+  const unsigned work[]={0xdc4,0x1c27,0x1c29,0x1c2b,0xcf4};uint16_t saved[5];
+  for (unsigned i=0; i<5; ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  uint16_t product=r->product,quotient=r->quotient,remainder=r->remainder;Interp816 previous=*r->cpu;
+  uint8_t *previous_player=r->live_player;int px=r->player_x,py=r->player_y;SmWorldPlayer eligible=r->player_eligible;
+  SmRoomRuntimeSetPlayer(r,active,origin_x,origin_y,NULL);player_begin(r,true);put(r,0xcf4,(int)word(active+0xcf4));
+  r->cpu->a=result->a;r->cpu->x=result->x;r->cpu->y=result->y;
+  r->cpu->db=0x94;r->cpu->dp=0;interp816_setFlags(r->cpu,(uint8_t)((result->flags&0xc3)|4));
+  r->cpu->e=false;r->cpu->waiting=r->cpu->stopped=false;
+  bool ok=call(r,0x94a91f,3);
+  if (ok) {
+    result->a=r->cpu->a;result->x=r->cpu->x;result->y=r->cpu->y;
+    result->flags=(uint8_t)(r->cpu->c | r->cpu->z<<1 | r->cpu->v<<6 | r->cpu->n<<7);
+    SmShotPut(active,0xcf4,(int)word(r->ram+0xcf4));
+  }
+  SmRoomRuntimeSetPlayer(r,previous_player,px,py,eligible);
+  memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+0x1f00,stack,sizeof(stack));memcpy(r->math,math,sizeof(math));
+  for (unsigned i=0; i<5; ++i) put(r,work[i],saved[i]);
+  r->product=product;r->quotient=quotient;r->remainder=remainder;*r->cpu=previous;return ok;
+}
 static bool touch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,bool projectiles) {
   if (!r || r->error[0] || !active) return false;
   if ((!r->actors && !projectiles) || word(active+0xa78) || word(active+0x185e)) return true;
@@ -828,7 +899,22 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
     }
   }
 }
-bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000]) {
+static bool promote_grapple_tiles(const SmRoomRuntime *r,uint8_t *ram,bool *redraw) {
+  uint8_t original[65536];unsigned state=word(r->ram+0x7bb);
+  size_t bytes=SmWorldUnpack(r->read,r->context,rom_long(r,0x8f0000u+state),original,sizeof(original));
+  unsigned n=bytes>=2 ? word(original) : 0,blocks=word(r->ram+0x7a5)*word(r->ram+0x7a7);
+  if (!n || (n&1) || n>0x6400 || 2u+n+n/2>bytes || blocks>n/2) return false;
+  for (unsigned i=0; i<blocks; ++i) {
+    unsigned tile=word(original+2+2*i),bts=original[2+n+i];
+    if ((tile>>12)!=14 || (bts!=1 && bts!=2) || word(ram+0x10002+2*i)!=tile || ram[0x16402+i]!=bts) continue;
+    unsigned live=word(r->ram+0x10002+2*i);
+    if (live!=tile && redraw) *redraw=true;
+    ram[0x10002+2*i]=(uint8_t)live;ram[0x10003+2*i]=(uint8_t)(live>>8);ram[0x16402+i]=r->ram[0x16402+i];
+  }
+  return true;
+}
+bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool *redraw) {
+  if (redraw) *redraw=false;
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return false;
   /* Encounter doors retain the actual entry scripts/lock initialization. */
   if (SmRoomRuntimeEntryOnly(r,ram)) return true;
@@ -854,6 +940,23 @@ bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000]) {
         ram[dst]=r->ram[src]; ram[dst+1]=r->ram[src+1];
       }
     }
+  }
+  /* A permanent native grapple break outlives its deleted PLM. Carry only
+   * authored breakable grapple cells whose actual-entry baseline is intact. */
+  if (!promote_grapple_tiles(r,ram,redraw)) return false;
+  /* These five transient cartridge responses belong to the touched terrain.
+   * Allocate their running phase without replacing actual-entry scripts. */
+  for (unsigned i=0; i<40; ++i) if (grapple_plm(word(r->ram+0x1c37+2*i))) {
+    unsigned block=word(r->ram+0x1c87+2*i)/2;if (block>=w*h) return false;
+    int slot=-1;
+    for (unsigned j=0; j<40; ++j) if (grapple_plm(word(ram+0x1c37+2*j)) && word(ram+0x1c87+2*j)==2*block) { slot=(int)j;break; }
+    if (slot<0) { slot=39;while (slot>=0 && word(ram+0x1c37+2*(unsigned)slot)) --slot; }
+    if (slot<0) return false;
+    const unsigned arrays[]={0x1c37,0x1c87,0x1cd7,0x1d27,0x1d77,0x1dc7,0x1e17,0xde1c,0xde6c,0xdebc,0xdf0c};
+    for (unsigned j=0; j<sizeof(arrays)/sizeof(*arrays); ++j) {
+      unsigned src=arrays[j]+2*i,dst=arrays[j]+2*(unsigned)slot;ram[dst]=r->ram[src];ram[dst+1]=r->ram[src+1];
+    }
+    memcpy(ram+0x10002+2*block,r->ram+0x10002+2*block,2);ram[0x16402+block]=r->ram[0x16402+block];
   }
   if (has_item_slots(r,ram)) {
     const unsigned arrays[]={0x1c37,0x1c87,0x1cd7,0x1d27,0x1d77,0x1dc7,0x1e17,0xde1c,0xde6c,0xdebc,0xdf0c};

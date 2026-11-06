@@ -74,6 +74,40 @@ RecompReturn HleSmDetermineWhichEnemiesToProcess(CpuState *cpu) {
   if (result==RECOMP_RETURN_NORMAL && !SmRoomsFilterActiveQueues(g_ram)) abort();
   return result;
 }
+/* The native scanner owns Root-first ordering and grapple reactions. A real
+ * NoInteract target (response zero) keeps precedence over foreign pools.
+ * Bank 9B receives the native A/$12 pair;
+ * owning-pool EnemyMain consumes the selected enemy's handler bit. */
+RecompReturn HleSmGrappleBeamCollEnemy(CpuState *cpu) {
+  if (!SmRoomsFilterActiveQueues(g_ram)) abort();
+  uint32 entry=((uint32)cpu->PB<<16)|0x9e9au;
+  RecompReturn result=interp_tier_run_call_frame(cpu,entry,entry,3,NULL);
+  if (result==RECOMP_RETURN_NORMAL && !cpu->m_flag && !cpu->x_flag &&
+      !cpu_read16(cpu,0,0x12)) {
+    uint16 response=cpu->A,definition=0;uint8 flags=(uint8)(cpu->P&0x41);
+    if (!SmRoomsGrapple(g_ram,&response,&definition,&flags)) abort();
+    if (definition) {
+      cpu->A=response;cpu_write16(cpu,0,0x12,definition);
+      cpu->_flag_C=(flags&1)!=0;cpu->_flag_V=(flags&0x40)!=0;
+      cpu->P=(uint8)((cpu->P&~0x41)|flags);
+    }
+  }
+  return result;
+}
+RecompReturn HleSmBlockReactGrapple(CpuState *cpu) {
+  SmGrappleResult native={cpu->A,cpu->X,cpu->Y,cpu->P};
+  int result=SmRoomsGrappleBlock(g_ram,&native);
+  if (result==-1) {
+    uint32 entry=((uint32)cpu->PB<<16)|0xa91fu;
+    return interp_tier_run_call_frame(cpu,entry,entry,3,NULL);
+  }
+  if (result<0) { fprintf(stderr,"[sm-rooms] native grapple terrain reaction failed\n");abort(); }
+  cpu->A=native.a;cpu->X=native.x;cpu->Y=native.y;
+  cpu->_flag_C=(native.flags&1)!=0;cpu->_flag_Z=(native.flags&2)!=0;
+  cpu->_flag_V=(native.flags&0x40)!=0;cpu->_flag_N=(native.flags&0x80)!=0;
+  cpu->P=(uint8_t)((cpu->P&~0xc3)|native.flags);cpu->S=(uint16)(cpu->S+3);
+  return RECOMP_RETURN_NORMAL;
+}
 
 /* Widen the horizontal predicate only. The ROM still owns the vertical
  * test, deletion effects, return carry/value and register restoration. */

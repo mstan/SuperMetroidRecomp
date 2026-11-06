@@ -23,7 +23,7 @@ static bool root_door(unsigned x,unsigned y,unsigned direction,bool closing) {
   assert(r && SmRoomRuntimeCapture(r,active,vram));
   bool ok=closing ? SmRoomRuntimeDoorClose(r,x,y,direction) : SmRoomRuntimeDoorOpen(r,x,y,direction);
   for (unsigned i=0; ok && i<64; ++i) ok=SmRoomRuntimeStepDoors(r);
-  ok=ok && SmRoomRuntimePromoteDoors(r,active);SmRoomRuntimeDestroy(r);return ok;
+  ok=ok && SmRoomRuntimePromoteDoors(r,active,NULL);SmRoomRuntimeDestroy(r);return ok;
 }
 static int root_enemy(uint8_t source[0x20000],int dx,int dy,int x,int y,bool horizontal) {
   static uint16_t vram[0x8000];
@@ -209,6 +209,46 @@ static void world_combat(const uint8_t *rom) {
   SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
   puts("world enemy beam hits require an open native connection; Off, closed caps and exact hit restore pass");
 }
+static void world_grapple(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  int x=0,y=0;unsigned target=0;
+  for (unsigned run=0; run<2; ++run) {
+    bool logic=run==0;memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    unsigned cap=0x10002+2*(22*144+142);active[cap+1]=(uint8_t)((active[cap+1]&15)|0xc0);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    if (logic) {
+      const uint8_t *ram=hall();target=SmShotWord(ram,0x17ac);
+      assert(target<2048 && !(target&63));
+      x=(int)SmShotWord(ram,0xf7a+target)+2304;y=(int)SmShotWord(ram,0xf7e +target)+256;
+    }
+    put(0xd08,x);put(0xd0c,y);put(0xd32,0xc703);uint16_t response=0,definition=0;uint8_t flags=0;
+    assert(SmRoomsGrapple(active,&response,&definition,&flags) && !definition); /* closed source and opposed cap */
+    put(0xd08,2328);put(0xd0c,360);SmGrappleResult tile={0,0,0,0};
+    assert(SmRoomsGrappleBlock(active,&tile)==0 && (tile.flags&0x41)==1); /* real closed opposed bubble */
+    active[cap+1]&=15;for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    put(0xd08,2312);put(0xd0c,360);tile=(SmGrappleResult){0,0,0x4321,0x41};
+    assert(SmRoomsGrappleBlock(active,&tile)==0 && !(tile.flags&0x41)); /* actual entrance type9 is air */
+    put(0xd08,2328);tile=(SmGrappleResult){0,0,0x4321,0x41};
+    assert(SmRoomsGrappleBlock(active,&tile)==0 && !(tile.flags&0x41)); /* opened bubble and neighboring terrain On/Off */
+    put(0xd08,100);put(0xd0c,100);assert(SmRoomsGrappleBlock(active,&tile)==-1); /* native Root terrain stays native */
+    if (logic) { const uint8_t *ram=hall();x=(int)SmShotWord(ram,0xf7a+target)+2304;y=(int)SmShotWord(ram,0xf7e +target)+256; }
+    put(0xd08,x);put(0xd0c,y);put(0xd32,0xc703);
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);assert(saved && end && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes);static uint8_t checkpoint[0x20000],finished[0x20000];memcpy(checkpoint,active,sizeof(active));
+    definition=0xd6ff;response=0; /* a native Root NoInteract target blocks the fallback */
+    assert(SmRoomsGrapple(active,&response,&definition,&flags) && definition==0xd6ff && !response);
+    definition=0;assert(SmRoomsGrapple(active,&response,&definition,&flags));
+    assert((definition!=0)==logic);
+    assert(SmRoomsFrame(active,true,213,logic,true));memcpy(finished,active,sizeof(active));size_t n=SmRoomsSave(end,bound);assert(n);
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,checkpoint,sizeof(active));definition=response=0;flags=0;
+    assert(SmRoomsGrapple(active,&response,&definition,&flags) && SmRoomsFrame(active,true,213,logic,true));
+    size_t m=SmRoomsSave(again,bound);assert(n==m && !memcmp(end,again,n) && !memcmp(active,finished,sizeof(active)));
+    free(saved);free(end);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("resident native grapple acquisition requires open connection and On logic, preserves Root-first NoInteract and restores exactly");
+}
 static const SmRoomImage *image(unsigned room) {
   const SmRoomScene *scene=SmRoomsScene();
   for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==room) return &scene->rooms[i];
@@ -227,7 +267,7 @@ static void neighbor_pickups(const uint8_t *rom) {
     for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
     const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
     memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
-    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0,NULL));
     put(0x998,8);put(0xaf6,40);put(0xafa,144);
     assert(SmRoomsFrame(active,true,213,logic,true));assert(root_door(1,6,1,false));
     for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
@@ -242,7 +282,7 @@ static void neighbor_pickups(const uint8_t *rom) {
     r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
     put(0x998,8);put(0xaf6,2250);put(0xb10,2250);put(0xafa,400);put(0xb14,400);
     put(0x9c2,100);put(0x9c4,500);put(0xd32,0xc4f0);
-    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1,NULL));
     if (mode==2) assert(root_door(142,22,0,true));
     /* Save at a completed frame boundary, with the drop still out of range. */
     assert(SmRoomsFrame(active,true,213,logic,true));assert(SmShotWord(active,0x9c2)==100);
@@ -272,7 +312,7 @@ static void world_actor_blocks(const uint8_t *rom) {
   for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,true,true));
   const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
   memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
-  assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+  assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0,NULL));
   put(0x998,8);put(0xaf6,40);put(0xafa,144);
   assert(SmRoomsFrame(active,true,213,true,true));assert(root_door(1,6,1,false));
   for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,true,true));
@@ -282,7 +322,7 @@ static void world_actor_blocks(const uint8_t *rom) {
   memcpy(previous,active,sizeof(active));memcpy(previous_vram,vram,sizeof(vram));
   r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
   put(0x998,8);put(0xaf6,2250);put(0xafa,400);
-  assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));assert(SmRoomsFrame(active,true,213,true,true));
+  assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1,NULL));assert(SmRoomsFrame(active,true,213,true,true));
   assert(SmShotWord(image(0x93aa)->ram,0x10002+2*neighbor_block)==0xa123);
   unsigned index=31*64,alias=24*144+146;
   put(0xe54,(int)index);put(SM_ENEMY_POOL+index,0xe87f);put(0xf7a+index,2332);put(0xf7e +index,400);
@@ -407,7 +447,7 @@ static void resource_retention(const uint8_t *rom) {
     for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
     const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
     memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
-    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0,NULL));
     put(0x998,8);put(0xaf6,40);put(0xafa,139);
     assert(SmRoomsFrame(active,true,213,logic,true));assert(root_door(1,6,1,false));
     for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
@@ -422,7 +462,7 @@ static void resource_retention(const uint8_t *rom) {
     r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
     put(0x998,8);put(0xaf6,1800);put(0xb10,1800);put(0xafa,400);put(0xb14,400);
     put(0x911,1600);put(0x915,256);put(0x9c2,500);put(0x9c4,500);put(0x18a8,0);put(0x18aa,0);
-    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1,NULL));
     assert(SmRoomsFrame(active,true,213,logic,true));
     put(0x911,1600-SmRoomsScene()->camera_dx);
     assert(SmRoomsFrame(active,true,213,logic,true));
@@ -460,7 +500,7 @@ static void retained_projectile(const uint8_t *rom) {
     for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
     const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
     memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
-    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0,NULL));
     put(0x998,8);put(0xaf6,40);put(0xafa,139);put(0x9c2,500);put(0x9c4,500);put(0x18a8,0);put(0x18aa,0);
     assert(SmRoomsFrame(active,true,213,logic,true));
     assert(root_door(1,6,1,false));
@@ -479,7 +519,7 @@ static void retained_projectile(const uint8_t *rom) {
     memcpy(previous,active,sizeof(active));memcpy(previous_vram,vram,sizeof(vram));
     r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
     put(0x998,8);put(0xaf6,2280);put(0xafa,400);put(0x9c2,500);put(0x9c4,500);put(0x18a8,0);put(0x18aa,0);
-    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1,NULL));
     assert(SmRoomsFrame(active,true,213,logic,true));r=image(0x93aa);
     size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);assert(saved && end && again);
     size_t bytes=SmRoomsSave(saved,bound);assert(bytes && SmRoomsValidate(saved,bytes));memcpy(checkpoint,active,sizeof(active));
@@ -578,6 +618,7 @@ int main(int argc,char **argv) {
   uncapped_entrance(rom);
   morph_entrance(rom);
   world_combat(rom);
+  world_grapple(rom);
   neighbor_pickups(rom);
   world_actor_blocks(rom);
   active_rules(rom);
