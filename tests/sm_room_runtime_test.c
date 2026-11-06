@@ -9,6 +9,54 @@ static uint8_t Read(void *ctx,uint32_t a) {
   (void)ctx; unsigned at=((a>>16)&127)*32768u+(a&32767);
   return (a&0x8000) && at<0x300000 ? rom[at] : 255;
 }
+static void power_bombs(SmRoomRuntime *r) {
+  const uint8_t *ram=SmRoomRuntimeRam(r),*graphics=SmRoomRuntimeVram(r);
+  if (SmShotWord(ram,0x79b)!=0x9fe5) return;
+  static uint8_t seed[0x20000],view[0x20000],input[0x20000];static uint16_t vram[0x8000];
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*fixture=malloc(size),*end=malloc(size),*again=malloc(size);
+  assert(original && fixture && end && again && SmRoomRuntimeSave(r,original,size));
+  uint8_t actor[64];memcpy(actor,ram+0xf78,sizeof(actor));assert(SmShotWord(actor,0)==0xe87f);
+  memcpy(seed,ram,sizeof(seed));memset(seed+0xf78,0,2048);memset(seed+0x1997,0,36);
+  for (unsigned slot=0; slot<32; slot+=31) {
+    unsigned at=0xf78+64*slot;memcpy(seed+at,actor,sizeof(actor));
+    SmShotPut(seed,at+2,64);SmShotPut(seed,at+6,64);SmShotPut(seed,at+20,1000);SmShotPut(seed,at+40,0);
+    SmShotPut(seed,at+14,(int)SmShotWord(seed,at+14)&~0x4c00);
+  }
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(graphics[2*i] | graphics[2*i+1]<<8);
+  assert(SmRoomRuntimeCapture(r,seed,vram) && SmRoomRuntimeSave(r,fixture,size));
+  int ox=768,oy=-256;memcpy(view,active,sizeof(view));
+  SmShotPut(view,0xce2,64+ox);SmShotPut(view,0xce4,64+oy);SmShotPut(view,0xcea,64<<8);memcpy(input,view,sizeof(input));
+  SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,0,0);
+  assert(SmRoomRuntimePowerBomb(r,view,ox,oy) && SmRoomRuntimeSave(r,again,size));
+  assert(!memcmp(fixture,again,size) && !memcmp(view,input,sizeof(view)));
+  for (unsigned edge=0; edge<3; ++edge) {
+    assert(SmRoomRuntimeLoad(r,fixture,size));SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,1u<<31,0);
+    memcpy(view,input,sizeof(view));
+    if (edge==1) SmShotPut(view,0xce2,64+ox+64);
+    if (edge==2) SmShotPut(view,0xce4,64+oy+48);
+    uint8_t untouched[0x20000];memcpy(untouched,view,sizeof(untouched));
+    assert(SmRoomRuntimePowerBomb(r,view,ox,oy));
+    assert(!memcmp(view,untouched,sizeof(view)) && SmShotWord(ram,0xf78)==0xe87f && SmShotWord(ram,0xf8c)==1000);
+    unsigned target=0xf78+31*64;
+    assert(SmShotWord(ram,target)==0xe87f && SmShotWord(ram,target+20)==(edge ? 1000 : 600));
+    if (!edge) {
+      assert(SmShotWord(ram,target+40)==48 && (SmShotWord(ram,target+14)&0x800));
+      assert(SmRoomRuntimeSave(r,end,size));
+      assert(SmRoomRuntimePowerBomb(r,view,ox,oy) && SmShotWord(ram,target+20)==600);
+      assert(SmRoomRuntimeLoad(r,fixture,size));SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,1u<<31,0);
+      assert(SmRoomRuntimePowerBomb(r,view,ox,oy) && SmRoomRuntimeSave(r,again,size) && !memcmp(end,again,size));
+    }
+  }
+  assert(SmRoomRuntimeLoad(r,fixture,size));memcpy(seed,ram,sizeof(seed));
+  unsigned target=0xf78+31*64;SmShotPut(seed,target+20,50);
+  assert(SmRoomRuntimeCapture(r,seed,vram));SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,1u<<31,0);
+  unsigned killed=SmShotWord(ram,0xe50);memcpy(view,input,sizeof(view));
+  assert(SmRoomRuntimePowerBomb(r,view,ox,oy));
+  assert(!SmShotWord(ram,target) && SmShotWord(ram,0xe50)==killed+1 && SmShotWord(ram,0xf78)==0xe87f);
+  assert(SmShotWord(ram,0x1997+34)); /* native death explosion, not a host-created reward */
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);free(fixture);free(end);free(again);
+  puts("native power bombs translate ellipse, respect masks without freeing slots, deal400 once, spawn native death effect, and restore exactly");
+}
 static void hit_shots(SmRoomRuntime *r) {
   static uint8_t view[0x20000],input[sizeof(view)],result[sizeof(view)];
   const uint8_t *ram=SmRoomRuntimeRam(r);unsigned slot=32;
@@ -508,6 +556,7 @@ int main(int argc,char **argv) {
   assert(SmRoomRuntimeSave(r,repeated,bytes));
   assert(!memcmp(continued,repeated,bytes));
   puts("resident save/restore continuation matches exactly; truncated input rejected");
+  power_bombs(r);
   if (room->header==0x93aa) { hit_shots(r);touch(r);projectile_interactions(r);projectile_terrain(r,twin); }
   uint8_t *entered=malloc(sizeof(active)); uint16_t *entered_vram=calloc(0x8000,sizeof(*entered_vram));
   assert(entered && entered_vram); memcpy(entered,SmRoomRuntimeRam(r),sizeof(active));

@@ -498,9 +498,12 @@ the existing 16-resident bound. A full handoff cannot silently evict a pool.
 The owned-ROM manager check positions an already-crossed native spit in
 Landing Site while its source 93AA is outside the expanded preview query. It
 continues, deals exactly 20 damage, releases its pool and repeats byte-exactly
-after restore, with logic On and Off. The separate live invisible-pool fixture
-is pending: its first A011 setup failed the prerequisite because the native
-camera remained at 512, keeping the resource room inside the query.
+after restore, with logic On and Off. Live Landing/93AA qualification now also
+passes both modes (`resource-retention3.log`, exit 0; `world-resource3-*`). Its
+expanded query ends at 2293, before source origin2304; the native projectile
+advances, deals 20 damage once and releases the invisible pool. Replays match
+all 17/18 completed executions. Earlier A011 and camera setup failures remain
+preserved, without being counted as gameplay failures or passes.
 
 E23F's unflagged parameter3 Ridley lock and parameter2 escape-destruction
 helper are now entry-only. The shared predicate also protects native entry
@@ -528,6 +531,27 @@ platform. These checks do not establish natural boss defeat/escape/audio.
 The assisted escape-state elevator capture shows stripes; comparison with a
 natural/native-transition baseline and escape steam remain outstanding.
 
+### Native power-bomb enemy reactions
+
+Power bombs now use native blast geometry, vulnerabilities, damage/death and
+invincibility in resident NPC pools. Interaction masks preserve occupied
+ineligible slots; the active native loop applies the same spatial gate. Native
+death/drop children inherit their actor's room. Ordinary gameplay and native
+time-freeze paths are both covered; A78 is a general time-freeze flag, not a
+power-bomb activation flag.
+
+Candidate `7383b9fc0bbb394852f78ba974eaf47a387f179018665af23c0157edf037ca15`
+builds and passes all 28 CTests plus the native runtime/manager checks.
+`powerbomb-live4-result.json` exits 0: real controller morph/fire consumes one
+power bomb, damages the active NPC1000→600 in both modes, kills the foreign
+native-pool NPC300→0 On, and leaves it allocated at300 Off. Its native death
+effect retains foreign A011 ownership. Complete replays match 109/112
+executions. The earlier controller fixtures had incorrect health/invincibility
+addresses and incomplete morph-pose handling; their failed prerequisites are
+retained and do not qualify gameplay. Power-bomb terrain and special projectile
+responses, broader grapple/weapon cases and complete cosmetic ownership remain
+open. The existing full live regression gate is running on this candidate.
+
 **Not release ready.** Ordinary right/left and down/up continuous round trips
 are qualified with neighboring logic On and Off. Native inactive-room shots
 and ordinary enemy weapon hits now pass the built live controller gate,
@@ -544,9 +568,9 @@ current-build restore and replay. Six acceptance areas remain open:
    Retained enemy-projectile transfer/contact now passes live On/Off checks.
    Shared native actor movers now use foreign terrain and pass the live
    leftward transfer above; broader actor paths/encounters remain to qualify.
-   Resource retention now passes the owned-ROM native check above; its live
-   invisible-pool check remains pending. Area weapons and complete ownership
-   still need implementation. Native health/ammo rewards
+   Resource retention now passes native and live invisible-pool checks. Native
+   power-bomb NPC reactions now pass; remaining area-weapon cases and complete
+   ownership still need work. Native health/ammo rewards
    and grab release pass the bounded runtime/manager checks above; natural
    live collection during traversal remains to qualify. Walls and closed doors
    must block interaction.

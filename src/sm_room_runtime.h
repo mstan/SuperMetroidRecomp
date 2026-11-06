@@ -43,6 +43,9 @@ int SmRoomRuntimeShot(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,i
  * shot AI, death/drop state and weapon reactions remain cartridge-owned. */
 bool SmRoomRuntimeHitShots(SmRoomRuntime *room,uint8_t active[0x20000],
     int origin_x,int origin_y,unsigned mask);
+/* Native blast geometry, vulnerability, damage/death and invincibility use
+ * translated coordinates; interaction masks leave ineligible slots occupied. */
+bool SmRoomRuntimePowerBomb(SmRoomRuntime *room,const uint8_t active[0x20000],int origin_x,int origin_y);
 /* Native actor contact with a borrowed player view. Only player effects cross
  * back; room progression, CPU, camera and script state remain isolated. */
 bool SmRoomRuntimeTouch(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y);

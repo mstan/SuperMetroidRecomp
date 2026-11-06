@@ -163,6 +163,12 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
       }
     }
     if ((c->k&127)==0x20) {
+      if (c->pc==0xa391) player_end(r,true);
+      if (c->pc==0xa326) {
+        unsigned index=word(r->ram+0xe54);
+        if (index<2048 && !(index&63) && !(r->interaction_enemies&(1u<<(index/64)))) c->pc=0xa391;
+        else player_begin(r,true);
+      }
       if ((c->pc==0xc845 || c->pc==0xc879) && r->enemy_query && !r->enemy_reaction) {
         bool horizontal=c->pc==0xc845;uint16_t original=c->x;
         int result=r->enemy_query(r->world_context,r->ram,horizontal,&c->x);
@@ -562,6 +568,23 @@ static bool hit_shots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int 
 }
 bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask) {
   return hit_shots(r,active,origin_x,origin_y,mask,false);
+}
+bool SmRoomRuntimePowerBomb(SmRoomRuntime *r,const uint8_t active[0x20000],int origin_x,int origin_y) {
+  if (!r || r->error[0] || !active) return false;
+  if (!r->actors || !r->interaction_enemies || !(word(active+0xcea)&0xff00)) return true;
+  uint8_t scratch[64],blast[10];
+  memcpy(scratch,r->ram,sizeof(scratch));memcpy(blast,r->ram+0xce2,sizeof(blast));
+  const unsigned work[]={0xe54,0x1784,0x1786,0xf378};uint16_t saved[4];
+  for (unsigned i=0; i<4; ++i) saved[i]=(uint16_t)word(r->ram+work[i]);
+  Interp816 previous=*r->cpu;unsigned phase=r->world_phase;r->world_phase=1;
+  memcpy(r->ram+0xce2,active+0xce2,sizeof(blast));
+  put(r,0xce2,(int)word(active+0xce2)-origin_x);put(r,0xce4,(int)word(active+0xce4)-origin_y);
+  r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
+  r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
+  bool ok=call(r,0xa0a306,3);
+  memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+0xce2,blast,sizeof(blast));
+  for (unsigned i=0; i<4; ++i) put(r,work[i],saved[i]);
+  r->world_phase=phase;*r->cpu=previous;return ok;
 }
 static bool touch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,bool projectiles) {
   if (!r || r->error[0] || !active) return false;

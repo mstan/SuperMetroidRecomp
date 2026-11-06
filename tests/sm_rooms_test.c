@@ -282,6 +282,49 @@ static void world_actor_blocks(const uint8_t *rom) {
   free(saved);free(end);free(again);SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
   puts("actor reactions reach both room owners; native breakable blocks change only their real room; exact world restore");
 }
+static void world_power_bombs(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  for (unsigned enabled=0; enabled<2; ++enabled) {
+    bool logic=enabled!=0;memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    unsigned cap=0x10002+2*(22*144+142);active[cap+1]=(uint8_t)((active[cap+1]&15)|0xc0);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    const uint8_t *ram=hall();uint8_t closed[2048];memcpy(closed,ram+0xf78,sizeof(closed));
+    put(0xa78,1);put(0xce2,2290);put(0xce4,400);put(0xcea,255<<8);
+    for (unsigned i=0; i<5; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    assert(!memcmp(closed,hall()+0xf78,sizeof(closed)));
+    put(0xa78,0);put(0xcea,0);active[cap+1]&=15;
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    ram=hall();unsigned target=0,health=0;
+    if (logic) {
+      for (unsigned i=0; i<32; ++i) {
+        unsigned at=0xf78+64*i,id=SmShotWord(ram,at);if (!id || id==0xdaff) continue;
+        unsigned vulnerability=Read(NULL,0xa0003cu+id) | Read(NULL,0xa0003du+id)<<8;
+        unsigned power=Read(NULL,0xb4000fu+(vulnerability ? vulnerability : 0xec1c));
+        if (power!=255 && (power&127) && SmShotWord(ram,at+2)<230 && !SmShotWord(ram,at+40)) { target=at;break; }
+      }
+      assert(target);health=SmShotWord(ram,target+20);assert(health);
+      put(0xce4,(int)SmShotWord(ram,target+6)+256);
+    }
+    put(0xa78,0);put(0xcea,255<<8); /* ordinary, unfrozen native blast */
+    static uint8_t checkpoint[0x20000],finished[0x20000];memcpy(checkpoint,active,sizeof(active));
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);assert(saved && end && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes);
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    if (logic) assert(!SmShotWord(hall(),target) || SmShotWord(hall(),target+20)<health);
+    else for (unsigned i=0; i<32; ++i) assert(!SmShotWord(hall(),0xf78+64*i));
+    size_t final_bytes=SmRoomsSave(end,bound);assert(final_bytes);memcpy(finished,active,sizeof(active));
+    unsigned result=logic ? SmShotWord(hall(),target+20) : 0;
+    for (unsigned i=0; i<5; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    if (logic) assert(SmShotWord(hall(),target+20)==result);
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,checkpoint,sizeof(active));
+    assert(SmRoomsFrame(active,true,213,logic,true));size_t repeated=SmRoomsSave(again,bound);
+    assert(repeated==final_bytes && !memcmp(end,again,final_bytes) && !memcmp(active,finished,sizeof(active)));
+    free(saved);free(end);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("native world power-bomb damage requires open connection and logic On; closed/Off, repeat-hit immunity and exact blast restore pass");
+}
 static void active_rules(const uint8_t *rom) {
   if (SmShotWord(original,0x79b)!=0x91f8) return;
   for (unsigned enabled=0; enabled<2; ++enabled) {
@@ -502,6 +545,7 @@ int main(int argc,char **argv) {
   neighbor_pickups(rom);
   world_actor_blocks(rom);
   active_rules(rom);
+  world_power_bombs(rom);
   retained_projectile(rom);
   resource_retention(rom);
   if (argc==4) {

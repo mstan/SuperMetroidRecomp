@@ -780,14 +780,26 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   pending_entry=false;active_world.loaded=1;
   sync_entities(active,active,0,0,&active_world,true);
   if (word(active+0xa78)) {
-    /* Power bombs freeze actors, but the cartridge still processes door PLMs.
-     * Mirror and animate those faces without advancing dormant gameplay/FX. */
+    /* A native time freeze suspends actor motion while door PLMs continue.
+     * An active blast still uses the same spatial interaction gate. */
     if (current!=root) return true;
     if (!mirror_doors(active)) return false;
+    bool reachable[SM_ROOM_RESIDENTS+1];interaction_rooms(active,reachable);
     for (unsigned i=0; i<count; ++i) {
-      SmRoomRuntimeProgress(residents[i].runtime,active);
-      if (!SmRoomRuntimeStepDoors(residents[i].runtime)) return false;
-      SmRoomRuntimeDoorBits(residents[i].runtime,active);
+      Resident *r=&residents[i];const SmRoomPlacement *p=&r->placement;
+      SmRoomRuntimeProgress(r->runtime,active);
+      sync_entities(active,SmRoomRuntimeRam(r->runtime),p->x,p->y,&r->world,false);
+      uint32_t a=interaction_mask(active,r,reachable,0,32),ep=interaction_mask(active,r,reachable,32,18);
+      SmRoomRuntimeSetMasks(r->runtime,simulation_mask(r,0,32),simulation_mask(r,32,18),a,ep);
+      EprojOrigin origin={active,p->x,p->y,reachable};
+      SmRoomRuntimeSetWorld(r->runtime,resident_eproj_tile,&origin);
+      SmRoomRuntimeSetBirth(r->runtime,resident_birth);
+      SmRoomRuntimeSetPlayer(r->runtime,active,p->x,p->y,resident_player_eligible);
+      bool ok=SmRoomRuntimePowerBomb(r->runtime,active,p->x,p->y);
+      SmRoomRuntimeSetWorld(r->runtime,NULL,NULL);
+      if (!ok || !SmRoomRuntimeStepDoors(r->runtime)) return false;
+      sync_entities(active,SmRoomRuntimeRam(r->runtime),p->x,p->y,&r->world,false);
+      SmRoomRuntimeDoorBits(r->runtime,active);
     }
     update_connections(active);return publish();
   }
@@ -869,7 +881,8 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
     sync_entities(active,SmRoomRuntimeRam(runtime),p->x,p->y,&resident->world,false);
     a=interaction_mask(active,resident,reachable,0,32);ep=interaction_mask(active,resident,reachable,32,18);
     SmRoomRuntimeSetMasks(runtime,sim_a,sim_ep,a,ep);
-    if (!failed) failed=!SmRoomRuntimeProjectiles(runtime,active,p->x,p->y,shots,ep!=0);
+    if (!failed) failed=!SmRoomRuntimeProjectiles(runtime,active,p->x,p->y,shots,ep!=0) ||
+        !SmRoomRuntimePowerBomb(runtime,active,p->x,p->y);
     SmRoomRuntimeSetWorld(runtime,NULL,NULL);
     if (failed) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X: %s\n",root,p->room,SmRoomRuntimeError(runtime)); return false;
