@@ -663,10 +663,12 @@ current-build restore and replay. Six acceptance areas remain open:
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors. The reproduced departed-room native-
    viewport padding gap is now fixed and live-qualified.
-4. Finish special encounters and progression: natural Ceres escape scenery and
-   steam, boss defeat/audio and camera continuity at the remaining doors. Basic
-   live scenery, five-link continuous traversal and entry-only helper/lock
-   behavior now pass in both logic modes.
+4. Ceres progression mechanics now pass: fresh native encounter/flee earns the
+   escape prerequisite, return entries preserve steam, and the native elevator
+   advances through states 32/33/34 to actual Landing Site gameplay in both
+   logic modes. Door/platform access is assisted; no successful escape state,
+   velocity, fade timer or progression result is injected. Human listening
+   judgment of encounter/escape audio remains pending.
 5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
    determinism, representative native gameplay and matched runtime performance.
 6. The five-case owner review is open with normal audio in a normal window,
@@ -707,6 +709,33 @@ Guest partition replays and final WRAM/VRAM/OAM/palette/resident state still mat
 and earns no gameplay acceptance. Local debug control is intentionally disabled
 in netplay; the attempted TCP gameplay driver earns no pass and is discontinued.
 Rewind, supported human two-peer gameplay and performance remain open.
+
+The second canonical hatch A5A0 also passes Candidate8 actual On/Off traversal,
+inspected screenshots and complete replays (112/116 checkpoints respectively),
+with world body delta `[2,0]`, camera delta `[0,0]`, paired caps open and all
+three destination NPCs. A45C remains a real accessible Morph tunnel defect;
+its native uncapped header and multiple entrances need a coherent correction.
+
+`ceres-escape-final1-on` repeats the fresh Candidate8 six-room route and actual
+native flee/earned escape. `ceres-escape-final2-on/off` resumes that same-build
+earned checkpoint, traverses the actual return strips, then uses access-only
+positioning above/right of the elevator platform. Real Left input, gravity
+and native landing fire the authored elevator trigger; states 32/33/34 and
+Landing Site 6/7/8 are observed in both modes. The initial final1 platform
+attempt stopped at X145, one pixel outside the native X113..144 interval;
+extending real Left input corrects that fixture without a production change.
+
+The separate `human-review-next1` supplement is prepared with immutable
+Candidate9, a guarded solo rewind scenario and supported native-controller
+two-peer launchers. The cartridge-format disposable SRAM boots Brinstar station
+A184 without snapshot/debugger mutation (`net-native-save1`). The existing
+selector's load/input/release/pause/restart/storage verification passes with
+rewind enabled (`human-review-next1-verify`). No supplemental game or selector
+has been opened visibly, and no human verdict is implied. Normal window/audio
+and isolated host/guest profiles are staged; the live two-peer and actual rewind
+commit/input-ownership checks await the owner. Record each result separately
+even though they share one prepared review case. The original running review
+and its notes remain untouched.
 
 ## Local evidence and retained work
 

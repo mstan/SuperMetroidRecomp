@@ -75,7 +75,7 @@ class ReviewGame:
                 f'[Sound]\nEnableAudio=1\nVolume={0 if self.headless else 100}\nAudioFreq=32000\nAudioChannels=2\nAudioSamples=512\n'
                 f'[Controller]\nSourceP1={source}\nSourceP2=0\nSourceP3=0\nSourceP4=0\n'
                 '[GamepadMap]\nEnableGamepad1=true\nEnableGamepad2=false\nEnableGamepad3=false\nEnableGamepad4=false\n'
-                '[KeyMap]\nPause=Shift+p\nPauseDimmed=p\n[Rewind]\nEnabled=0\n')
+                f"[KeyMap]\nPause=Shift+p\nPauseDimmed=p\n[Rewind]\nEnabled={int(case.get('rewind_enabled',False))}\n")
         (self.runtime/'config.ini').write_text(config,encoding='utf-8')
         aspect=self.manifest.get('aspect','16:9')
         (self.runtime/'sm-video.ini').write_text(f'[SuperMetroidVideo]\nEnhancedRenderer=1\nAspect={aspect}\nPresentationEnabled=1\nPresentationFPS=120\n'
