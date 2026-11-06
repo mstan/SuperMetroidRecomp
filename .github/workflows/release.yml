@@ -132,6 +132,7 @@ jobs:
           fi
           cmake -S . -B build-ci -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DSNESRECOMP_SETUP_HOST=OFF -DSNESRECOMP_ENABLE_TRACE=OFF \
+            -DSNESRECOMP_ENABLE_NET=ON \
             -DSNESRECOMP_BUILD_VERSION="$RELEASE_VERSION" \
             '-DCMAKE_BUILD_RPATH=$ORIGIN' "${EXTRA[@]}"
           cmake --build build-ci --parallel 4
