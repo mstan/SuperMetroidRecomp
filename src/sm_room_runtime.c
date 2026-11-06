@@ -253,6 +253,7 @@ static bool initialize_doors(SmRoomRuntime *r,uint16_t state) {
   }
   fail(r,"unterminated resident door PLMs",state); return false;
 }
+static bool load_population(SmRoomRuntime *r);
 SmRoomRuntime *SmRoomRuntimeCreate(SmWorldRead read, void *context,
     const SmWorldRoom *room, uint16_t state, const uint8_t active[0x20000]) {
   return SmRoomRuntimeCreateConfigured(read,context,room,state,0,active,true);
@@ -338,7 +339,14 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
     if (((unsigned)rom_long(r,at)&65535)==65535) { quota=read(context,at+2); break; }
   }
   put(r,0xe52,(int)quota);
-  if (!actors) return r;
+  if (!actors) {
+    for (unsigned i=0; i<32; ++i) {
+      unsigned id=(unsigned)rom_long(r,0xa10000u+word(r->ram+0x7cf)+16*i)&65535;
+      if (id==65535) break;
+      if (SmRoomEnvironmentEnemy(id)) { load_population(r);break; }
+    }
+    return r;
+  }
   SmRoomRuntimeEnableActors(r);
   return r;
 }
@@ -372,7 +380,7 @@ static void prepare_population(SmRoomRuntime *r) {
      * destruction/progression and parameter3's Ridley entrance lock require
      * actual room entry; their definition has no native boss flag. */
     unsigned parameter=read(context,a+12) | read(context,a+13)<<8;
-    if (entry_only(r,id,parameter)) continue;
+    if (entry_only(r,id,parameter) || (!r->actors && !SmRoomEnvironmentEnemy(id))) continue;
     for (unsigned j=0; j<16; ++j) r->population_data[used*16+j]=read(context,a+j);
     ++used;
   }
@@ -387,10 +395,8 @@ static void prepare_population(SmRoomRuntime *r) {
     ++tiles;
   }
 }
-bool SmRoomRuntimeEnableActors(SmRoomRuntime *r) {
-  if (!r || r->error[0]) return false;
-  if (r->actors) return true;
-  r->actors=true;prepare_population(r);
+static bool load_population(SmRoomRuntime *r) {
+  prepare_population(r);
   put(r,0xe1c,65535); put(r,0xe12,1); /* no active-player collision in the isolated probe */
   if (!call(r,0xa08a1e,3)) return false;
   memcpy(r->vram+0xd800,r->ram+0x7000,0x2800);
@@ -399,6 +405,33 @@ bool SmRoomRuntimeEnableActors(SmRoomRuntime *r) {
   if (!fixed_graphics(r)) return false;
   memcpy(r->ram+0xc000,r->ram+0xc200,512);
   return call(r,0xa08a9e,3);
+}
+typedef struct EnvironmentPhase { uint8_t actor[64],spawn[64]; } EnvironmentPhase;
+static unsigned environment_phases(const uint8_t ram[0x20000],EnvironmentPhase phase[32]) {
+  unsigned n=0;
+  for (unsigned i=0; i<32; ++i) if (SmRoomEnvironmentEnemy(word(ram+0xf78+64*i))) {
+    memcpy(phase[n].actor,ram+0xf78+64*i,64);memcpy(phase[n++].spawn,ram+0x7000+64*i,64);
+  }
+  return n;
+}
+static void restore_environment(uint8_t ram[0x20000],const EnvironmentPhase phase[32],unsigned n) {
+  for (unsigned i=0; i<32; ++i) {
+    uint8_t *actor=ram+0xf78+64*i;
+    if (!SmRoomEnvironmentEnemy(word(actor))) continue;
+    unsigned found=n,matches=0;
+    for (unsigned j=0; j<n; ++j) if (word(phase[j].actor)==word(actor) &&
+        word(phase[j].actor+2)==word(actor+2) && word(phase[j].actor+6)==word(actor+6) &&
+        word(phase[j].actor+60)==word(actor+60) && word(phase[j].actor+62)==word(actor+62)) { found=j;++matches; }
+    if (matches==1) { memcpy(actor,phase[found].actor,64);memcpy(ram+0x7000+64*i,phase[found].spawn,64); }
+  }
+}
+bool SmRoomRuntimeEnableActors(SmRoomRuntime *r) {
+  if (!r || r->error[0]) return false;
+  if (r->actors) return true;
+  EnvironmentPhase phase[32];unsigned n=environment_phases(r->ram,phase);
+  r->actors=true;
+  if (!load_population(r)) return false;
+  restore_environment(r->ram,phase,n);return true;
 }
 void SmRoomRuntimeDestroy(SmRoomRuntime *r) {
   if (r) { interp816_free(r->cpu); free(r); }
@@ -422,7 +455,11 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
   if (!r || r->error[0]) return false;
   put(r,0xaf6,samus_x); put(r,0xafa,samus_y);
   put(r,0x911,camera_x); put(r,0x915,camera_y);
-  if (!r->actors) return call(r,0xb4bc82,3); /* native cosmetic sprites do not require enemy logic */
+  if (!r->actors) {
+    bool environment=false;
+    for (unsigned i=0; i<32; ++i) environment|=SmRoomEnvironmentEnemy(word(r->ram+0xf78+64*i));
+    if (!environment) return call(r,0xb4bc82,3);
+  }
   if (!call(r,0xa08eb6,3) || !SmActivityAugmentQueues(r->ram,extra)) return false;
   if (!SmActivityFilterQueues(r->ram,r->simulation_enemies,r->interaction_enemies)) {
     fail(r,"invalid resident activity index",0);return false;
@@ -433,7 +470,7 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
   memset(r->ram+0xf68,0,16);
   bool ok=call(r,0xa08fd4,3);
   memset(r->ram+0xf68,0,16);
-  return ok && call(r,0x868104,3);
+  return ok && (!r->actors || call(r,0x868104,3)); /* visual-only EPs run once in StepEffects */
 }
 bool SmRoomRuntimeStepDoors(SmRoomRuntime *r) {
   if (!r || r->error[0]) return false;
@@ -701,7 +738,8 @@ bool SmRoomRuntimeCapture(SmRoomRuntime *r,const uint8_t ram[0x20000],const uint
   /* A suspended resident has no authority over the actual player's body. */
   put(r,0xe12,1);
   if (!r->actors) {
-    memset(r->ram+0xf78,0,2048);
+    for (unsigned i=0; i<32; ++i) if (!SmRoomEnvironmentEnemy(word(r->ram+0xf78+64*i)))
+      memset(r->ram+0xf78+64*i,0,64);
     memset(r->ram+0x1997,0,36);
   }
   return true;
@@ -719,6 +757,12 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
    * Ordinary populations keep their resident health, AI, animation and death
    * state, including deleted slots. Never respawn a killed preview actor. */
   bool entry=SmRoomRuntimeEntryOnly(r,ram);
+  if (!r->actors) {
+    EnvironmentPhase phase[32];unsigned n=environment_phases(r->ram,phase);
+    /* Match native instances, not compacted preview slot numbers. The real
+     * entry keeps its complete ordinary actor/lock pool and resource setup. */
+    restore_environment(ram,phase,n);
+  }
   if (r->actors && !entry) {
     memcpy(ram+0xe4c,r->ram+0xe4c,10);
     memcpy(ram+0xe84,r->ram+0xe84,0xf78-0xe84);
@@ -825,10 +869,17 @@ bool SmRoomRuntimeValidate(const void *in, size_t size, uint16_t room, uint16_t 
   RoomState *s=malloc(sizeof(*s)); if (!s) return false;
   memcpy(s,in,sizeof(*s));
   bool ok=!(s->magic!=0x534d5253 || s->version!=3 || s->actors!=actors || s->overlays>1 ||
-      (s->overlays && !s->actors) || s->sp!=0x1fff || s->pc!=0xff00 ||
+      s->sp!=0x1fff || s->pc!=0xff00 ||
       s->emulation>1 || (s->emulation && (s->flags&0x30)!=0x30) ||
       s->room!=room || s->state!=state ||
       s->room!=word(s->ram+0x79b) || s->state!=word(s->ram+0x7bb));
+  /* A visual-only overlay is legal, but cannot smuggle ordinary gameplay
+   * actors into the disabled population. Its native environmental slots
+   * and instruction phase must survive the same exact restore contract. */
+  if (ok && !s->actors) for (unsigned i=0; i<32; ++i) {
+    unsigned id=word(s->ram+0xf78+64*i);
+    if (id && !SmRoomEnvironmentEnemy(id)) { ok=false;break; }
+  }
   free(s); return ok;
 }
 bool SmRoomRuntimeLoad(SmRoomRuntime *r, const void *in, size_t size) {

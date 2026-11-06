@@ -3,6 +3,8 @@
 #include "sm_eproj_view.h"
 #include "sm_enemy_view.h"
 typedef struct SmRoomRuntime SmRoomRuntime;
+/* Ceres steam is cartridge environment animation stored in an NPC slot. */
+static inline bool SmRoomEnvironmentEnemy(unsigned id) { return id==0xe1ff; }
 /* Independent cartridge execution for resident rooms. The active machine's
  * bus, timing, audio, globals and native saves are never installed here. */
 SmRoomRuntime *SmRoomRuntimeCreate(SmWorldRead read, void *context,

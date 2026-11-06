@@ -573,6 +573,43 @@ static void resident_mode7_canvas(void) {
   ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
 }
 
+static void resident_steam_pixels(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned frame=0; frame<2; ++frame) {
+    ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+    SmRendererSetRom(rom,sizeof(rom));word(0x998,8);word(0x79b,0x91f8);word(0x7a5,16);word(0x7a7,16);
+    ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=17;
+    SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1));assert(scene);
+    *scene=(SmRoomScene){.version=3,.count=1,.root=0x91f8,.logic=logic,.ownership=1,.root_width=256,.root_height=256};
+    SmRoomImage *image=&scene->rooms[0];
+    image->placement=(SmRoomPlacement){.room=0xdfd7,.state=0xe003,.x=256,.width=256,.height=256,
+        .left=256,.top=0,.right=512,.bottom=256};image->object_rooms[0]=0xdfd7;
+    uint8_t *r=image->ram;r[0x7a5]=r[0x7a7]=16;r[0x52]=3;r[0x69]=17;r[0xc1a2]=0xe0;r[0xc1a3]=3;
+    r[0xf78]=0xff;r[0xf79]=0xe1;r[0xf7a]=24;r[0xf7e]=100;r[0xf88]=4;r[0xf96]=0;r[0xf97]=0xa;
+    r[0xf9a]=5;r[0xfa6]=0xa6;r[0xf94]=0x34;r[0xf95]=0x12;
+    unsigned map=frame ? 0xf160 : 0xf188,child=frame ? 0xf398 : 0xf3d2;
+    r[0xf8e]=(uint8_t)map;r[0xf8f]=(uint8_t)(map>>8);
+    /* Actual E1FF F188/F160 extended layout: byte count1, independent
+     * high byte10, then an8-byte x/y/spritemap/hitbox entry. */
+    unsigned at=0x130000+(map&32767);romword(at,0x1001);romword(at+6,child);romword(at+8,frame ? 0xf286 : 0xf2a2);
+    at=0x130000+(child&32767);romword(at,frame ? 4 : 1);
+    const uint8_t sprites[20]={0xf8,0x81,0xd7,0x7c,0x20,0xf8,0x81,0xe0,0x7e,0x20,0xf8,0x81,0xe8,0x9a,0x20,0xf8,0x81,0xf0,0x9c,0x20};
+    const uint8_t single[5]={0xf0,0x81,0xf8,0x7c,0x20};memcpy(rom+at+2,frame ? sprites : single,frame ? 20 : 5);
+    /* Synthetic solid texels exercise the actual native tile numbers and
+     * palette; cartridge graphic pixels are not embedded in this fixture. */
+    const unsigned tiles[]={0x7c,0x7e,0x9a,0x9c};
+    for (unsigned i=0; i<4; ++i) for (unsigned q=0; q<4; ++q) for (unsigned row=0; row<8; ++row)
+      image->vram[0xc000+32*(tiles[i]+(q&1)+(q/2)*16)+2*row]=255;
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,1);
+    for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    unsigned y=frame ? 85 : 100,x=frame ? 272 : 264;
+    for (unsigned i=0; i<16; ++i) assert(output[y*view.width+view.extra+x+i]==0x00ff00);
+    assert(output[y*view.width+view.extra+298]!=0x00ff00 && r[0xf94]==0x34 && r[0xf95]==0x12);free(scene);
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+}
+
 static void resident_in_native_padding(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
@@ -1106,6 +1143,7 @@ int main(int argc, char **argv) {
   resident_publication(argv[1]);
   resident_character_bases();
   resident_mode7_canvas();
+  resident_steam_pixels();
   resident_in_native_padding();
   resident_projectile_pixels();
   resident_world_objects();

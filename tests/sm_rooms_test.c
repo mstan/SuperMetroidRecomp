@@ -355,6 +355,12 @@ static void active_rules(const uint8_t *rom) {
     assert(SmRoomsActiveRules(active,31)==(logic ? SM_ROOM_SIMULATES : 0));
     assert(SmRoomsActiveRules(active,49)==(logic ? SM_ROOM_SIMULATES : 0));
     assert(SmRoomsActiveRules(active,48)==SM_ROOM_SIMULATES);
+    put(SM_ENEMY_POOL+31*64,0xe1ff);
+    assert(SmRoomsActiveRules(active,31)==SM_ROOM_SIMULATES); /* visual NPC stays live behind the closed foreign door */
+    put(0xe54,31*64);put(0x1997+30,0x9db0);put(0x1a4b+30,2308);put(0x1a93+30,400);put(0x1bd7+30,0x14);put(0x1bb3+30,0x0404);
+    SmRoomsEntityBorn(active,active,0,0,47,1);
+    assert(SmRoomsActiveRules(active,47)==SM_ROOM_SIMULATES); /* native visual child inherits room/role */
+    put(SM_ENEMY_POOL+31*64,0xe87f);assert(SmRoomsActiveRules(active,31)==(logic ? SM_ROOM_SIMULATES : 0));
     assert(SmRoomsFilterActiveQueues(active));assert(SmShotWord(active,0x17a4)==(logic ? 4u : 2u) && SmShotWord(active,0x17a6)==2);
     put(0x17ac,31*64);put(0x17ae,65535);put(0x17a4,2);put(0x17ec,65535);put(0x17a6,0);
     put(SM_ENEMY_POOL+31*64,0xdaff);assert(SmRoomsFilterActiveQueues(active));assert(SmShotWord(active,0x17a4)==2);

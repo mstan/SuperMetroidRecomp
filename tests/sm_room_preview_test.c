@@ -21,6 +21,16 @@ int main(int argc, char **argv) {
   assert(fread(rom,1,size,f)==size); fclose(f);
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  unsigned interior=0;
+  for (unsigned i=0; i<world->door_count; ++i) {
+    const SmWorldDoor *d=&world->doors[i];unsigned dir=d->direction&3;
+    if ((d->flags&0x80) || d->block_x<0 || d->block_y<0 ||
+        (dir<2 ? (unsigned)d->block_x%16 : (unsigned)d->block_y%16)==(dir==0 || dir==2 ? 15u : 0u)) continue;
+    printf("interior door %04X: %04X -> %04X dir%u source(%d,%d) arrival(%u,%u) flags%02X reciprocal%u\n",
+        d->definition,d->source,d->destination,dir,d->block_x,d->block_y,d->arrival_x,d->arrival_y,d->flags,d->reciprocal);
+    ++interior;
+  }
+  printf("%u physical non-elevator door records have an interior trigger plane\n",interior);
   SmRoomPreviewSetRom(rom,size);
   unsigned rooms=0, pixels=0, residents=0,ceres=0,uncapped=0;
   for (unsigned i=0; i<world->room_count; ++i) {

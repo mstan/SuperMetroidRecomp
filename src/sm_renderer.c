@@ -434,7 +434,7 @@ static bool enemy_piece(const SmSourceFrame *f, unsigned slot,
     return map_piece(bank, map, x, y, palette, base, position, attr, high, actual_x);
   const uint8_t *ext = rom_bytes(bank, map, 2);
   if (!ext) return false;
-  unsigned count = read16(ext, 0);
+  unsigned count = ext[0]; /* A0:944A reads the byte count; header high byte is independent */
   if (!count || count > 64) return false;
   ext = rom_bytes(bank, map + 2, count * 8);
   if (!ext) return false;
@@ -957,7 +957,7 @@ static SmBg2Object bg2_object(const SmSourceFrame *f, const SmSourceFrame *old, 
     unsigned bank = e[46], map = read16(e, 22);
     const uint8_t *data = rom_bytes(bank, map, 2);
     if (!data) continue;
-    unsigned n = read16(data, 0);
+    unsigned n = data[0];
     if (!n || n > 64 || !(data = rom_bytes(bank, map + 2, n * 8))) continue;
     bool tilemap = false;
     for (unsigned i = 0; i < n; ++i) {
@@ -1826,7 +1826,7 @@ static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
     if (read16(e, 16) & 4) {
       const uint8_t *ext = rom_bytes(bank, map, 2);
       if (!ext) continue;
-      unsigned n = read16(ext, 0);
+      unsigned n = ext[0];
       if (!n || n > 64) continue;
       ext = rom_bytes(bank, map + 2, n * 8);
       if (!ext) continue;
@@ -2124,7 +2124,7 @@ static void resident_objects(const SmRoomScene *rooms,const SmRoomImage *image, 
     else if (frozen && (frozen>=0x5a || (frozen&2))) palette=3072;
     if (read16(e,42)) x+=read16(e,44)&2 ? -1 : 1;
     if (read16(e,16)&4) {
-      const uint8_t *ext=rom_bytes(bank,map,2); unsigned n=ext ? read16(ext,0) : 0;
+      const uint8_t *ext=rom_bytes(bank,map,2); unsigned n=ext ? ext[0] : 0;
       ext=n && n<=64 ? rom_bytes(bank,map+2,n*8) : NULL;
       if (!ext) continue;
       for (unsigned i=n; i-- >0;) {

@@ -308,11 +308,13 @@ static void sync_entity(const uint8_t *active,const uint8_t *ram,int ox,int oy,W
   if (!definition) { memset(entity,0,sizeof(*entity));return; }
   if (!entity->definition || !entity->room || abs(x-entity->x)>128 || abs(y-entity->y)>128) {
     unsigned ep=slot-WORLD_ENEMIES;
-    bool environment=slot>=WORLD_ENEMIES && slot<WORLD_ENEMIES+WORLD_EPROJS &&
-        (word(ram+0x1bd7+ep*2)&0x2000) && !word(ram+0x1bb3+ep*2);
+    bool environment=slot<WORLD_ENEMIES ? SmRoomEnvironmentEnemy(definition) :
+        slot<WORLD_ENEMIES+WORLD_EPROJS && (word(ram+0x1bd7+ep*2)&0x2000) && !word(ram+0x1bb3+ep*2);
     *entity=(WorldEntity){.definition=(uint16_t)definition,.room=(uint16_t)initial_entity_room(active,ram,ox,oy,x,y),
         .flags=environment ? WORLD_ENVIRONMENT : 0,.x=(int16_t)x,.y=(int16_t)y};return;
   }
+  if (slot<WORLD_ENEMIES && SmRoomEnvironmentEnemy(entity->definition)!=SmRoomEnvironmentEnemy(definition))
+    entity->flags=(uint16_t)((entity->flags&~WORLD_ENVIRONMENT) | (SmRoomEnvironmentEnemy(definition) ? WORLD_ENVIRONMENT : 0));
   entity->definition=(uint16_t)definition;
   if (x==entity->x && y==entity->y) { entity->pending=0;return; }
   DoorContext source;
@@ -363,11 +365,11 @@ void SmRoomsEntityBorn(const uint8_t active[0x20000],const uint8_t source[0x2000
   unsigned parent=WORLD_ENTITIES;
   if (phase==1 && word(source+0xe54)<2048 && !(word(source+0xe54)&63)) parent=word(source+0xe54)/64;
   if (phase==2 && word(source+0x1991)<36 && !(word(source+0x1991)&1)) parent=WORLD_ENEMIES+word(source+0x1991)/2;
-  unsigned room=word(source+0x79b),flags=slot>=WORLD_ENEMIES && phase==0 ? WORLD_ENVIRONMENT : 0;
+  unsigned room=word(source+0x79b),flags=(slot<WORLD_ENEMIES ? SmRoomEnvironmentEnemy(definition) : phase==0) ? WORLD_ENVIRONMENT : 0;
   if (parent<WORLD_ENTITIES && world->slots[parent].definition && parent!=slot) {
     unsigned parent_def;int px,py;entity_values(source,parent,&parent_def,&px,&py);
     if (parent_def) sync_entity(active,source,ox,oy,&world->slots[parent],parent);
-    room=world->slots[parent].room;flags=world->slots[parent].flags&WORLD_ENVIRONMENT;
+    room=world->slots[parent].room;flags|=world->slots[parent].flags&WORLD_ENVIRONMENT;
   }
   world->slots[slot]=(WorldEntity){.definition=(uint16_t)definition,.room=(uint16_t)room,
       .flags=(uint16_t)flags,.x=(int16_t)x,.y=(int16_t)y};

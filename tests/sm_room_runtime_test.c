@@ -505,7 +505,7 @@ static void ceres_scenery(const SmWorld *world) {
     for (unsigned i=0; i<32; ++i) {
       unsigned at=0xf78+64*i,id=SmShotWord(ram,at);
       if (!id) continue;
-      assert(logic);
+      assert(logic || SmRoomEnvironmentEnemy(id));
       if (id==0xe23f) { unsigned parameter=SmShotWord(ram,at+60);assert(parameter!=2 && parameter!=3);++ordinary; }
     }
     assert(ordinary==logic); /* parameter4's ordinary door remains when actor logic is enabled */
@@ -514,6 +514,45 @@ static void ceres_scenery(const SmWorld *world) {
     SmRoomRuntimeDestroy(r);
   }
   puts("Ceres On/Off: complete lab scenery retained; Ridley lock and escape destruction await entry, ordinary doors retained");
+}
+static void ceres_environment(const SmWorld *world) {
+  const SmWorldRoom *room=SmWorldFindRoom(world,0xdfd7);assert(room);
+  uint8_t seed[0x20000];memcpy(seed,active,sizeof(seed));SmShotPut(seed,0x79b,0);seed[0xd82e]|=1;SmShotPut(seed,0x93f,2);
+  uint16_t state=SmWorldRoomState(room,Read,NULL,seed);assert(state!=room->default_state);
+  SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,seed,false);
+  SmRoomRuntime *entered=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,seed,true);
+  assert(r && entered && !*SmRoomRuntimeError(r) && !*SmRoomRuntimeError(entered) && !SmRoomRuntimeActors(r));
+  const uint8_t *ram=SmRoomRuntimeRam(r);unsigned count=0;
+  for (unsigned i=0; i<32; ++i) { unsigned id=SmShotWord(ram,0xf78+64*i);assert(!id || SmRoomEnvironmentEnemy(id));count+=id!=0; }
+  assert(count==5);uint8_t initial[2048];memcpy(initial,ram+0xf78,sizeof(initial));
+  for (unsigned i=0; i<120; ++i) { SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,0,0);assert(SmRoomRuntimeStepVisible(r,62,304,0,256,213) && SmRoomRuntimeStepEffects(r)); }
+  assert(!SmRoomRuntimeActors(r) && memcmp(initial,ram+0xf78,sizeof(initial)));
+  size_t size=SmRoomRuntimeStateSize();void *saved=malloc(size),*end=malloc(size),*again=malloc(size);assert(saved && end && again);
+  assert(SmRoomRuntimeSave(r,saved,size));
+  memcpy(again,saved,size);((uint8_t *)again)[35+0xf78]=0x7f;((uint8_t *)again)[35+0xf79]=0xe8;
+  assert(!SmRoomRuntimeValidate(again,size,room->header,state,false)); /* SRMS35-byte header; ordinary NPC forbidden Off */
+  for (unsigned pass=0; pass<2; ++pass) {
+    if (pass) assert(SmRoomRuntimeLoad(r,saved,size));
+    for (unsigned i=0; i<17; ++i) { SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,0,0);assert(SmRoomRuntimeStepVisible(r,62,304,0,256,213) && SmRoomRuntimeStepEffects(r)); }
+    assert(SmRoomRuntimeSave(r,pass ? again : end,size));
+  }
+  assert(!memcmp(end,again,size));free(saved);free(end);free(again);
+  uint8_t *full=malloc(sizeof(seed));uint16_t *vram=calloc(0x8000,sizeof(*vram));assert(full && vram);memcpy(full,SmRoomRuntimeRam(entered),sizeof(seed));
+  uint8_t doors[128];memcpy(doors,full+0xf78,sizeof(doors));SmRoomRuntimePromote(r,full,vram);
+  assert(!memcmp(doors,full+0xf78,sizeof(doors))); /* real entry's ordinary E23F doors survive */
+  for (unsigned i=0; i<count; ++i) {
+    const uint8_t *phase=ram+0xf78+64*i;unsigned matches=0;
+    for (unsigned j=0; j<32; ++j) if (SmShotWord(full,0xf78+64*j)==0xe1ff &&
+        SmShotWord(full,0xf7a+64*j)==SmShotWord(phase,2) && SmShotWord(full,0xf7e +64*j)==SmShotWord(phase,6)) {
+      assert(!memcmp(full+0xf78+64*j,phase,64));assert(!memcmp(full+0x7000+64*j,ram+0x7000+64*i,64));++matches;
+    }
+    assert(matches==1);
+  }
+  assert(SmRoomRuntimeEnableActors(r) && SmRoomRuntimeActors(r));
+  assert(!memcmp(SmRoomRuntimeRam(r)+0xf78,doors,sizeof(doors)));
+  for (unsigned j=2; j<7; ++j) assert(!memcmp(SmRoomRuntimeRam(r)+0xf78+64*j,full+0xf78+64*j,64));
+  free(full);free(vram);SmRoomRuntimeDestroy(r);SmRoomRuntimeDestroy(entered);
+  puts("Off Ceres steam alone initializes/animates/restores exactly; real entry and enabling actors retain steam phase without replacing ordinary doors");
 }
 static void ceres_entry_promotion(const SmWorld *world) {
   if (SmShotWord(active,0x79b)!=0xdf45) return;
@@ -548,7 +587,7 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
-  if (strtoul(argv[3],NULL,16)==0x9fe5) ceres_scenery(world);
+  if (strtoul(argv[3],NULL,16)==0x9fe5) { ceres_scenery(world);ceres_environment(world); }
   ceres_entry_promotion(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);
   uint16_t state=SmWorldRoomState(room,Read,NULL,active);

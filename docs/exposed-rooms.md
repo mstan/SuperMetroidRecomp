@@ -594,9 +594,43 @@ Fullscreen0 and Fit. Per-case observations are stored in
 Do not interrupt that running review. Technical qualification continues on
 separate muted profiles. Natural Ridley flee/progression is now reproduced
 without victory/result writes using the native health<30 trigger; neighboring
-E1FF steam missing with logic Off is a demonstrated remaining defect being
-fixed. Full rewind/run-ahead/netplay/performance and remaining feature gaps
+E1FF steam missing with logic Off was selected and fixed as described below.
+Full rewind/run-ahead/netplay/performance and remaining feature gaps
 below still gate final closure and release.
+
+### Environmental NPC steam
+
+Candidate `b5cd1aebe5983bd610d0b15ed6890ffdcc904e6678e6b9e2991f376872b91f32`
+fixes the demonstrated Off steam failure. Visual-only contexts initialize only
+native E1FF steam while retaining `Actors=false`, so ordinary entry populations
+and locks keep their native initialization. Environmental slots and children
+continue simulation/publication with gameplay Off. Instance matching preserves
+steam phase through gameplay activation and actual entry. Save validation
+accepts those explicit environmental-only pools and rejects ordinary actors in
+that representation. Extended spritemaps now use the native low-byte count;
+all four readers retain the native header/entry layout and regular-map counts.
+
+All 28 CTests and native/manager fixtures pass (`steam-build2.log`). Fresh
+`ceres-steam-candidate1-on/` and `-off/` show inspected gray puffs in the
+neighboring DFD7 canvas, five native steam instances in each mode, no ordinary
+Off neighbors, complete native entry doors and continued steam phase. Both
+restored controller-only passages match all 169 replay checkpoints
+(`ceres-steam-continuation3-on/`, `-off/`). Initial recordings contained body
+setup writes during capture; their early divergence is retained separately.
+Removing those unrecorded writes resolved the fixture without production edits.
+
+Native Ridley flee/escape activation is qualified using only the legal 29 HP
+prerequisite: native AI earned status2, area6 bossbit1 and a countdown after
+1296 ticks. Elevator escape completion and audio remain open. The owner review
+continues on immutable candidate5; it has not been replaced or interrupted.
+
+The ordinary door-roundtrip replay also matches all 314 checkpoints
+(`runahead-replay1-playback-0/`). Run-ahead remains pending: TCP inspection can
+observe speculative frames, and the existing replay format explicitly requires
+run-ahead disabled. The temporary diagnostic option was reverted; no pass is
+inferred from either unsupported driver. The existing preview probe identifies
+the three interior records A450, A45C and A5A0 (`interior-doors1.log`). Next is a
+guarded, actual-control A450 traversal decision, rather than another inventory.
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
 are qualified with neighboring logic On and Off. Native inactive-room shots
