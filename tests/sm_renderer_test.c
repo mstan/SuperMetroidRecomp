@@ -501,6 +501,54 @@ static void resident_publication(const char *path) {
   free(expected); assert(!remove(path)); ResetFixtureRenderer();
 }
 
+static void resident_projectile_pixels(void) {
+  const SmViewport view={342,43,16.0/9,true};
+  for (unsigned logic=0; logic<2; ++logic) for (unsigned camera=0; camera<=128; camera+=128)
+    for (unsigned blend=0; blend<4; ++blend) {
+      ResetFixtureRenderer(); memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+      SmRendererSetRom(rom,sizeof(rom));
+      word(0x998,8); word(0x79b,0x91f8); word(0x7a5,16); word(0x7a7,16);
+      ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=17;
+      ppu.cgram[193]=31 | (31<<10); /* Root-owned missiles are magenta. */
+      for (unsigned y=0; y<8; ++y) ppu.vram[y]=255;
+      romword(0x99000,1); romword(0x99005,blend ? 0x3800 : 0x0800);
+      for (unsigned slot=0; slot<2; ++slot) {
+        unsigned offset=slot*2;
+        word(0xc40+offset,1); word(0xc18+offset,0x100); word(0xcb8+offset,0x9000);
+        word(0xb64+offset,260); word(0xb78+offset,slot ? 100 : 60);
+      }
+      SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
+      *scene=(SmRoomScene){.version=2,.count=1,.root=0x91f8,.logic=logic,.seamless=1,.camera_dx=(int)camera};
+      SmRoomImage *image=&scene->rooms[0];
+      image->placement=(SmRoomPlacement){.room=0x9400,.state=0x940d,.x=256,.width=256,.height=256,
+          .left=256,.top=0,.right=512,.bottom=256};
+      uint8_t *r=image->ram;
+      r[0x7a5]=r[0x7a7]=16; r[0xc003]=0x7c; r[0xc00a]=0xe0; r[0xc00b]=3;
+      r[0xc182]=0xe0; r[0xc183]=3; /* Same OBJ palette index is green in this room. */
+      r[0xc102]=0xe0; r[0xc103]=3;
+      r[0x69]=blend==3 ? 1 : 17; r[0x6b]=blend==3 ? 16 : 4; r[0x6e]=2;
+      r[0x71]=blend==2 ? 80 : blend==3 ? 65 : 0;
+      r[0x196e]=2; r[0x1962]=80; r[0x5e]=2;
+      for (unsigned y=0; y<8; ++y) { image->vram[2*y]=255; image->vram[0x4000+2*y]=255; }
+      for (unsigned a=0xb800; a<0xc000; a+=2) image->vram[a+1]=4;
+      /* Resident actors have no captured Root OAM when the camera brings
+       * their room into the native viewport. They must be reconstructed there. */
+      r[0xf78]=0x7f; r[0xf79]=0xd0; r[0xf7a]=12; r[0xf7e]=70;
+      r[0xf8f]=0x90; r[0xfa6]=0xa2;
+      romword(0x111000,1); romword(0x111005,0x3000);
+      assert(SmRendererLatchRooms(scene)); free(scene);
+      BeginFixtureFrame(ram,1);
+      for (unsigned y=1; y<=224; ++y) SmRendererCaptureLine(&ppu,y);
+      assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+      unsigned x=view.extra+260-camera;
+      assert(output[60*view.width+x]==(blend==1 || blend==2 ? 0xff00ffu : blend==3 ? 0x7b00ffu : 0x0000ffu));
+      assert(output[100*view.width+x]==(blend==1 ? 0xff00ffu : blend==2 ? 0x7b7b7bu : blend==3 ? 0x7b00ffu : 0x0000ffu));
+      if (blend==1) assert(output[70*view.width+view.extra+268-camera]==(logic ? 0x00ff00u : 0x0000ffu));
+    }
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+}
+
 static void eye_beam_margins(void) {
   const SmViewport view = {342, 43, 16.0 / 9, true};
   for (unsigned fault = 0; fault < 7; ++fault) {
@@ -884,6 +932,7 @@ int main(int argc, char **argv) {
   mother_brain_beam_margins();
   arena_exposure();
   resident_publication(argv[1]);
+  resident_projectile_pixels();
   eye_beam_margins();
   eye_beam_clamped_tail();
   static_background_room_edges();

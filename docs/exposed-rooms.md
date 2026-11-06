@@ -270,9 +270,9 @@ ammunition/count rules, grey locks, inactive-face reactions with logic On/Off
 and Native/Continuous, exact mid-hit restoration and unchanged active ownership.
 The colored-door fixture clears only its private initial unlock bits so prior
 power-bomb qualification cannot turn its supposed locked cap into a native blue
-cap. Production progress remains intact. `projectile-build1` queues supported
-strict generation/full build/CTest; `qualify_world_shots.py` prepares the real
-controller-shot gate. Neither is recorded as passed yet.
+cap. Production progress remains intact. Supported strict generation/full
+build and all 28 CTests now pass. The current controller gate is
+`qualify_world_shots2.py`; its `world-shots3-*` and `world-shots4-*` runs pass.
 
 Neighbor weapon/contact responses now borrow the active linked weapon slots
 and player view for the cartridge's native hitbox/vulnerability/shot/touch AI.
@@ -286,43 +286,49 @@ its blocks become air, so its animation phase alone cannot reject a valid hit.
 masked slot isolation, consumed-shot duplicate rejection, open/closed connection
 and logic Off checks, and exact whole-manager hit restore. `enemy-touch-server1`
 passes native damage/knockback, invincibility, world-coordinate preservation,
-bounded player output and exact restore. These are owned-ROM probes; live
-controller trajectories/contact and general actor/enemy-projectile ownership
-remain unqualified. The current full build started before these last manager
-changes and needs an incremental rebuild before their live checks.
+bounded player output and exact restore. Live A011 -> 9FE5 shots now pass:
+On spends four native super missiles, kills two armored Beetoms and opens
+the far cap while Samus remains in A011; Off has no neighboring actors and
+the starting beam opens that cap. Fresh-session current-build restore plus
+90 continuing ticks passes both settings; On replay matches 250 checkpoints.
+The rejected culling experiment is reverted: native armored Beetoms were
+intercepting the starting beam. Live player contact and general actor/enemy-
+projectile ownership remain unqualified.
+
+Neighbor composition now retains active sprites with their source palette,
+destination foreground priority and independent main/subscreen liquid math.
+Resident sprites also render inside the native viewport during camera carry.
+Portable/native/full-copy regressions and all 28 CTests pass. The rebuilt live
+shot gate passes again with visible cross-door shots (`world-shots4-*`,
+`renderer-shots-result.json`, exit 0); its current-build restores and all 250
+replay checkpoints pass. Candidate executable SHA-256:
+`0c1750b625b75638467d5a8449f514fb790b10bb0cd98fe04d93323a178b4bd0`.
 
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
-are qualified with neighboring logic On and Off. Native inactive-room block
-reactions now pass owned-ROM probes, but the new generated hooks still need
-their full build and live controller-shot checks. General world combat and
-the remaining scene/correctness gates are unfinished.
+are qualified with neighboring logic On and Off. Native inactive-room shots
+and ordinary enemy weapon hits now pass the built live controller gate,
+current-build restore and replay. Six acceptance areas remain open:
 
-1. Build and live-qualify the new world-space player shot bridge. Its native
-   block dispatcher already passes inactive-face hits, all four cap directions,
-   red/green/yellow ammunition rules, grey locks and exact mid-hit restore in
-   the owned-ROM probes. Movement and slot ownership stay on the active machine;
-   each block sample runs its owning room's cartridge response. Bomb/power-bomb
-   area paths and real controller-shot/replay qualification remain open.
-2. Extend the qualified regular-hatch traversal to exceptional geometry and
+1. Extend the qualified regular-hatch traversal to exceptional geometry and
    broader foreign terrain. Three stock non-screen-edge records still use the
    original path. Qualify retained actors and entry scripts beyond the two
    current round trips. Player/beam coordinate continuity is now qualified for
    those cases; it does not establish general actor/projectile world physics.
-3. Finish and live-qualify cross-open-door combat and projectile/actor transfer
+2. Finish and live-qualify cross-open-door combat and projectile/actor transfer
    without duplicated hits/rewards. Native weapon/contact responses and ordinary
    open/closed/Off routing now pass probes. Physical actor/enemy-projectile
    transfer, pickups/rewards, area weapons and complete ownership still need
    implementation. Walls and closed doors must block interaction.
-4. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
+3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors.
-5. Qualify live Ceres scenery/traversal and dormant encounter helpers. Its graph
+4. Qualify live Ceres scenery/traversal and dormant encounter helpers. Its graph
    and tileset decoding now cover all six rooms; live gameplay is outstanding.
-6. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
+5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
    determinism, representative native gameplay and matched runtime performance.
-7. Prepare a compact owner review with normal audio in a normal window, then
+6. Prepare a compact owner review with normal audio in a normal window, then
    release via the established channel only after required acceptance. Verify
    the replacement before removing the superseded delivery ZIP.
 
