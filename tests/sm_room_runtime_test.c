@@ -158,6 +158,49 @@ static void touch(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,saved,size));free(saved);free(end);free(again);
   puts("native remote actor contact commits damage/knockback once, preserves world body coordinates and restores exactly");
 }
+static void contact_attacks(SmRoomRuntime *r) {
+  static uint8_t seed[0x20000],view[0x20000],input[0x20000],native[0x20000];
+  static uint16_t vram[0x8000];
+  const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);
+  unsigned index=SmShotWord(ram,0x17ac);assert(index<2048 && !(index&63));
+  unsigned enemy=0xf78+index,mask=1u<<(index/64);
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*reference=malloc(size),*foreign=malloc(size),*repeated=malloc(size);
+  assert(original && reference && foreign && repeated && SmRoomRuntimeSave(r,original,size));
+  memcpy(seed,ram,sizeof(seed));
+  for (unsigned i=0; i<32; ++i) if (64*i!=index) SmShotPut(seed,0xf78+64*i,0);
+  memset(seed+0x1997,0,36);memset(seed+0xef78,0,64);
+  SmShotPut(seed,enemy+20,100);SmShotPut(seed,enemy+40,0);
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(gfx[2*i] | gfx[2*i+1]<<8);
+  for (unsigned attack=1; attack<=3; ++attack) {
+    assert(SmRoomRuntimeLoad(r,original,size) && SmRoomRuntimeCapture(r,seed,vram));
+    SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,mask,0);
+    memcpy(view,active,sizeof(view));
+    const unsigned positions[]={0xaf6,0xafa,0xb10,0xb14};
+    for (unsigned i=0; i<4; ++i) SmShotPut(view,positions[i],SmShotWord(seed,enemy+(i&1 ? 6 : 2)));
+    SmShotPut(view,0xafe,5);SmShotPut(view,0xb00,21);SmShotPut(view,0x9c2,1999);SmShotPut(view,0x9c4,1999);
+    SmShotPut(view,0x18a8,0);SmShotPut(view,0x18aa,0);SmShotPut(view,0xa6e,attack);
+    memcpy(input,view,sizeof(input));
+    assert(SmRoomRuntimeTouch(r,view,0,0) && SmRoomRuntimeSave(r,reference,size));
+    assert(!SmShotWord(ram,enemy) && SmShotWord(view,0x9c2)==1999);
+    memcpy(native,view,sizeof(native));
+    assert(SmRoomRuntimeLoad(r,original,size) && SmRoomRuntimeCapture(r,seed,vram));
+    memcpy(view,input,sizeof(view));
+    for (unsigned i=0; i<4; ++i) SmShotPut(view,positions[i],SmShotWord(seed,enemy+(i&1 ? 6 : 2))+(i&1 ? -256 : 768));
+    SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,0,0);
+    assert(SmRoomRuntimeSave(r,foreign,size));
+    assert(SmRoomRuntimeTouch(r,view,768,-256) && SmShotWord(ram,enemy)==SmShotWord(seed,enemy));
+    assert(SmRoomRuntimeSave(r,repeated,size) && !memcmp(foreign,repeated,size));
+    SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,mask,0);
+    assert(SmRoomRuntimeTouch(r,view,768,-256) && SmRoomRuntimeSave(r,foreign,size));
+    for (unsigned i=0; i<4; ++i) SmShotPut(view,positions[i],SmShotWord(view,positions[i])-(i&1 ? -256 : 768));
+    assert(!memcmp(native,view,sizeof(view)) && !memcmp(reference,foreign,size));
+    assert(SmRoomRuntimeTouch(r,view,768,-256) && SmRoomRuntimeSave(r,repeated,size));
+    assert(!memcmp(foreign,repeated,size));
+  }
+  assert(SmRoomRuntimeLoad(r,original,size));SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,UINT32_MAX,(1u<<18)-1);
+  free(original);free(reference);free(foreign);free(repeated);
+  puts("native contact attacks1/2/3: translated damage/death/drop matches same-room; masks suppress, deleted actors cannot duplicate rewards");
+}
 static void projectile_interactions(SmRoomRuntime *r) {
   static uint8_t seed[0x20000],view[sizeof(seed)],input[sizeof(seed)],result[sizeof(seed)];
   static uint16_t vram[0x8000];
@@ -638,7 +681,7 @@ int main(int argc,char **argv) {
   puts("resident save/restore continuation matches exactly; truncated input rejected");
   power_bombs(r);
   power_bomb_projectiles(r);
-  if (room->header==0x93aa) { hit_shots(r);touch(r);projectile_interactions(r);projectile_terrain(r,twin); }
+  if (room->header==0x93aa) { hit_shots(r);touch(r);contact_attacks(r);projectile_interactions(r);projectile_terrain(r,twin); }
   uint8_t *entered=malloc(sizeof(active)); uint16_t *entered_vram=calloc(0x8000,sizeof(*entered_vram));
   assert(entered && entered_vram); memcpy(entered,SmRoomRuntimeRam(r),sizeof(active));
   entered[0xf8c]^=0x55; /* A fresh native load must not replace resident health. */

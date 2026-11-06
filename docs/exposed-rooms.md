@@ -737,6 +737,24 @@ commit/input-ownership checks await the owner. Record each result separately
 even though they share one prepared review case. The original running review
 and its notes remain untouched.
 
+The existing owned-ROM runtime check now compares native contact attacks 1/2/3
+(speed booster, shinespark and screw attack) in the same room and at a translated
+origin. Damage/death/drop state and the resulting player data match exactly;
+interaction masks suppress the response and repeated calls cannot duplicate a
+deleted enemy's reward. These are ability-prerequisite response checks, not
+claims of natural controller activation. They pass in the combined 28-test and
+owned-ROM gates `a45c-build2/3`.
+
+Representative 1,206-frame populated native gameplay, including the complete
+32:9 CPU compositor with dummy output, remains in gameplay state 8 and alive.
+Observed unpaced throughput is 79.951 FPS with neighboring logic On and
+189.786 FPS with a separately prepared/verified Off state
+(`runtime-qualified-summary1.json`, frozen RollbackCandidate9 SHA above).
+These independent samples establish headroom for that workload; they are not
+an optimization comparison or a 120 FPS presentation-pacing claim. The first
+attempted Off run restored an On snapshot and is explicitly excluded from Off
+acceptance. Broader feature qualification and owner observations remain open.
+
 ## Local evidence and retained work
 
 Workspace: `G:/Temp/Codex/supermetroid/exposed-rooms-20261105`.
