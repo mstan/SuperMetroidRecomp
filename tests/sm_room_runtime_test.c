@@ -513,6 +513,71 @@ static void player_pickups(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);
   puts("native health/ammo drops reward Root once by body or live grapple; ineligible drops retained; private player restored");
 }
+static void item_scenery(const SmWorld *world) {
+  static uint8_t seed[0x20000];memcpy(seed,active,sizeof(seed));memset(seed+0xd870,0,64);SmShotPut(seed,0x79b,0);
+  for (unsigned sample=0; sample<4; ++sample) {
+  const SmWorldRoom *room=sample ? NULL : SmWorldFindRoom(world,0xadde);unsigned state=0;
+  if (sample) for (unsigned i=0; i<world->marker_count; ++i) {
+    const SmWorldMarker *m=&world->markers[i];
+    if (m->kind!=SM_MAP_ITEM || ((m->plm-0xeed7)/4)/21!=sample-1) continue;
+    const SmWorldRoom *candidate=SmWorldFindRoom(world,m->room);
+    if (candidate && SmWorldRoomState(candidate,Read,NULL,seed)==m->state) { room=candidate;break; }
+  }
+  assert(room);state=SmWorldRoomState(room,Read,NULL,seed);
+  unsigned list=Read(NULL,0x8f0014u+state) | Read(NULL,0x8f0015u+state)<<8,item=0;
+  for (unsigned i=0; i<256; ++i) {
+    unsigned at=0x8f0000u+list+6*i,h=Read(NULL,at) | Read(NULL,at+1)<<8;
+    if (!h) break;
+    if (h>=0xeed7 && h<=0xefcf && !((h-0xeed7)&3)) { item=h;break; }
+  }
+  assert(item);
+  for (unsigned logic=0; logic<2; ++logic) {
+    SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,(uint16_t)state,0,seed,logic!=0);
+    assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r);unsigned slot=40;
+    for (unsigned i=0; i<40; ++i) if (SmShotWord(ram,0x1c37+2*i)==item) { slot=i;break; }
+    assert(slot<40 && "authored neighboring Wave Beam item PLM must exist with logic On and Off");
+    for (unsigned tick=0; tick<120; ++tick)
+      assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213) && SmRoomRuntimeStepEffects(r));
+    unsigned graphics=0;const uint8_t *vram=SmRoomRuntimeVram(r);
+    for (unsigned i=0; i<4; ++i) {
+      unsigned pointer=SmShotWord(ram,0x1c2f+2*i);if (!pointer) continue;
+      unsigned source=Read(NULL,0x840000u+pointer) | Read(NULL,0x840001u+pointer)<<8;
+      unsigned destination=Read(NULL,0x8487cdu+2*i) | Read(NULL,0x8487ceu+2*i)<<8;
+      for (unsigned j=0; j<256; ++j) assert(vram[2*destination+j]==Read(NULL,0x890000u+source+j));
+      ++graphics;
+    }
+    assert((sample || graphics) && !SmShotWord(ram,0x330));
+    assert(!memcmp(ram+0xd870,seed+0xd870,64));
+    if (sample) { SmRoomRuntimeDestroy(r);continue; }
+    size_t bytes=SmRoomRuntimeStateSize();void *saved=malloc(bytes),*end=malloc(bytes),*again=malloc(bytes);
+    assert(saved && end && again && SmRoomRuntimeSave(r,saved,bytes));
+    for (unsigned i=0; i<24; ++i) assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213) && SmRoomRuntimeStepEffects(r));
+    assert(SmRoomRuntimeSave(r,end,bytes) && SmRoomRuntimeLoad(r,saved,bytes));
+    for (unsigned i=0; i<24; ++i) assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213) && SmRoomRuntimeStepEffects(r));
+    assert(SmRoomRuntimeSave(r,again,bytes) && !memcmp(end,again,bytes));
+    SmRoomRuntime *entered=SmRoomRuntimeCreateConfigured(Read,NULL,room,(uint16_t)state,0,seed,true);
+    assert(entered && !*SmRoomRuntimeError(entered));
+    uint8_t *target=malloc(0x20000);uint16_t *target_vram=calloc(0x8000,sizeof(*target_vram));assert(target && target_vram);
+    memcpy(target,SmRoomRuntimeRam(entered),0x20000);const uint8_t *initial_vram=SmRoomRuntimeVram(entered);
+    for (unsigned i=0; i<0x8000; ++i) target_vram[i]=(uint16_t)(initial_vram[2*i] | initial_vram[2*i+1]<<8);
+    unsigned target_slot=40;
+    for (unsigned i=0; i<40; ++i) if (SmShotWord(target,0x1c37+2*i)==item) { target_slot=i;break; }
+    assert(target_slot<40 && target_slot!=0 && !SmShotWord(target,0x1c37));
+    const unsigned arrays[]={0x1c37,0x1c87,0x1cd7,0x1d27,0x1d77,0x1dc7,0x1e17,0xde1c,0xde6c,0xdebc,0xdf0c};
+    for (unsigned i=0; i<sizeof(arrays)/sizeof(*arrays); ++i) SmShotPut(target,arrays[i],SmShotWord(target,arrays[i]+2*target_slot));
+    SmShotPut(target,0x1c37+2*target_slot,0);SmShotPut(target,0x9c2,0x1234);
+    SmRoomRuntimePromote(r,target,target_vram);assert(SmRoomRuntimePromoteDoors(r,target));
+    for (unsigned i=0; i<sizeof(arrays)/sizeof(*arrays); ++i) assert(SmShotWord(target,arrays[i])==SmShotWord(ram,arrays[i]+2*slot));
+    assert(SmShotWord(target,0x9c2)==0x1234 && !memcmp(target+0x1c2d,ram+0x1c2d,10));
+    for (unsigned i=0; i<4; ++i) if (SmShotWord(ram,0x1c2f+2*i)) {
+      unsigned destination=Read(NULL,0x8487cdu+2*i) | Read(NULL,0x8487ceu+2*i)<<8;
+      for (unsigned j=0; j<128; ++j) assert(target_vram[destination+j]==SmShotWord(vram,2*(destination+j)));
+    }
+    free(target);free(target_vram);SmRoomRuntimeDestroy(entered);free(saved);free(end);free(again);SmRoomRuntimeDestroy(r);
+  }
+  }
+  puts("authored neighboring item scenery: On/Off graphics, no premature pickup, exact restore and slot-remapped phase/graphics promotion");
+}
 static void ceres_scenery(const SmWorld *world) {
   const SmWorldRoom *room=SmWorldFindRoom(world,0xe0b5);assert(room);
   uint16_t state=SmWorldRoomState(room,Read,NULL,active);
@@ -630,7 +695,7 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
-  if (strtoul(argv[3],NULL,16)==0x9fe5) { ceres_scenery(world);ceres_environment(world); }
+  if (strtoul(argv[3],NULL,16)==0x9fe5) { item_scenery(world);ceres_scenery(world);ceres_environment(world); }
   ceres_entry_promotion(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);
   uint16_t state=SmWorldRoomState(room,Read,NULL,active);

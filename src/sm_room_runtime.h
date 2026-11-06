@@ -32,7 +32,8 @@ void SmRoomRuntimeSetMasks(SmRoomRuntime *room,uint32_t simulation_enemies,uint3
 bool SmRoomRuntimeActors(const SmRoomRuntime *room);
 bool SmRoomRuntimeEnableActors(SmRoomRuntime *room);
 bool SmRoomRuntimeStepEffects(SmRoomRuntime *room);
-/* Door PLMs run independently of ordinary neighboring gameplay actors. */
+/* Door and authored item scenery run independently of neighboring actors.
+ * Item scenery cannot collect a pickup before actual room entry. */
 bool SmRoomRuntimeStepDoors(SmRoomRuntime *room);
 bool SmRoomRuntimeDoorShot(SmRoomRuntime *room, unsigned block_x, unsigned block_y, uint16_t projectile_type);
 bool SmRoomRuntimeDoorOpen(SmRoomRuntime *room, unsigned block_x, unsigned block_y, unsigned orientation);
