@@ -304,6 +304,18 @@ shot gate passes again with visible cross-door shots (`world-shots4-*`,
 replay checkpoints pass. Candidate executable SHA-256:
 `0c1750b625b75638467d5a8449f514fb790b10bb0cd98fe04d93323a178b4bd0`.
 
+Native enemy-projectile contact and shootable-projectile responses now run
+after private projectile movement, through the same bounded player/weapon
+loans and open-connection gates. The owned Chozo-orb probe passes all three
+suit damage rules, native ordinary/plasma shot reactions, last-slot ownership,
+masked-slot isolation, duplicate rejection, logic Off and exact restoration.
+`projectile-contact5-result.json` passes the native runtime/manager probes.
+The integrated build, all 28 CTests and the existing live shot/restore/replay
+gate pass again (`projectile-integrated-result.json`, `world-shots5-*`).
+This is response qualification; physical enemy-projectile crossing and live
+cross-room projectile contact remain open. Current integrated executable:
+`3b28c975d6f2fba5ee807f9b2a3cbca75d438012f992fdece8d6e3a98ff0c0e1`.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -317,8 +329,9 @@ current-build restore and replay. Six acceptance areas remain open:
    current round trips. Player/beam coordinate continuity is now qualified for
    those cases; it does not establish general actor/projectile world physics.
 2. Finish and live-qualify cross-open-door combat and projectile/actor transfer
-   without duplicated hits/rewards. Native weapon/contact responses and ordinary
-   open/closed/Off routing now pass probes. Physical actor/enemy-projectile
+   without duplicated hits/rewards. Native weapon, actor-contact and enemy-
+   projectile responses and ordinary open/closed/Off routing now pass probes.
+   Physical actor/enemy-projectile
    transfer, pickups/rewards, area weapons and complete ownership still need
    implementation. Walls and closed doors must block interaction.
 3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;

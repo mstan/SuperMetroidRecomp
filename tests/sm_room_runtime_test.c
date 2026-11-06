@@ -75,6 +75,73 @@ static void touch(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,saved,size));free(saved);free(end);free(again);
   puts("native remote actor contact commits damage/knockback once, preserves world body coordinates and restores exactly");
 }
+static void projectile_interactions(SmRoomRuntime *r) {
+  static uint8_t seed[0x20000],view[sizeof(seed)],input[sizeof(seed)],result[sizeof(seed)];
+  static uint16_t vram[0x8000];
+  const uint8_t *ram=SmRoomRuntimeRam(r),*graphics=SmRoomRuntimeVram(r);
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*fixture=malloc(size),*end=malloc(size),*again=malloc(size);
+  assert(original && fixture && end && again && SmRoomRuntimeSave(r,original,size));
+  memcpy(seed,ram,sizeof(seed));memset(seed+0x1997,0,36);memset(seed+0xf380,0,36);
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(graphics[2*i] | graphics[2*i+1]<<8);
+  /* A real shootable Chozo orb definition, in the last native slot. Position
+   * it directly to isolate collision responses from its encounter's spawn AI. */
+  unsigned slot=34,id=0xad5e;
+  unsigned radius=Read(NULL,0x860006+id) | Read(NULL,0x860007+id)<<8;
+  unsigned properties=Read(NULL,0x860008+id) | Read(NULL,0x860009+id)<<8;
+  unsigned shot_list=Read(NULL,0x86000c+id) | Read(NULL,0x86000d+id)<<8;
+  assert((properties&0x8000) && (properties&0xfff)==8 && shot_list);
+  SmShotPut(seed,0x1997+slot,(int)id);SmShotPut(seed,0x1bb3+slot,(int)radius);
+  SmShotPut(seed,0x1bd7+slot,(int)properties);SmShotPut(seed,0x1a4b+slot,64);SmShotPut(seed,0x1a93+slot,64);
+  assert(SmRoomRuntimeCapture(r,seed,vram) && SmRoomRuntimeSave(r,fixture,size));
+  int ox=768,oy=-256;
+  for (unsigned plasma=0; plasma<2; ++plasma) {
+    assert(SmRoomRuntimeLoad(r,fixture,size));memcpy(view,active,sizeof(view));
+    memset(view+SM_SHOT_POOL,0,SM_SHOT_POOL_BYTES);
+    for (unsigned i=0; i<2; ++i) {
+      SmShotPut(view,0xb64+2*i,64+ox);SmShotPut(view,0xb78+2*i,64+oy);
+      SmShotPut(view,0xc18+2*i,0x8000 | (plasma ? 8 : 0));SmShotPut(view,0xc40+2*i,0x8123);
+    }
+    SmShotPut(view,0xcce,2);memcpy(input,view,sizeof(view));
+    assert(SmRoomRuntimeProjectiles(r,view,ox,oy,0,false));
+    assert(SmRoomRuntimeSave(r,again,size) && !memcmp(fixture,again,size) && !memcmp(view,input,sizeof(view)));
+    if (!SmRoomRuntimeProjectiles(r,view,ox,oy,1,false)) {
+      fprintf(stderr,"projectile response: %s\n",SmRoomRuntimeError(r));abort();
+    }
+    assert(((SmShotWord(view,0xc04)&16)!=0)==!plasma);
+    assert(SmShotWord(ram,0x1b47+slot)==shot_list && !(SmShotWord(ram,0x1bd7+slot)&0x8000));
+    assert(SmShotWord(ram,0x1bfb+slot)==(0x8000u | (plasma ? 8 : 0)));
+    for (unsigned a=0; a<18; ++a)
+      assert(!memcmp(view+SM_SHOT_POOL+20*a+2,input+SM_SHOT_POOL+20*a+2,18));
+    assert(!memcmp(view,input,SM_SHOT_POOL) && !memcmp(view+0xcd4,input+0xcd4,sizeof(view)-0xcd4));
+    memcpy(result,view,sizeof(view));assert(SmRoomRuntimeSave(r,end,size));
+    assert(SmRoomRuntimeProjectiles(r,view,ox,oy,1,false) && !memcmp(view,result,sizeof(view)));
+    assert(SmRoomRuntimeSave(r,again,size) && !memcmp(end,again,size));
+    assert(SmRoomRuntimeLoad(r,fixture,size));memcpy(view,input,sizeof(view));
+    assert(SmRoomRuntimeProjectiles(r,view,ox,oy,1,false) && SmRoomRuntimeSave(r,again,size));
+    assert(!memcmp(end,again,size) && !memcmp(result,view,sizeof(view)));
+  }
+  for (unsigned suit=0; suit<3; ++suit) {
+    assert(SmRoomRuntimeLoad(r,fixture,size));memcpy(view,active,sizeof(view));
+    SmShotPut(view,0xaf6,64+ox);SmShotPut(view,0xafa,64+oy);SmShotPut(view,0xb10,64+ox);SmShotPut(view,0xb14,64+oy);
+    SmShotPut(view,0xafe,5);SmShotPut(view,0xb00,21);SmShotPut(view,0x9c2,1999);SmShotPut(view,0x9c4,1999);
+    SmShotPut(view,0x9a2,suit==2 ? 0x20 : suit);
+    SmShotPut(view,0x18a8,0);SmShotPut(view,0x18aa,0);SmShotPut(view,0xa6e,0);memcpy(input,view,sizeof(view));
+    assert(SmRoomRuntimeProjectiles(r,view,ox,oy,0,true));
+    assert(SmShotWord(view,0x9c2)==1999u-(8u>>suit) && !SmShotWord(ram,0x1997+slot));
+    assert(SmShotWord(view,0x18a8)==96 && SmShotWord(view,0x18aa)==5);
+    assert(SmShotWord(view,0xaf6)==64u+ox && SmShotWord(view,0xafa)==((64u+oy)&65535));
+    assert(!memcmp(view,input,0x9a2) && !memcmp(view+0xb64,input+0xb64,0x18a8-0xb64));
+    assert(!memcmp(view+0x18ac,input+0x18ac,sizeof(view)-0x18ac));
+    memcpy(result,view,sizeof(view));assert(SmRoomRuntimeSave(r,end,size));
+    assert(SmRoomRuntimeProjectiles(r,view,ox,oy,0,true) && !memcmp(view,result,sizeof(view)));
+    assert(SmRoomRuntimeSave(r,again,size) && !memcmp(end,again,size));
+    assert(SmRoomRuntimeLoad(r,fixture,size));memcpy(view,input,sizeof(view));
+    assert(SmRoomRuntimeProjectiles(r,view,ox,oy,0,true) && SmRoomRuntimeSave(r,again,size));
+    assert(!memcmp(end,again,size) && !memcmp(result,view,sizeof(view)));
+  }
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);free(fixture);free(end);free(again);
+  puts("native resident projectile contact/suit damage, shootable reactions/plasma, slot isolation and exact restore pass");
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -128,7 +195,7 @@ int main(int argc,char **argv) {
   assert(SmRoomRuntimeSave(r,repeated,bytes));
   assert(!memcmp(continued,repeated,bytes));
   puts("resident save/restore continuation matches exactly; truncated input rejected");
-  if (room->header==0x93aa) { hit_shots(r);touch(r); }
+  if (room->header==0x93aa) { hit_shots(r);touch(r);projectile_interactions(r); }
   uint8_t *entered=malloc(sizeof(active)); uint16_t *entered_vram=calloc(0x8000,sizeof(*entered_vram));
   assert(entered && entered_vram); memcpy(entered,SmRoomRuntimeRam(r),sizeof(active));
   entered[0xf8c]^=0x55; /* A fresh native load must not replace resident health. */
@@ -148,6 +215,7 @@ int main(int argc,char **argv) {
     assert(SmRoomRuntimeStepEffects(visual));
   }
   const uint8_t *visual_ram=SmRoomRuntimeRam(visual);
+  assert(SmRoomRuntimeProjectiles(visual,active,0,0,1023,true) && !memcmp(active,before,sizeof(active)));
   for (unsigned slot=0; slot<32; ++slot) assert(!visual_ram[0xf78+64*slot] && !visual_ram[0xf79+64*slot]);
   if (visual_ram[0x196e]==2 || visual_ram[0x196e]==4) assert(memcmp(visual_start,SmRoomRuntimeVram(visual),sizeof(visual_start)));
   puts("logic Off: no enemies spawned; environmental effects continue");

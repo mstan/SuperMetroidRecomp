@@ -312,7 +312,7 @@ bool SmRoomRuntimeDoorOpen(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orien
   r->cpu->a=(uint16_t)((unsigned)rom_long(r,0x949ea6u+2*(0x40+orientation))&65535);
   bool ok=call(r,0x8484e7,3); put(r,0xdde,(int)index); return ok;
 }
-bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask) {
+static bool hit_shots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask,bool projectiles) {
   if (!r || r->error[0] || !active) return false;
   if (!r->actors || word(active+0xa78) || word(active+0x185e)) return true;
   /* An ordinary impact has already consumed this shot's collision. Plasma's
@@ -322,6 +322,13 @@ bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x
     if (!word(active+0xc18+2*i) || (word(active+0xc04+2*i)&16)) mask&=~(1u<<i);
   mask&=1023;
   if (!mask) return true;
+  if (projectiles) {
+    bool candidate=false;
+    for (unsigned i=0; i<36; i+=2)
+      if (word(r->ram+0x1997+i) && (word(r->ram+0x1bd7+i)&0x8000) && word(r->ram+0xf380+i)!=2)
+        { candidate=true;break; }
+    if (!candidate) return true;
+  }
   uint8_t scratch[64],pool[SM_SHOT_POOL_BYTES],borrowed[SM_SHOT_POOL_BYTES];
   memcpy(scratch,r->ram,sizeof(scratch));memcpy(pool,r->ram+SM_SHOT_POOL,sizeof(pool));
   memcpy(borrowed,active+SM_SHOT_POOL,sizeof(borrowed));
@@ -337,7 +344,8 @@ bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x
   r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
   r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
   bool ok=true;
-  for (unsigned i=0; ok && i<32; ++i) {
+  if (projectiles) ok=call(r,0xa0996c,3);
+  for (unsigned i=0; !projectiles && ok && i<32; ++i) {
     unsigned index=word(r->ram+0x17ac+2*i);
     if (index==65535) break;
     if (index>=2048 || (index&63)) { fail(r,"invalid resident collision index",index);ok=false;break; }
@@ -363,9 +371,20 @@ bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x
   *r->cpu=previous;
   return ok;
 }
-bool SmRoomRuntimeTouch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y) {
+bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask) {
+  return hit_shots(r,active,origin_x,origin_y,mask,false);
+}
+static bool touch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,bool projectiles) {
   if (!r || r->error[0] || !active) return false;
   if (!r->actors || word(active+0xa78) || word(active+0x185e)) return true;
+  if (projectiles) {
+    if (word(active+0x18a8) || word(active+0xa6e)) return true;
+    bool candidate=false;
+    for (unsigned i=0; i<36; i+=2)
+      if (word(r->ram+0x1997+i) && !(word(r->ram+0x1bd7+i)&0x2000) && word(r->ram+0x1bb3+i))
+        { candidate=true;break; }
+    if (!candidate) return true;
+  }
   enum { PLAYER=0x9a2, PLAYER_BYTES=0xb64-PLAYER };
   uint8_t scratch[64],player[PLAYER_BYTES],input[24],timers[4];
   memcpy(scratch,r->ram,sizeof(scratch));memcpy(player,r->ram+PLAYER,sizeof(player));
@@ -380,7 +399,8 @@ bool SmRoomRuntimeTouch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,in
   r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
   r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
   bool ok=true;
-  for (unsigned i=0; ok && i<32; ++i) {
+  if (projectiles) ok=call(r,0xa09894,3);
+  for (unsigned i=0; !projectiles && ok && i<32; ++i) {
     unsigned index=word(r->ram+0x17ac+2*i);
     if (index==65535) break;
     if (index>=2048 || (index&63)) { fail(r,"invalid resident contact index",index);ok=false;break; }
@@ -397,6 +417,16 @@ bool SmRoomRuntimeTouch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,in
   memcpy(r->ram+0x8b,input,sizeof(input));memcpy(r->ram+0x18a8,timers,sizeof(timers));
   for (unsigned i=0; i<3; ++i) put(r,work[i],saved[i]);
   *r->cpu=previous;return ok;
+}
+bool SmRoomRuntimeTouch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y) {
+  return touch(r,active,origin_x,origin_y,false);
+}
+bool SmRoomRuntimeProjectiles(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,
+    unsigned mask,bool body) {
+  /* The cartridge resolves these after enemy-projectile movement, with
+   * Samus contact before shootable-projectile reactions. */
+  return (!body || touch(r,active,origin_x,origin_y,true)) &&
+      hit_shots(r,active,origin_x,origin_y,mask,true);
 }
 bool SmRoomRuntimeDoorClose(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orientation) {
   if (!r || r->error[0] || orientation>=4 || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;

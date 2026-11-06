@@ -28,6 +28,11 @@ bool SmRoomRuntimeHitShots(SmRoomRuntime *room,uint8_t active[0x20000],
 /* Native actor contact with a borrowed player view. Only player effects cross
  * back; room progression, CPU, camera and script state remain isolated. */
 bool SmRoomRuntimeTouch(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y);
+/* Call after native enemy-projectile movement. The world supplies eligible
+ * player shots/body; native damage, suits, piercing and projectile reactions
+ * retain their own rules and resource-owner slots. */
+bool SmRoomRuntimeProjectiles(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,
+    unsigned shot_mask,bool body);
 void SmRoomRuntimeProgress(SmRoomRuntime *room, const uint8_t active[0x20000]);
 void SmRoomRuntimeDoorBits(const SmRoomRuntime *room, uint8_t active[0x20000]);
 bool SmRoomRuntimeStepVisible(SmRoomRuntime *room, int samus_x, int samus_y,

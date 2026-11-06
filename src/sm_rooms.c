@@ -487,7 +487,9 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
     if ((reachable[i+1] && !SmRoomRuntimeHitShots(runtime,active,p->x,p->y,resident_shots(active,p))) ||
         (reachable[i+1] && resident_body(active,p) && !SmRoomRuntimeTouch(runtime,active,p->x,p->y)) ||
         !SmRoomRuntimeStepVisible(runtime,(int16_t)word(active+0xaf6)-p->x,(int16_t)word(active+0xafa)-p->y,
-        x-p->x,y-p->y,extra) || !SmRoomRuntimeStepEffects(runtime)) {
+        x-p->x,y-p->y,extra) ||
+        (reachable[i+1] && !SmRoomRuntimeProjectiles(runtime,active,p->x,p->y,resident_shots(active,p),resident_body(active,p))) ||
+        !SmRoomRuntimeStepEffects(runtime)) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X: %s\n",root,p->room,SmRoomRuntimeError(runtime)); return false;
     }
     SmRoomRuntimeDoorBits(runtime,active);
