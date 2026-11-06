@@ -380,6 +380,21 @@ The earlier palette suspicion was rejected; capture and immutable graphics
 also matched. Temporary diagnostic prints were removed. This narrow viewport
 fix does not qualify the outstanding presentation cases below.
 
+Private enemy simulation now consumes the eight native drawing-queue sizes
+that the host compositor replaces. Previously they accumulated between ticks,
+eventually overwriting adjacent actor AI fields; the owned 9FE5 case jumped to
+A8:0040 and crashed at tick 29. Resetting the consumed sizes before and after
+EnemyMain keeps its native actor updates and prevents the overflow. That exact
+case now passes 300 ticks, independent twins and save/restore continuation on
+SERVER and the integrated local build. The full build, all 28 CTests, owned
+runtime/manager checks and live On/Off cases pass
+(`native-actor-integrated1-result.json`, exit 0). The live neighboring-enemy
+setup now runs 600 ticks before ordinary shots; its shot replay matches 188
+checkpoints, the foreign-terrain projectile replay 15, and the return replay
+13 (`world-shots8-*`, `world-eprojs5-*`, `world-retained5-*`). Exact executable:
+`b60768d2d2c6ab0520a5a6a5012fbf5b8496437e3b369669ee8b63f1549ebaf9`.
+Temporary opcode diagnostics were removed; no extra instruction fetch remains.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -400,9 +415,8 @@ current-build restore and replay. Six acceptance areas remain open:
    resource retention beyond the original room's visibility, pickups/rewards,
    area weapons and complete ownership still need implementation. Walls and
    closed doors must block interaction.
-   A same-room 9FE5 native runtime probe seeded from the live opened-door WRAM
-   reaches the cartridge's invalid-interrupt handler after 29 ticks
-   (`departed-tiles1/2.log`); ordinary enemy gameplay needs this resolved too.
+   The same-room 9FE5 29-tick crash is resolved by consuming native drawing
+   queues; broader actor movement and bounded gameplay effects remain open.
 3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors. The reproduced departed-room native-

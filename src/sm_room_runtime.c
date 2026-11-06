@@ -301,7 +301,13 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
     }
     put(r,base+2*count,65535);put(r,list ? 0x17a6 : 0x17a4,(int)count*2);
   }
-  return call(r,0xa08fd4,3) && call(r,0x868104,3);
+  /* Native DrawEnemySprites consumes these eight per-layer queues. Our
+   * immutable compositor draws the actors instead; retaining queue sizes
+   * would append each frame until indices overwrite adjacent enemy data. */
+  memset(r->ram+0xf68,0,16);
+  bool ok=call(r,0xa08fd4,3);
+  memset(r->ram+0xf68,0,16);
+  return ok && call(r,0x868104,3);
 }
 bool SmRoomRuntimeStepDoors(SmRoomRuntime *r) {
   if (!r || r->error[0]) return false;

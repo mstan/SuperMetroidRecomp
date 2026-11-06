@@ -223,7 +223,8 @@ int main(int argc,char **argv) {
   uint8_t initial_vram[65536]; memcpy(initial_vram,SmRoomRuntimeVram(r),sizeof(initial_vram));
   uint8_t fx[0x700]; memcpy(fx,SmRoomRuntimeRam(r)+0x1900,sizeof(fx));
   int x=enemies[2] | enemies[3]<<8, y=enemies[6] | enemies[7]<<8;
-  for (unsigned i=0; i<60; ++i) {
+  unsigned ticks=room->header==0x9fe5 ? 300 : 60;
+  for (unsigned i=0; i<ticks; ++i) {
     if (!SmRoomRuntimeStep(r,x+64,y,x-64,y-64)) {
       fprintf(stderr,"step %u: %s\n",i,SmRoomRuntimeError(r)); return 1;
     }
@@ -239,8 +240,8 @@ int main(int argc,char **argv) {
   for (unsigned i=0; i<32; ++i)
     moved+=memcmp(enemies+64*i+2,ram+0xf78+64*i+2,8)!=0;
   assert(!memcmp(active,before,sizeof(active)));
-  printf("room %04X: 60 native ticks, %u slots moved, FX changed=%d, type=%u; interleaved twins identical; active RAM unchanged\n",
-      room->header,moved,memcmp(fx,ram+0x1900,sizeof(fx))!=0,ram[0x196e]);
+  printf("room %04X: %u native ticks, %u slots moved, FX changed=%d, type=%u; interleaved twins identical; active RAM unchanged\n",
+      room->header,ticks,moved,memcmp(fx,ram+0x1900,sizeof(fx))!=0,ram[0x196e]);
   if (ram[0x196e]==2 || ram[0x196e]==4) {
     assert(memcmp(initial_vram,SmRoomRuntimeVram(r),sizeof(initial_vram)));
     puts("native liquid animation publishes changed tiles into private VRAM");
