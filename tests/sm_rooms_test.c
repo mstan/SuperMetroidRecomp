@@ -180,6 +180,53 @@ static const SmRoomImage *image(unsigned room) {
 static void image_vram(uint16_t *out,const SmRoomImage *in) {
   for (unsigned i=0; i<0x8000; ++i) out[i]=(uint16_t)SmShotWord(in->vram,2*i);
 }
+static void neighbor_pickups(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  static uint8_t previous[0x20000],checkpoint[0x20000],finished[0x20000];
+  static uint16_t vram[0x8000],previous_vram[0x8000];
+  for (unsigned mode=0; mode<3; ++mode) {
+    bool logic=mode!=1;
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
+    memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+    put(0x998,8);put(0xaf6,40);put(0xafa,144);
+    assert(SmRoomsFrame(active,true,213,logic,true));assert(root_door(1,6,1,false));
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    /* Seed a native small-energy drop immediately before departure. Only
+     * native pickup execution may consume it or change the player's energy. */
+    unsigned slot=34;
+    const unsigned at[]={0x1997,0x1a03,0x1b47,0x1b8f,0x1bb3,0x1bd7,0x1aff,0x1b23,0x1a4b,0x1a93,0xf410};
+    const unsigned value[]={0xf337,0xefe0,0xed8d,0x7fff,0x1010,0x3000,2,400,1,144,0xffff};
+    for (unsigned i=0; i<sizeof(at)/sizeof(*at); ++i) put(at[i]+slot,(int)value[i]);
+    put(0x198d,0x8000);
+    memcpy(previous,active,sizeof(active));memcpy(previous_vram,vram,sizeof(vram));
+    r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
+    put(0x998,8);put(0xaf6,2250);put(0xb10,2250);put(0xafa,400);put(0xb14,400);
+    put(0x9c2,100);put(0x9c4,500);put(0xd32,0xc4f0);
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));
+    if (mode==2) assert(root_door(142,22,0,true));
+    /* Save at a completed frame boundary, with the drop still out of range. */
+    assert(SmRoomsFrame(active,true,213,logic,true));assert(SmShotWord(active,0x9c2)==100);
+    put(0xaf6,2303);put(0xb10,2303);
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);
+    assert(saved && end && again);size_t bytes=SmRoomsSave(saved,bound);assert(bytes);
+    memcpy(checkpoint,active,sizeof(active));size_t final_bytes=0;
+    for (unsigned pass=0; pass<2; ++pass) {
+      if (pass) { assert(SmRoomsLoad(saved,bytes));memcpy(active,checkpoint,sizeof(active)); }
+      for (unsigned i=0; i<3; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+      assert(SmShotWord(active,0x9c2)==(mode==0 ? 105 : 100));
+      if (mode) assert(SmShotWord(image(0x93aa)->ram,0x1a03+slot)==0xefe0);
+      size_t n=SmRoomsSave(pass ? again : end,bound);assert(n);
+      if (!pass) { final_bytes=n;memcpy(finished,active,sizeof(active)); }
+      else assert(n==final_bytes && !memcmp(end,again,n) && !memcmp(active,finished,sizeof(active)));
+    }
+    free(saved);free(end);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("neighbor native pickups reward once through open door; closed door and logic Off retain drops; exact whole-world restore");
+}
 static void retained_projectile(const uint8_t *rom) {
   if (SmShotWord(original,0x79b)!=0x91f8) return;
   static uint8_t previous[0x20000],checkpoint[0x20000],finished[0x20000];
@@ -306,6 +353,7 @@ int main(int argc,char **argv) {
   world_shots(rom);
   uncapped_entrance(rom);
   world_combat(rom);
+  neighbor_pickups(rom);
   retained_projectile(rom);
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);

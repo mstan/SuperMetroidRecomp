@@ -8,6 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum { PLAYER_VIEW=0x9a2,PLAYER_VIEW_BYTES=0xb64-PLAYER_VIEW };
+typedef struct PlayerLoan {
+  uint8_t player[PLAYER_VIEW_BYTES],input[24],timers[4];
+  uint16_t grapple[3];
+  bool active,commit;
+} PlayerLoan;
 struct SmRoomRuntime {
   SmWorldRead read;
   void *context;
@@ -30,11 +36,48 @@ struct SmRoomRuntime {
   unsigned world_phase;
   uint32_t simulation_enemies,simulation_projectiles,interaction_enemies,interaction_projectiles;
   SmEprojLoan eproj_loan;
+  uint8_t *live_player;
+  SmWorldPlayer player_eligible;
+  int player_x,player_y;
+  PlayerLoan player_loan;
   char error[128];
 };
 static unsigned word(const uint8_t *p) { return p[0] | p[1]<<8; }
 static void put(SmRoomRuntime *r, unsigned a, int v) {
   r->ram[a]=(uint8_t)v; r->ram[a+1]=(uint8_t)((unsigned)v>>8);
+}
+static void player_end(SmRoomRuntime *r,bool success) {
+  PlayerLoan *loan=&r->player_loan;if (!loan->active) return;
+  if (success && loan->commit) {
+    const unsigned positions[]={0xaf6,0xafa,0xb10,0xb14};
+    for (unsigned i=0; i<4; ++i) put(r,positions[i],(int)word(r->ram+positions[i])+(i&1 ? r->player_y : r->player_x));
+    memcpy(r->live_player+PLAYER_VIEW,r->ram+PLAYER_VIEW,PLAYER_VIEW_BYTES);
+    memcpy(r->live_player+0x18a8,r->ram+0x18a8,4);
+    SmShotPut(r->live_player,0xd08,(int)word(r->ram+0xd08)+r->player_x);
+    SmShotPut(r->live_player,0xd0c,(int)word(r->ram+0xd0c)+r->player_y);
+    SmShotPut(r->live_player,0xd32,(int)word(r->ram+0xd32));
+  }
+  memcpy(r->ram+PLAYER_VIEW,loan->player,PLAYER_VIEW_BYTES);
+  memcpy(r->ram+0x8b,loan->input,24);memcpy(r->ram+0x18a8,loan->timers,4);
+  put(r,0xd08,loan->grapple[0]);put(r,0xd0c,loan->grapple[1]);put(r,0xd32,loan->grapple[2]);
+  loan->active=false;
+}
+static void player_begin(SmRoomRuntime *r,bool eligible) {
+  if (!r->live_player) return;
+  PlayerLoan *loan=&r->player_loan;
+  memcpy(loan->player,r->ram+PLAYER_VIEW,PLAYER_VIEW_BYTES);
+  memcpy(loan->input,r->ram+0x8b,24);memcpy(loan->timers,r->ram+0x18a8,4);
+  loan->grapple[0]=(uint16_t)word(r->ram+0xd08);loan->grapple[1]=(uint16_t)word(r->ram+0xd0c);
+  loan->grapple[2]=(uint16_t)word(r->ram+0xd32);
+  memcpy(r->ram+PLAYER_VIEW,r->live_player+PLAYER_VIEW,PLAYER_VIEW_BYTES);
+  memcpy(r->ram+0x8b,r->live_player+0x8b,24);memcpy(r->ram+0x18a8,r->live_player+0x18a8,4);
+  const unsigned positions[]={0xaf6,0xafa,0xb10,0xb14};
+  for (unsigned i=0; i<4; ++i) put(r,positions[i],eligible ?
+      (int)word(r->ram+positions[i])-(i&1 ? r->player_y : r->player_x) : 0x8000);
+  put(r,0xd08,eligible ? (int)word(r->live_player+0xd08)-r->player_x : 0x8000);
+  put(r,0xd0c,eligible ? (int)word(r->live_player+0xd0c)-r->player_y : 0x8000);
+  put(r,0xd32,eligible ? (int)word(r->live_player+0xd32) : 0xc4f0);
+  loan->active=true;loan->commit=eligible;
 }
 static int ram_offset(uint32_t a) {
   unsigned bank=a>>16, lo=a&65535;
@@ -98,9 +141,13 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
   if (frame==3) r->ram[c->sp--]=c->k;
   r->ram[c->sp--]=0xfe; r->ram[c->sp--]=0xff;
   for (unsigned i=0; i<200000 && !r->error[0]; ++i) {
-    if (c->pc==0xff00 && c->sp==0x1fff) return true;
-    if (c->waiting || c->stopped) { fail(r,"room routine suspended",entry); return false; }
+    if (c->pc==0xff00 && c->sp==0x1fff) { player_end(r,true);return true; }
+    if (c->waiting || c->stopped) { player_end(r,false);fail(r,"room routine suspended",entry); return false; }
     if ((c->k&127)==6) {
+      if (c->pc==0x811b) player_end(r,true);
+      if (c->pc==0x8125 && c->x<36 && !(c->x&1))
+        player_begin(r,r->player_eligible ? r->player_eligible(r->world_context,r->ram,32+c->x/2) :
+            (r->interaction_projectiles&(1u<<(c->x/2)))!=0);
       if (c->pc==0x8104) r->world_phase=2;
       if (c->pc==0x8124) r->world_phase=0;
       if (c->pc==0x8118 && c->x<36 && !(r->simulation_projectiles&(1u<<(c->x/2)))) c->pc=0x811e;
@@ -114,6 +161,10 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
       }
     }
     if ((c->k&127)==0x20) {
+      if (c->pc==0x8fff || c->pc==0x9145) player_end(r,true);
+      if (c->pc==0x9010 && c->a<2048 && !(c->a&63))
+        player_begin(r,r->player_eligible ? r->player_eligible(r->world_context,r->ram,c->a/64) :
+            (r->interaction_enemies&(1u<<(c->a/64)))!=0);
       if (c->pc==0x8fd4) r->world_phase=1;
       if (c->pc==0x9168) r->world_phase=0;
       if (c->pc==0x9419 && r->world_birth && c->x<2048 && !(c->x&63))
@@ -128,6 +179,7 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
       snprintf(r->error+n,sizeof(r->error)-n," (entry $%06X)",(unsigned)entry);
     }
   }
+  player_end(r,false);
   if (!r->error[0]) fail(r,"room instruction limit",entry);
   return false;
 }
@@ -276,7 +328,10 @@ void SmRoomRuntimeDestroy(SmRoomRuntime *r) {
   if (r) { interp816_free(r->cpu); free(r); }
 }
 void SmRoomRuntimeSetWorld(SmRoomRuntime *r,SmEprojQuery query,void *context) {
-  if (r) { r->world_query=query;r->world_context=context;if (!query) r->world_birth=NULL; }
+  if (r) { r->world_query=query;r->world_context=context;if (!query) { r->world_birth=NULL;r->live_player=NULL;r->player_eligible=NULL; } }
+}
+void SmRoomRuntimeSetPlayer(SmRoomRuntime *r,uint8_t active[0x20000],int x,int y,SmWorldPlayer eligible) {
+  if (r) { r->live_player=active;r->player_x=x;r->player_y=y;r->player_eligible=eligible; }
 }
 void SmRoomRuntimeSetBirth(SmRoomRuntime *r,SmWorldBirth birth) { if (r) r->world_birth=birth; }
 void SmRoomRuntimeSetMasks(SmRoomRuntime *r,uint32_t a,uint32_t ep,uint32_t contact_a,uint32_t contact_ep) {
@@ -646,7 +701,7 @@ typedef struct RoomState {
 } RoomState;
 size_t SmRoomRuntimeStateSize(void) { return sizeof(RoomState); }
 bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
-  if (!r || !out || size!=sizeof(RoomState) || r->error[0] || r->eproj_loan.active ||
+  if (!r || !out || size!=sizeof(RoomState) || r->error[0] || r->eproj_loan.active || r->player_loan.active ||
       r->cpu->sp!=0x1fff || r->cpu->pc!=0xff00) return false;
   RoomState *s=calloc(1,sizeof(*s)); if (!s) return false;
   const Interp816 *c=r->cpu;

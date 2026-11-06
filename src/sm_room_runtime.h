@@ -16,6 +16,9 @@ bool SmRoomRuntimeStep(SmRoomRuntime *room, int samus_x, int samus_y,
  * part of a between-frame snapshot. Clear after the bounded native tick. */
 void SmRoomRuntimeSetWorld(SmRoomRuntime *room,SmEprojQuery query,void *context);
 void SmRoomRuntimeSetBirth(SmRoomRuntime *room,SmWorldBirth birth);
+/* Bounded live player view during each eligible actor/pre-instruction only.
+ * Ineligible entities see the player out of range and cannot commit effects. */
+void SmRoomRuntimeSetPlayer(SmRoomRuntime *room,uint8_t active[0x20000],int origin_x,int origin_y,SmWorldPlayer eligible);
 void SmRoomRuntimeSetMasks(SmRoomRuntime *room,uint32_t simulation_enemies,uint32_t simulation_projectiles,
     uint32_t interaction_enemies,uint32_t interaction_projectiles);
 bool SmRoomRuntimeActors(const SmRoomRuntime *room);

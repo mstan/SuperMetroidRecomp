@@ -203,6 +203,78 @@ static void projectile_terrain(SmRoomRuntime *r,SmRoomRuntime *twin) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);free(fixture);free(end);free(again);
   puts("native projectiles cross four signed room boundaries, stop on foreign walls, restore exactly and match all native slope shapes/flips");
 }
+static void player_ai(SmRoomRuntime *r) {
+  static uint8_t seed[0x20000],view[0x20000],checkpoint[0x20000],finished[0x20000];
+  static uint16_t vram[0x8000];const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size),*grab=malloc(size),*end=malloc(size),*again=malloc(size);
+  assert(original && grab && end && again && SmRoomRuntimeSave(r,original,size));
+  memcpy(seed,ram,sizeof(seed));for (unsigned i=1; i<32; ++i) SmShotPut(seed,0xf78+64*i,0);
+  memset(seed+0x1997,0,36);assert(SmShotWord(seed,0xf78)==0xe87f);
+  SmShotPut(seed,0xf7a,128);SmShotPut(seed,0xf7e,128);SmShotPut(seed,0xf82,8);SmShotPut(seed,0xf84,8);
+  SmShotPut(seed,0xfa0,0);SmShotPut(seed,0x9c2,777);SmShotPut(seed,0x9c4,999);SmShotPut(seed,0xd32,0xc4f0);
+  for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(gfx[2*i] | gfx[2*i+1]<<8);
+  assert(SmRoomRuntimeCapture(r,seed,vram));SmRoomRuntimeSetMasks(r,1,0,1,0);
+  assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+  memcpy(view,seed,sizeof(view));SmShotPut(view,0x79b,0x91f8);
+  for (unsigned i=0; i<4; ++i) SmShotPut(view,(unsigned[]){0xaf6,0xafa,0xb10,0xb14}[i],i&1 ? 384 : 640);
+  SmShotPut(view,0x9c2,1000);SmShotPut(view,0x9c4,1000);SmShotPut(view,0x18a8,0);SmShotPut(view,0x18aa,0);SmShotPut(view,0x8b,0);
+  assert(SmRoomRuntimeTouch(r,view,512,256));assert(SmShotWord(ram,0x7810)==1);
+  SmRoomRuntimeSetPlayer(r,view,512,256,NULL);
+  assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+  for (unsigned i=0; i<4; ++i) {
+    SmShotPut(view,0x8b,i&1 ? 0 : 0x80);assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+  }
+  assert(SmShotWord(ram,0xfb0)==60 && SmShotWord(ram,0x9c2)==777);
+  assert(SmShotWord(view,0xaf6)==640 && SmShotWord(view,0xafa)==384 && SmShotWord(view,0x79b)==0x91f8);
+  assert(SmRoomRuntimeSave(r,grab,size));memcpy(checkpoint,view,sizeof(view));
+  for (unsigned pass=0; pass<2; ++pass) {
+    if (pass) { assert(SmRoomRuntimeLoad(r,grab,size));memcpy(view,checkpoint,sizeof(view)); }
+    for (unsigned i=0; i<60; ++i) {
+      SmShotPut(view,0x8b,i&1 ? 0 : 0x80);assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+    }
+    assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+    assert(!SmShotWord(ram,0xfb0) && !SmShotWord(ram,0x7810));
+    assert(SmRoomRuntimeSave(r,pass ? again : end,size));
+    if (!pass) memcpy(finished,view,sizeof(view));
+  }
+  assert(!memcmp(end,again,size) && !memcmp(view,finished,sizeof(view)));
+  SmRoomRuntimeSetPlayer(r,NULL,0,0,NULL);SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,UINT32_MAX,(1u<<18)-1);
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);free(grab);free(end);free(again);
+  puts("native Beetom grab consumes live root input and releases; private view restored; exact mid-grab continuation");
+}
+static void player_pickups(SmRoomRuntime *r) {
+  static uint8_t seed[0x20000],view[0x20000],before_view[0x20000];static uint16_t vram[0x8000];
+  const uint8_t *ram=SmRoomRuntimeRam(r),*gfx=SmRoomRuntimeVram(r);unsigned slot=34;
+  size_t size=SmRoomRuntimeStateSize();void *original=malloc(size);assert(original && SmRoomRuntimeSave(r,original,size));
+  for (unsigned eligible=0; eligible<2; ++eligible) for (unsigned kind=1; kind<=5; ++kind) for (unsigned grapple=0; grapple<2; ++grapple) {
+    assert(SmRoomRuntimeLoad(r,original,size));memcpy(seed,ram,sizeof(seed));memset(seed+0xf78,0,2048);memset(seed+0x1997,0,36);
+    SmShotPut(seed,0x9c2,777);SmShotPut(seed,0x9c4,999);SmShotPut(seed,0x198d,0x8000);
+    const unsigned addresses[]={0x1997,0x1a03,0x1b47,0x1b8f,0x1bb3,0x1bd7,0x1aff,0x1b23,0x1a4b,0x1a93,0xf410};
+    const unsigned values[]={0xf337,0xefe0,0xed8d,0x7fff,0x1010,0x3000,kind*2,grapple ? 370 : 400,128,128,0xffff};
+    for (unsigned i=0; i<sizeof(addresses)/sizeof(*addresses); ++i) SmShotPut(seed,addresses[i]+slot,(int)values[i]);
+    for (unsigned i=0; i<0x8000; ++i) vram[i]=(uint16_t)(gfx[2*i] | gfx[2*i+1]<<8);
+    assert(SmRoomRuntimeCapture(r,seed,vram));memcpy(view,seed,sizeof(view));
+    SmShotPut(view,0x79b,0x91f8);SmShotPut(view,0xaf6,grapple ? 576 : 640);SmShotPut(view,0xafa,384);
+    SmShotPut(view,0xb10,(int)SmShotWord(view,0xaf6));SmShotPut(view,0xb14,384);
+    const unsigned fields[]={0x9c2,0x9c4,0x9c6,0x9c8,0x9ca,0x9cc,0x9ce,0x9d0};
+    const unsigned amounts[]={10,99,3,10,1,10,2,10};
+    for (unsigned i=0; i<8; ++i) SmShotPut(view,fields[i],(int)amounts[i]);
+    SmShotPut(view,0xd08,640);SmShotPut(view,0xd0c,384);SmShotPut(view,0xd32,grapple ? 0xc703 : 0xc4f0);
+    memcpy(before_view,view,sizeof(view));SmRoomRuntimeSetMasks(r,0,1u<<17,0,eligible ? 1u<<17 : 0);
+    SmRoomRuntimeSetPlayer(r,view,512,256,NULL);
+    assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+    const unsigned reward_at[]={0,0x9c2,0x9c2,0x9ce,0x9c6,0x9ca};
+    const unsigned reward[]={0,5,20,1,2,1};unsigned at=reward_at[kind];
+    if (eligible) assert(SmShotWord(view,at)==SmShotWord(before_view,at)+reward[kind]);
+    else assert(!memcmp(view,before_view,sizeof(view)) && SmShotWord(ram,0x1a03+slot)==0xefe0);
+    unsigned once=SmShotWord(view,at);assert(SmRoomRuntimeStepVisible(r,128,128,0,0,213));
+    assert(SmShotWord(view,at)==once && SmShotWord(ram,0x9c2)==777);
+    assert(SmShotWord(view,0xaf6)==SmShotWord(before_view,0xaf6) && SmShotWord(view,0x79b)==0x91f8);
+  }
+  SmRoomRuntimeSetPlayer(r,NULL,0,0,NULL);SmRoomRuntimeSetMasks(r,UINT32_MAX,(1u<<18)-1,UINT32_MAX,(1u<<18)-1);
+  assert(SmRoomRuntimeLoad(r,original,size));free(original);
+  puts("native health/ammo drops reward Root once by body or live grapple; ineligible drops retained; private player restored");
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -218,6 +290,8 @@ int main(int argc,char **argv) {
   SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(r);
   SmRoomRuntime *twin=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(twin);
   if (*SmRoomRuntimeError(r)) { fprintf(stderr,"init: %s\n",SmRoomRuntimeError(r)); return 1; }
+  if (room->header==0x9fe5) player_ai(r);
+  player_pickups(r);
   unsigned moved=0; uint8_t enemies[2048];
   memcpy(enemies,SmRoomRuntimeRam(r)+0xf78,sizeof(enemies));
   uint8_t initial_vram[65536]; memcpy(initial_vram,SmRoomRuntimeVram(r),sizeof(initial_vram));

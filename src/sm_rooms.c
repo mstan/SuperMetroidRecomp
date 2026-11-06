@@ -470,7 +470,7 @@ bool SmRoomsEprojTile(const uint8_t active[0x20000],const uint8_t source[0x20000
   }
   *tile=(SmEprojTile){bx,by,0x8000,0};return true;
 }
-typedef struct EprojOrigin { const uint8_t *active;int x,y; } EprojOrigin;
+typedef struct EprojOrigin { const uint8_t *active;int x,y;const bool *reachable; } EprojOrigin;
 static bool resident_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
   const EprojOrigin *origin=context;
   return SmRoomsEprojTile(origin->active,source,origin->x,origin->y,x,y,tile);
@@ -482,6 +482,16 @@ static bool room_reachable(unsigned room,const bool *reachable) {
   if (room==root) return true;
   for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==room) return reachable[i+1];
   return false;
+}
+static bool resident_player_eligible(void *context,const uint8_t source[0x20000],unsigned slot) {
+  const EprojOrigin *origin=context;
+  WorldEntities *world=resource_entities(source,origin->x,origin->y);
+  if (!world || slot>=WORLD_ENEMIES+WORLD_EPROJS) return false;
+  WorldEntity *e=&world->slots[slot];
+  sync_entity(origin->active,source,origin->x,origin->y,e,slot);
+  DoorContext resource={source,NULL,word(source+0x79b),word(source+0x7bb),origin->x,origin->y};
+  return visible_entity(origin->active,&resource,e) &&
+      (e->room==root || (logic && room_reachable(e->room,origin->reachable)));
 }
 static uint32_t simulation_mask(const Resident *resident,unsigned first,unsigned n) {
   uint32_t mask=0;
@@ -762,8 +772,9 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
     uint32_t sim_a=simulation_mask(resident,0,32),sim_ep=simulation_mask(resident,32,18);
     uint32_t a=interaction_mask(active,resident,reachable,0,32),ep=interaction_mask(active,resident,reachable,32,18);
     SmRoomRuntimeSetMasks(runtime,sim_a,sim_ep,a,ep);
-    EprojOrigin origin={active,p->x,p->y};SmRoomRuntimeSetWorld(runtime,resident_eproj_tile,&origin);
+    EprojOrigin origin={active,p->x,p->y,reachable};SmRoomRuntimeSetWorld(runtime,resident_eproj_tile,&origin);
     SmRoomRuntimeSetBirth(runtime,resident_birth);
+    SmRoomRuntimeSetPlayer(runtime,active,p->x,p->y,resident_player_eligible);
     unsigned shots=world_shots(active,root,reachable);
     if (reachable[i+1]) shots|=world_shots(active,p->room,reachable);
     bool failed=!SmRoomRuntimeHitShots(runtime,active,p->x,p->y,shots) ||

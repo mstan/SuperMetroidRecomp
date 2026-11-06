@@ -395,6 +395,29 @@ checkpoints, the foreign-terrain projectile replay 15, and the return replay
 `b60768d2d2c6ab0520a5a6a5012fbf5b8496437e3b369669ee8b63f1549ebaf9`.
 Temporary opcode diagnostics were removed; no extra instruction fetch remains.
 
+Resident actor AI and enemy-projectile pre-instructions now borrow the live
+player's equipment, health, input, grapple and translated body coordinates for
+each eligible native update. Only bounded player effects return to the active
+room; the private player view is restored afterward. Ineligible actors see the
+player out of range and cannot commit rewards or other player effects. The
+manager checks current spatial ownership and open-room reachability, including
+entities born during that same native tick.
+
+Owned-ROM checks pass for a real Beetom grab, release after actual alternating
+input, and exact mid-grab continuation. All five native health/ammo drop types
+award once through body or grapple contact, without changing the private
+player's health. Whole-manager collection through an open doorway passes;
+closed doors and logic Off retain the drop, and restoring the complete world
+repeats the same single reward exactly. The game builds and all 28 CTests pass.
+These checks do not establish natural drop collection during live traversal or
+general actor world physics.
+The integrated candidate also passes the existing live ordinary-shot,
+foreign-terrain projectile and retained-projectile On/Off cases, including
+already-crossed objects with logic Off. Replay checkpoints match 188, 15 and
+13 executions (`native-player-integrated2-result.json`, exit 0;
+`world-shots9-*`, `world-eprojs6-*`, `world-retained6-*`). Exact executable:
+`6b2f37a84aea4e3d9332850f0d269d46f3d371b8bfcdbc0e80b890874380f782`.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -412,9 +435,11 @@ current-build restore and replay. Six acceptance areas remain open:
    projectile responses and ordinary open/closed/Off routing now pass probes.
    Retained enemy-projectile transfer/contact now passes live On/Off checks.
    General actor terrain/movement, native Root masks for foreign objects,
-   resource retention beyond the original room's visibility, pickups/rewards,
-   area weapons and complete ownership still need implementation. Walls and
-   closed doors must block interaction.
+   resource retention beyond the original room's visibility, area weapons and
+   complete ownership still need implementation. Native health/ammo rewards
+   and grab release pass the bounded runtime/manager checks above; natural
+   live collection during traversal remains to qualify. Walls and closed doors
+   must block interaction.
    The same-room 9FE5 29-tick crash is resolved by consuming native drawing
    queues; broader actor movement and bounded gameplay effects remain open.
 3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;

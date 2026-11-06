@@ -9,6 +9,7 @@ typedef bool (*SmEprojQuery)(void *context,const uint8_t ram[0x20000],int x,int 
 /* Shared native slot numbering: enemies 0..31, enemy projectiles 32..49,
  * player weapons 50..59. Phase 1 is enemy AI, 2 enemy-projectile AI. */
 typedef void (*SmWorldBirth)(void *context,const uint8_t ram[0x20000],unsigned slot,unsigned phase);
+typedef bool (*SmWorldPlayer)(void *context,const uint8_t ram[0x20000],unsigned slot);
 typedef struct SmEprojLoan {
   bool active,horizontal;
   uint16_t index,slot,tile;
