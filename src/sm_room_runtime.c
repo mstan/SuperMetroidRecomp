@@ -303,7 +303,7 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   if (!initialize_doors(r,state)) return r;
   /* Fixed non-boss tiles may be room scenery (E23F supplies the Ceres lab).
    * Loading immutable bytes must not initialize or activate enemy logic. */
-  if (!fixed_graphics(r)) return r;
+  if (!actors && !fixed_graphics(r)) return r;
   if (((unsigned)rom_long(r,0x8f0018u+state)&65535)==0xc97b) {
     r->ram[0x5d]=0x66;put(r,0x7eb,9); /* validated scenic stores from C97B; no room/boss script call */
   }
@@ -319,6 +319,18 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   SmRoomRuntimeEnableActors(r);
   return r;
 }
+static bool entry_only(const SmRoomRuntime *r,unsigned id,unsigned parameter) {
+  return id && ((r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id)) ||
+      (id==0xe23f && (parameter==2 || parameter==3)));
+}
+bool SmRoomRuntimeEntryOnly(const SmRoomRuntime *r,const uint8_t ram[0x20000]) {
+  if (!r || !ram) return false;
+  for (unsigned i=0; i<32; ++i) {
+    unsigned at=0xf78+64*i;
+    if (entry_only(r,word(ram+at),word(ram+at+60))) return true;
+  }
+  return false;
+}
 static void prepare_population(SmRoomRuntime *r) {
   SmWorldRead read=r->read;void *context=r->context;
   unsigned quota=word(r->ram+0xe52);
@@ -333,7 +345,11 @@ static void prepare_population(SmRoomRuntime *r) {
     uint32_t a=0xa10000u+r->population+16*i;
     unsigned id=read(context,a) | read(context,a+1)<<8;
     if (id==65535) break;
-    if (read(context,0xa00010u+id) || read(context,0xa00011u+id)) continue;
+    /* E23F also contains ordinary Ceres doors. Only parameter2's escape
+     * destruction/progression and parameter3's Ridley entrance lock require
+     * actual room entry; their definition has no native boss flag. */
+    unsigned parameter=read(context,a+12) | read(context,a+13)<<8;
+    if (entry_only(r,id,parameter)) continue;
     for (unsigned j=0; j<16; ++j) r->population_data[used*16+j]=read(context,a+j);
     ++used;
   }
@@ -355,6 +371,9 @@ bool SmRoomRuntimeEnableActors(SmRoomRuntime *r) {
   put(r,0xe1c,65535); put(r,0xe12,1); /* no active-player collision in the isolated probe */
   if (!call(r,0xa08a1e,3)) return false;
   memcpy(r->vram+0xd800,r->ram+0x7000,0x2800);
+  /* An entry-only helper can leave no population to stage its tiles. Keep
+   * immutable room scenery available independently of those native scripts. */
+  if (!fixed_graphics(r)) return false;
   memcpy(r->ram+0xc000,r->ram+0xc200,512);
   return call(r,0xa08a9e,3);
 }
@@ -659,12 +678,8 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
   /* Entry-only encounters are initialized by the active cartridge loader.
    * Ordinary populations keep their resident health, AI, animation and death
    * state, including deleted slots. Never respawn a killed preview actor. */
-  bool boss=false;
-  for (unsigned i=0; i<32; ++i) {
-    unsigned id=word(ram+0xf78+64*i);
-    if (id && (r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id))) boss=true;
-  }
-  if (r->actors && !boss) {
+  bool entry=SmRoomRuntimeEntryOnly(r,ram);
+  if (r->actors && !entry) {
     memcpy(ram+0xe4c,r->ram+0xe4c,10);
     memcpy(ram+0xe84,r->ram+0xe84,0xf78-0xe84);
     memcpy(ram+0xf78,r->ram+0xf78,0x18aa-0xf78);
@@ -672,7 +687,7 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
     memcpy(ram+0x198d,r->ram+0x198d,0x1c23-0x198d);
     for (unsigned i=0x6c00; i<0x8000; ++i) vram[i]=(uint16_t)word(r->vram+2*i);
   }
-  if (!boss) {
+  if (!entry) {
     /* Restore the room's running liquid/animation phase after entry setup;
      * the native loader retains ownership of its DMA channels and scripts. */
     memcpy(ram+0x195c,r->ram+0x195c,0x198d-0x195c);
@@ -687,10 +702,7 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
 bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000]) {
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return false;
   /* Encounter doors retain the actual entry scripts/lock initialization. */
-  for (unsigned i=0; i<32; ++i) {
-    unsigned id=word(ram+0xf78+64*i);
-    if (id && (r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id))) return true;
-  }
+  if (SmRoomRuntimeEntryOnly(r,ram)) return true;
   unsigned w=word(r->ram+0x7a5),h=word(r->ram+0x7a7);
   for (unsigned door=0; door<r->door_count; ++door) {
     unsigned block=r->door_blocks[door],orientation=r->door_orientations[door];

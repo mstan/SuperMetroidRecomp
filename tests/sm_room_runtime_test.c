@@ -395,10 +395,59 @@ static void ceres_scenery(const SmWorld *world) {
     assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r),*vram=SmRoomRuntimeVram(r);
     assert(ram[0x5d]==0x66 && SmShotWord(ram,0x7eb)==9);
     for (unsigned i=0; i<1536; ++i) assert(vram[0xda00+i]==Read(NULL,0xb0ba00+i));
-    for (unsigned i=0; i<32; ++i) assert(logic || !SmShotWord(ram,0xf78+64*i));
+    for (unsigned i=0; i<32; ++i) {
+      unsigned at=0xf78+64*i;assert(!SmShotWord(ram,at)); /* Ridley and its parameter3 lock await actual entry. */
+    }
+    unsigned status=SmShotWord(ram,0x93f);
+    for (unsigned i=0; i<120; ++i) assert(SmRoomRuntimeStepVisible(r,16,127,0,0,213) && SmRoomRuntimeStepEffects(r));
+    assert(SmShotWord(ram,0x93f)==status);
+    for (unsigned i=0; i<1536; ++i) assert(vram[0xda00+i]==Read(NULL,0xb0ba00+i));
     SmRoomRuntimeDestroy(r);
   }
-  puts("Ceres lab native BG bases and complete fixed scenery graphics load On/Off without activating disabled actors");
+  const SmWorldRoom *elevator=SmWorldFindRoom(world,0xdf45);assert(elevator);
+  uint8_t seed[0x20000];memcpy(seed,active,sizeof(seed));
+  SmShotPut(seed,0x79b,0);SmShotPut(seed,0x93f,2); /* escape prerequisite setup, not the tested result8000 */
+  seed[0xd82e]|=1;
+  uint16_t escape=SmWorldRoomState(elevator,Read,NULL,seed);assert(escape!=elevator->default_state);
+  for (unsigned logic=0; logic<2; ++logic) {
+    SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,elevator,escape,0,seed,logic!=0);
+    assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r);
+    unsigned ordinary=0;
+    for (unsigned i=0; i<32; ++i) {
+      unsigned at=0xf78+64*i,id=SmShotWord(ram,at);
+      if (!id) continue;
+      assert(logic);
+      if (id==0xe23f) { unsigned parameter=SmShotWord(ram,at+60);assert(parameter!=2 && parameter!=3);++ordinary; }
+    }
+    assert(ordinary==logic); /* parameter4's ordinary door remains when actor logic is enabled */
+    for (unsigned i=0; i<120; ++i) assert(SmRoomRuntimeStepVisible(r,232,631,0,512,213) && SmRoomRuntimeStepEffects(r));
+    assert(SmShotWord(ram,0x93f)==2 && SmShotWord(seed,0x93f)==2);
+    SmRoomRuntimeDestroy(r);
+  }
+  puts("Ceres On/Off: complete lab scenery retained; Ridley lock and escape destruction await entry, ordinary doors retained");
+}
+static void ceres_entry_promotion(const SmWorld *world) {
+  if (SmShotWord(active,0x79b)!=0xdf45) return;
+  /* The explicit WRAM input is a real fresh-boot Ceres entry capture, with
+   * native A08A9E/F6C5 initialization, rather than a fabricated actor record. */
+  const SmWorldRoom *room=SmWorldFindRoom(world,0xdf45);assert(room);
+  unsigned helper=32;
+  for (unsigned i=0; i<32; ++i) {
+    unsigned at=0xf78+64*i;
+    if (SmShotWord(active,at)==0xe23f && SmShotWord(active,at+60)==2) helper=i;
+  }
+  assert(helper<32 && SmShotWord(active,0xf78+64*helper+48)==0xf7bd);
+  uint8_t *entered=malloc(sizeof(active));uint16_t *vram=calloc(0x8000,sizeof(*vram));assert(entered && vram);
+  for (unsigned logic=0; logic<2; ++logic) {
+    SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,(uint16_t)SmShotWord(active,0x7bb),0,active,logic!=0);
+    assert(r && !*SmRoomRuntimeError(r) && SmRoomRuntimeEntryOnly(r,active));
+    assert(!SmRoomRuntimeEntryOnly(r,SmRoomRuntimeRam(r)));
+    memcpy(entered,active,sizeof(active));assert(SmRoomRuntimePromoteDoors(r,entered));SmRoomRuntimePromote(r,entered,vram);
+    assert(!memcmp(entered,active,sizeof(active)));
+    SmRoomRuntimeDestroy(r);
+  }
+  free(entered);free(vram);
+  puts("Actual native Ceres entry fixture: On/Off promotion preserves unflagged E23F2 initialization and door state exactly");
 }
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
@@ -411,6 +460,7 @@ int main(int argc,char **argv) {
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
   if (strtoul(argv[3],NULL,16)==0x9fe5) ceres_scenery(world);
+  ceres_entry_promotion(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);
   uint16_t state=SmWorldRoomState(room,Read,NULL,active);
   SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(r);

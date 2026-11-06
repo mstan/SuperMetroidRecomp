@@ -338,6 +338,17 @@ static void sync_entities(const uint8_t *active,const uint8_t *ram,int ox,int oy
   for (unsigned i=0; i<(weapons ? WORLD_ENTITIES : WORLD_ENEMIES+WORLD_EPROJS); ++i)
     sync_entity(active,ram,ox,oy,&world->slots[i],i);
 }
+static void retain_entity_rooms(const WorldEntities *world,unsigned resource,bool required[SM_ROOM_RESIDENTS]) {
+  unsigned birthplace=resource<count ? residents[resource].placement.room : root;
+  for (unsigned i=0; i<WORLD_ENTITIES; ++i) {
+    const WorldEntity *e=&world->slots[i];
+    if (!e->definition || !e->room || e->room==birthplace) continue;
+    /* Native slots and graphics stay in their original machine. Retain both
+     * that resource pool and the foreign terrain namespace until deletion. */
+    if (resource<count) required[resource]=true;
+    for (unsigned j=0; j<count; ++j) if (residents[j].placement.room==e->room) required[j]=true;
+  }
+}
 static WorldEntities *resource_entities(const uint8_t *source,int ox,int oy) {
   if (word(source+0x79b)==root && !ox && !oy) return &active_world;
   for (unsigned i=0; i<count; ++i) if (SmRoomRuntimeRam(residents[i].runtime)==source &&
@@ -668,6 +679,11 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
   unsigned old_room=word(previous+0x79b),old_state=word(previous+0x7bb);
   const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)old_room);
   if (!room || !p || word(active+0x79b)!=p->room) return false;
+  if (count==SM_ROOM_RESIDENTS) {
+    bool arriving=false;
+    for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==p->room) arriving=true;
+    if (!arriving) return false; /* never evict a live resource pool to hand off */
+  }
   sync_entities(previous,previous,0,0,&active_world,true);
   WorldEntities departing_world=active_world,arriving_world={.loaded=1};
   SmRoomRuntime *departing=SmRoomRuntimeCreateConfigured(read_rom,NULL,room,(uint16_t)old_state,0,previous,false);
@@ -679,12 +695,8 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
       if (residents[i].placement.state==word(active+0x7bb)) {
         if (!SmRoomRuntimePromoteDoors(residents[i].runtime,active)) { SmRoomRuntimeDestroy(departing); return false; }
         SmRoomRuntimePromote(residents[i].runtime,active,vram);
-        bool boss=false;
-        for (unsigned slot=0; slot<32; ++slot) {
-          unsigned id=word(active+0xf78+64*slot);
-          if (id && (read_rom(NULL,0xa00010u+id) || read_rom(NULL,0xa00011u+id))) boss=true;
-        }
-        if (SmRoomRuntimeActors(residents[i].runtime) && !boss) arriving_world=residents[i].world;
+        if (SmRoomRuntimeActors(residents[i].runtime) && !SmRoomRuntimeEntryOnly(residents[i].runtime,active))
+          arriving_world=residents[i].world;
       }
       SmRoomRuntimeDestroy(residents[i].runtime);
       residents[i]=residents[--count];
@@ -702,7 +714,6 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
   if (direction==1) q.left=p->right-p->x;
   if (direction==2) q.bottom=p->top-p->y;
   if (direction==3) q.top=p->bottom-p->y;
-  if (count==SM_ROOM_RESIDENTS) SmRoomRuntimeDestroy(residents[--count].runtime);
   memset(departing_world.slots+WORLD_ENEMIES+WORLD_EPROJS,0,WORLD_WEAPONS*sizeof(WorldEntity));
   departing_world.loaded=1;
   residents[count++]=(Resident){q,departing,departing_world}; pending_entry=true;
@@ -761,6 +772,7 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   if (game_state>=9 && game_state<=13) pending_entry=true;
   if (game_state!=8) return true;
   unsigned current=word(active+0x79b);
+  bool continuous_context=current==root || rebased;
   if ((current!=root || pending_entry) && !rebased) {
     camera_dx=camera_dy=0;memset(&active_world,0,sizeof(active_world));
   }
@@ -790,11 +802,31 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   /* Match native projectile retention beyond the visible edges. A shot must
    * not lose its room's collision just before its ordinary offscreen cull. */
   SmRoomPreviewPrepare(active,x-(int)extra-64,y-64,x+256+(int)extra+64,y+288);
+  bool required[SM_ROOM_RESIDENTS]={0};
+  if (continuous_context) {
+    for (unsigned i=0; i<count; ++i) {
+      Resident *r=&residents[i];
+      sync_entities(active,SmRoomRuntimeRam(r->runtime),r->placement.x,r->placement.y,&r->world,false);
+    }
+    retain_entity_rooms(&active_world,count,required);
+    for (unsigned i=0; i<count; ++i) retain_entity_rooms(&residents[i].world,i,required);
+  }
   Resident old[SM_ROOM_RESIDENTS]; unsigned old_count=count;
   memcpy(old,residents,sizeof(old)); memset(residents,0,sizeof(residents)); count=0;
+  for (unsigned i=0; i<old_count; ++i) if (required[i]) {
+    residents[count++]=old[i];old[i].runtime=NULL;
+  }
   bool ok=true;
   for (unsigned i=0; i<SmRoomPreviewCount(); ++i) {
     SmRoomPlacement p; if (!SmRoomPreviewPlacement(i,&p)) continue;
+    bool retained=false;
+    for (unsigned j=0; j<count; ++j) if (residents[j].placement.room==p.room) {
+      /* Preserve an occupied native pool until its normal entry/state change;
+       * matching previews may refresh portal clipping and incoming metadata. */
+      if (residents[j].placement.state==p.state) residents[j].placement=p;
+      retained=true;break;
+    }
+    if (retained || count==SM_ROOM_RESIDENTS) continue;
     SmRoomRuntime *runtime=NULL;WorldEntities world={0};
     for (unsigned j=0; j<old_count; ++j)
       if (old[j].runtime && old[j].placement.room==p.room && old[j].placement.state==p.state &&

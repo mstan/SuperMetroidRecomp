@@ -488,6 +488,46 @@ ownership after closing a crossed portal remains open.
 
 ## Outstanding implementation and qualification
 
+### Transferred resources and entry-only Ceres helpers
+
+Live foreign NPC/projectile slots now retain their resource runtime and foreign
+terrain context when the original room leaves the preview query. Those slots
+keep their native graphics, AI and collision resources until deletion; unused
+invisible pools are released afterward. Required pools take priority within
+the existing 16-resident bound. A full handoff cannot silently evict a pool.
+The owned-ROM manager check positions an already-crossed native spit in
+Landing Site while its source 93AA is outside the expanded preview query. It
+continues, deals exactly 20 damage, releases its pool and repeats byte-exactly
+after restore, with logic On and Off. The separate live invisible-pool fixture
+is pending: its first A011 setup failed the prerequisite because the native
+camera remained at 512, keeping the resource room inside the query.
+
+E23F's unflagged parameter3 Ridley lock and parameter2 escape-destruction
+helper are now entry-only. The shared predicate also protects native entry
+populations and doors from being overwritten by filtered resident state.
+Ordinary E23F variants remain available, and fixed lab graphics survive native
+actor staging even when its filtered population is empty.
+
+Candidate SHA256: `6dfa50783250aca7a15f114eeecf5d433c51f9dde4467c8aaea8155a7829b382`.
+All 28 CTests, owned-ROM runtime/manager checks and the existing live combat,
+transfer and Root-pool gates pass (`retention-integrated.log`). Its final Root
+Off recording ended with an input for a frame that had not executed. The raw
+recording is retained; the existing diagnostic's `--until` option reproduces
+all 102 completed executions (`world-root3-playback-off-complete/`). This does
+not qualify the failed live invisible-pool prerequisite above.
+
+Fresh `ceres-helper-entry3-on/` and `ceres-helper-entry3-off2/` pass the bounded
+helper gate. Assisted escape prerequisites leave status2 unchanged for 120
+ticks before entry, with parameter2 absent. A real controller return into DF45
+initializes its native helper and reaches status8000 after 49 further ticks.
+A current-build restore returns to pre-escape progression. At the lab,
+parameter3 and Ridley are absent before entry; actual entry initializes both,
+the lock closes and physically blocks attempted return, and Ridley advances
+120 ticks. Off uses disclosed body positioning onto the real upper doorway
+platform. These checks do not establish natural boss defeat/escape/audio.
+The assisted escape-state elevator capture shows stripes; comparison with a
+natural/native-transition baseline and escape steam remain outstanding.
+
 **Not release ready.** Ordinary right/left and down/up continuous round trips
 are qualified with neighboring logic On and Off. Native inactive-room shots
 and ordinary enemy weapon hits now pass the built live controller gate,
@@ -504,8 +544,9 @@ current-build restore and replay. Six acceptance areas remain open:
    Retained enemy-projectile transfer/contact now passes live On/Off checks.
    Shared native actor movers now use foreign terrain and pass the live
    leftward transfer above; broader actor paths/encounters remain to qualify.
-   Resource retention beyond the original room's visibility, area weapons and
-   complete ownership still need implementation. Native health/ammo rewards
+   Resource retention now passes the owned-ROM native check above; its live
+   invisible-pool check remains pending. Area weapons and complete ownership
+   still need implementation. Native health/ammo rewards
    and grab release pass the bounded runtime/manager checks above; natural
    live collection during traversal remains to qualify. Walls and closed doors
    must block interaction.
@@ -515,9 +556,10 @@ current-build restore and replay. Six acceptance areas remain open:
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
    Fit resizing and both HUD anchors. The reproduced departed-room native-
    viewport padding gap is now fixed and live-qualified.
-4. Finish special encounters and progression: Ceres helper locks, escape steam,
-   boss defeat/audio and camera continuity at the remaining doors. Basic live
-   scenery and five-link continuous traversal now pass in both logic modes.
+4. Finish special encounters and progression: natural Ceres escape scenery and
+   steam, boss defeat/audio and camera continuity at the remaining doors. Basic
+   live scenery, five-link continuous traversal and entry-only helper/lock
+   behavior now pass in both logic modes.
 5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer
    determinism, representative native gameplay and matched runtime performance.
 6. Prepare a compact owner review with normal audio in a normal window, then

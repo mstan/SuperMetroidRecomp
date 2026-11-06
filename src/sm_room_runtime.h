@@ -58,6 +58,9 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *room, int samus_x, int samus_y,
 void SmRoomRuntimeBackground(SmRoomRuntime *room, const uint8_t vram[65536]);
 bool SmRoomRuntimeCapture(SmRoomRuntime *room, const uint8_t ram[0x20000], const uint16_t vram[0x8000]);
 bool SmRoomRuntimeCaptureActive(SmRoomRuntime *room,const uint8_t ram[0x20000],const uint16_t vram[0x8000]);
+/* Actual-entry actor pools may contain native encounters or progression
+ * helpers that were deliberately absent from their resident population. */
+bool SmRoomRuntimeEntryOnly(const SmRoomRuntime *room,const uint8_t ram[0x20000]);
 void SmRoomRuntimePromote(const SmRoomRuntime *room, uint8_t ram[0x20000], uint16_t vram[0x8000]);
 bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *room, uint8_t ram[0x20000]);
 const uint8_t *SmRoomRuntimeRam(const SmRoomRuntime *room);

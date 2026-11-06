@@ -319,6 +319,59 @@ static void active_rules(const uint8_t *rom) {
   SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
   puts("active resource slots follow spatial On/Off and closed-door rules; queues retain occupied slots, Root actors, native reserved slots and visual FX");
 }
+static void resource_retention(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  static uint8_t previous[0x20000],checkpoint[0x20000],finished[0x20000];
+  static uint16_t vram[0x8000],previous_vram[0x8000];
+  for (unsigned mode=0; mode<2; ++mode) {
+    bool logic=mode==0;
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
+    memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+    put(0x998,8);put(0xaf6,40);put(0xafa,139);
+    assert(SmRoomsFrame(active,true,213,logic,true));assert(root_door(1,6,1,false));
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    /* Position an already-crossed native spit in Landing Site, far enough
+     * from its resource room that the latter is outside the preview query. */
+    unsigned slot=34;
+    const unsigned at[]={0x1997,0x1a03,0x1b47,0x1b6b,0x1b8f,0x1bb3,0x1bd7,0x1ab7,0x1adb,0x1a27,0x1a6f,0x1a4b,0x1a93,0x19bb,0xf380};
+    const unsigned value[]={0x9db0,0x9e1e,0x9dda,0x8420,0x7fff,0x0404,0x14,0xfc00,0,0,0,(uint16_t)-448,122,0,0};
+    for (unsigned i=0; i<sizeof(at)/sizeof(*at); ++i) put(at[i]+slot,(int)value[i]);
+    put(0x198d,0x8000);
+    memcpy(previous,active,sizeof(active));memcpy(previous_vram,vram,sizeof(vram));
+    r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
+    put(0x998,8);put(0xaf6,1800);put(0xb10,1800);put(0xafa,400);put(0xb14,400);
+    put(0x911,1600);put(0x915,256);put(0x9c2,500);put(0x9c4,500);put(0x18a8,0);put(0x18aa,0);
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    put(0x911,1600-SmRoomsScene()->camera_dx);
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    for (unsigned i=0; i<SmRoomPreviewCount(); ++i) {
+      SmRoomPlacement p;assert(SmRoomPreviewPlacement(i,&p));assert(p.room!=0x93aa);
+    }
+    r=image(0x93aa);assert(r->object_rooms[49]==0x91f8);
+    assert((int16_t)SmShotWord(r->ram,0x1a4b+slot)<-448);
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);assert(saved && end && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes && SmRoomsValidate(saved,bytes));memcpy(checkpoint,active,sizeof(active));
+    unsigned steps=0;
+    for (; steps<30 && SmShotWord(active,0x9c2)==500; ++steps) assert(SmRoomsFrame(active,true,213,logic,true));
+    assert(SmShotWord(active,0x9c2)==480);
+    /* Once the transferred object is consumed, its invisible resource pool
+     * must be released rather than accumulating dormant rooms forever. */
+    assert(SmRoomsFrame(active,true,213,logic,true));++steps;
+    for (unsigned i=0; i<SmRoomsScene()->count; ++i) assert(SmRoomsScene()->rooms[i].placement.room!=0x93aa);
+    size_t final_bytes=SmRoomsSave(end,bound);assert(final_bytes);memcpy(finished,active,sizeof(active));
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,checkpoint,sizeof(active));
+    for (unsigned i=0; i<steps; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    size_t repeated_bytes=SmRoomsSave(again,bound);
+    assert(repeated_bytes==final_bytes && !memcmp(end,again,final_bytes) && !memcmp(active,finished,sizeof(active)));
+    free(saved);free(end);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("foreign native projectile retains its invisible resource room, hits once On/Off, releases consumed pool, and restores exactly");
+}
 static void retained_projectile(const uint8_t *rom) {
   if (SmShotWord(original,0x79b)!=0x91f8) return;
   static uint8_t previous[0x20000],checkpoint[0x20000],finished[0x20000];
@@ -450,6 +503,7 @@ int main(int argc,char **argv) {
   world_actor_blocks(rom);
   active_rules(rom);
   retained_projectile(rom);
+  resource_retention(rom);
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);
     assert((original[0x79b] | original[0x79c]<<8)==0x96ba);
