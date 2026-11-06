@@ -108,7 +108,7 @@ static SmScenePiece scene_piece(const SmSourceFrame *f, const SmScene *scene,
 static bool scene_build(SmSourceFrame *f) {
   unsigned index = (unsigned)(f - frames);
   SmScene *scene = &scenes[index];
-  if (!interpolation_enabled && !getenv("SM_CAPTURE_MOTION_PREFIX") &&
+  if (!(f->rooms && f->rooms->ownership) && !interpolation_enabled && !getenv("SM_CAPTURE_MOTION_PREFIX") &&
       !getenv("SM_CAPTURE_EDGE_PREFIX")) {
     memset(scene, 0, sizeof(*scene));
     for (unsigned y = 0; y < 224; ++y) f->lines[y].scene = NULL;

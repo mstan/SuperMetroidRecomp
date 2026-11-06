@@ -15,6 +15,11 @@ bool SmRoomRuntimeStep(SmRoomRuntime *room, int samus_x, int samus_y,
 /* Ephemeral world terrain view; callbacks and in-flight native loans are not
  * part of a between-frame snapshot. Clear after the bounded native tick. */
 void SmRoomRuntimeSetWorld(SmRoomRuntime *room,SmEprojQuery query,void *context);
+void SmRoomRuntimeSetBirth(SmRoomRuntime *room,SmWorldBirth birth);
+void SmRoomRuntimeSetMasks(SmRoomRuntime *room,uint32_t simulation_enemies,uint32_t simulation_projectiles,
+    uint32_t interaction_enemies,uint32_t interaction_projectiles);
+bool SmRoomRuntimeActors(const SmRoomRuntime *room);
+bool SmRoomRuntimeEnableActors(SmRoomRuntime *room);
 bool SmRoomRuntimeStepEffects(SmRoomRuntime *room);
 /* Door PLMs run independently of ordinary neighboring gameplay actors. */
 bool SmRoomRuntimeStepDoors(SmRoomRuntime *room);
@@ -43,6 +48,7 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *room, int samus_x, int samus_y,
     int camera_x, int camera_y, unsigned extra);
 void SmRoomRuntimeBackground(SmRoomRuntime *room, const uint8_t vram[65536]);
 bool SmRoomRuntimeCapture(SmRoomRuntime *room, const uint8_t ram[0x20000], const uint16_t vram[0x8000]);
+bool SmRoomRuntimeCaptureActive(SmRoomRuntime *room,const uint8_t ram[0x20000],const uint16_t vram[0x8000]);
 void SmRoomRuntimePromote(const SmRoomRuntime *room, uint8_t ram[0x20000], uint16_t vram[0x8000]);
 bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *room, uint8_t ram[0x20000]);
 const uint8_t *SmRoomRuntimeRam(const SmRoomRuntime *room);

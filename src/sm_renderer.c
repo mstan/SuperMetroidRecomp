@@ -1621,6 +1621,46 @@ bool SmRendererGetPlayer(double alpha, SmPlayerView *player) {
   return true;
 }
 
+typedef struct SmObjectClip { const SmRoomScene *rooms;unsigned room;int camera_x,camera_y; } SmObjectClip;
+static bool object_room_pixel(const SmRoomScene *rooms,unsigned index,int x,int y) {
+  if (index) {
+    const SmRoomPlacement *p=&rooms->rooms[index-1].placement;
+    return x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
+        x>=p->left && y>=p->top && x<p->right && y<p->bottom;
+  }
+  if (x<0 || y<0 || x>=(int)rooms->root_width || y>=(int)rooms->root_height) return false;
+  for (unsigned i=1; i<=rooms->count; ++i) if (object_room_pixel(rooms,i,x,y)) return false;
+  return true;
+}
+static bool object_pixel(const SmObjectClip *clip,int x,int y) {
+  if (!clip || !clip->rooms || !clip->rooms->ownership) return true;
+  const SmRoomScene *rooms=clip->rooms;unsigned source=0;
+  if (!clip->room) return false;
+  if (clip->room!=rooms->root) {
+    for (source=1; source<=rooms->count; ++source) if (rooms->rooms[source-1].placement.room==clip->room) break;
+    if (source>rooms->count) return false;
+  }
+  x+=clip->camera_x;y+=clip->camera_y;
+  if (object_room_pixel(rooms,source,x,y)) return true;
+  uint32_t open=source ? rooms->rooms[source-1].open_rooms : rooms->open_rooms;
+  if (!open) return false;
+  int ox=source ? rooms->rooms[source-1].placement.x : 0,oy=source ? rooms->rooms[source-1].placement.y : 0;
+  unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)clip->room,&n);
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i];unsigned dir=d->direction&3;
+    int plane=dir<2 ? ox+(d->block_x+(dir==0))*16 : oy+(d->block_y+(dir==2))*16;
+    int point=dir<2 ? x : y,along=dir<2 ? y : x,start=dir<2 ? oy+d->block_y*16 : ox+d->block_x*16;
+    if (along<start || along>=start+64 || ((dir==0 || dir==2) ? point<plane : point>=plane)) continue;
+    for (unsigned target=0; target<=rooms->count; ++target)
+      if ((open&(1u<<target)) && d->destination==(target ? rooms->rooms[target-1].placement.room : rooms->root) &&
+          object_room_pixel(rooms,target,x,y)) return true;
+  }
+  return false;
+}
+static SmObjectClip active_object_clip(const SmSourceFrame *f,unsigned slot) {
+  return (SmObjectClip){f->rooms,f->rooms && slot<60 ? f->rooms->object_rooms[slot] : 0,
+      (int16_t)read16(f->object_ram,0x911),(int16_t)read16(f->object_ram,0x915)};
+}
 static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int y,
                     SmViewport viewport, uint16_t *pixels,
                     const SmSourceFrame *f, const SmSourceFrame *previous, double alpha,
@@ -1630,6 +1670,9 @@ static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int 
   memset(pixels, 0, (size_t)viewport.width * sizeof(*pixels));
   bool interpolate_objects = previous && f->object_state_valid && previous->object_state_valid && alpha < 1;
   for (int slot = 127; slot >= 0; --slot) {
+    unsigned owner=line->scene ? line->scene[slot].owner : 0;
+    SmObjectClip clip=active_object_clip(f,owner>=SM_SCENE_ENEMIES && owner<SM_SCENE_EFFECTS ? owner-SM_SCENE_ENEMIES : 60);
+    if (owner<SM_SCENE_ENEMIES || owner>=SM_SCENE_EFFECTS) clip.rooms=NULL;
     unsigned position = line->oam[slot * 2], attr = line->oam[slot * 2 + 1];
     unsigned high = line->high_oam[slot / 4] >> ((slot % 4) * 2);
     int size = sizes[p->obsel >> 5][(high >> 1) & 1];
@@ -1676,6 +1719,7 @@ static void sprites(const SnesRenderRegisters *p, const SmRasterLine *line, int 
     for (int col = 0; col < size; ++col) {
       int dest = x + col;
       if (dest < 0 || dest >= viewport.width) continue;
+      if (!object_pixel(&clip,dest-viewport.extra,y)) continue;
       if (reuse_center && dest >= viewport.extra && dest < viewport.extra + 256) continue;
       int cx = attr & 0x4000 ? size - 1 - col : col;
       unsigned tile = (((((attr & 255) >> 4) + row / 8) & 15) << 4) |
@@ -1699,7 +1743,7 @@ static bool window_condition(unsigned mode, bool inside) {
 static void enemy_map_pixels(const SmRasterLine *line, const SnesRenderRegisters *p,
                       unsigned bank, unsigned map, int origin_x, int origin_y,
                       unsigned palette, unsigned base_tile, int y,
-                      SmViewport viewport, uint16_t *pixels, bool include_center) {
+                      SmViewport viewport, uint16_t *pixels, bool include_center,const SmObjectClip *clip) {
   const uint8_t *data = rom_bytes(bank, map, 2);
   if (!data) return;
   unsigned count = read16(data, 0);
@@ -1724,6 +1768,7 @@ static void enemy_map_pixels(const SmRasterLine *line, const SnesRenderRegisters
     if (attr & 256) base += (((p->obsel >> 3) & 3) + 1) * 4096;
     for (int col = 0; col < size; ++col) {
       int native_x = x + col, dest = native_x + viewport.extra;
+      if (!object_pixel(clip,native_x,y)) continue;
       if ((!include_center && native_x >= 0 && native_x < 256) || dest < 0 || dest >= viewport.width)
         continue;
       int cx = attr & 0x4000 ? size - 1 - col : col;
@@ -1740,15 +1785,17 @@ static void enemy_map_pixels(const SmRasterLine *line, const SnesRenderRegisters
 static void enemy_map(const SmRasterLine *line, const SnesRenderRegisters *p,
                       unsigned bank, unsigned map, int origin_x, int origin_y,
                       unsigned palette, unsigned base_tile, int y,
-                      SmViewport viewport, uint16_t *pixels) {
-  enemy_map_pixels(line,p,bank,map,origin_x,origin_y,palette,base_tile,y,viewport,pixels,false);
+                      SmViewport viewport, uint16_t *pixels,const SmObjectClip *clip) {
+  bool include_center=clip && clip->rooms && clip->rooms->ownership && clip->room!=clip->rooms->root;
+  enemy_map_pixels(line,p,bank,map,origin_x,origin_y,palette,base_tile,y,viewport,pixels,include_center,clip);
 }
 
 static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
                     const SnesRenderRegisters *p, int y, SmViewport viewport, uint16_t *pixels,
                     unsigned phase, const SmSourceFrame *previous, double alpha) {
-  if (!viewport.extra || !renderer_rom) return;
+  if ((!viewport.extra && !(f->rooms && f->rooms->ownership)) || !renderer_rom) return;
   for (int slot = 31; slot >= 0; --slot) {
+    SmObjectClip clip=active_object_clip(f,(unsigned)slot);
     const uint8_t *e = f->object_ram + 0xf78 + slot * 64;
     unsigned id = read16(e, 0), properties = read16(e, 14);
     if (!id || id == 0xdaff || (properties & 0x300)) continue;
@@ -1779,10 +1826,10 @@ static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
         const uint8_t *child = ext + i * 8;
         enemy_map(line, p, bank, read16(child, 4),
                   x + (int16_t)read16(child, 0), sy + (int16_t)read16(child, 2),
-                  palette, base_tile, y, viewport, pixels);
+                  palette, base_tile, y, viewport, pixels,&clip);
       }
     } else {
-      enemy_map(line, p, bank, map, x, sy, palette, base_tile, y, viewport, pixels);
+      enemy_map(line, p, bank, map, x, sy, palette, base_tile, y, viewport, pixels,&clip);
     }
   }
 }
@@ -1804,6 +1851,7 @@ static void enemy_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
   /* $86:8390 / $86:83B2 emit slots in descending order. This compositor
    * overwrites pixels, so reverse that order to retain native OBJ ownership. */
   for (unsigned slot = 0; slot < 18; ++slot) {
+    SmObjectClip clip=active_object_clip(f,32+slot);
     unsigned offset = slot * 2;
     if (!read16(f->object_ram, 0x1997 + offset) ||
         ((read16(f->object_ram, 0x1bd7 + offset) & 0x1000) != 0) != low_priority)
@@ -1818,7 +1866,7 @@ static void enemy_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
     if (sy < -128 || sy >= 384) continue;
     unsigned gfx = read16(f->object_ram, 0x19bb + offset);
     enemy_map(line, p, 0x8d, read16(f->object_ram, 0x1b6b + offset), x, sy,
-              gfx & 0xff00, gfx & 255, y, viewport, pixels);
+              gfx & 0xff00, gfx & 255, y, viewport, pixels,&clip);
   }
 }
 
@@ -1827,6 +1875,7 @@ static void player_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
                                uint16_t *pixels, bool explosions,
                                const SmSourceFrame *previous, double alpha) {
   for (unsigned slot = 0; slot < (explosions ? 10u : 5u); ++slot) {
+    SmObjectClip clip=active_object_clip(f,50+slot);
     unsigned offset = slot * 2;
     if (!player_projectile_visible(f->object_ram, slot)) continue;
     unsigned type = read16(f->object_ram, 0xc18 + offset);
@@ -1843,7 +1892,7 @@ static void player_projectiles(const SmSourceFrame *f, const SmRasterLine *line,
     }
     if (sy < 0 || sy >= 256) continue;
     enemy_map(line, p, 0x93, read16(f->object_ram, 0xcb8 + offset),
-              x, sy, 0, 0, y, viewport, pixels);
+              x, sy, 0, 0, y, viewport, pixels,&clip);
   }
 }
 
@@ -1862,7 +1911,7 @@ static void sprite_objects(const SmSourceFrame *f, const SmRasterLine *line,
       sy = lerp_pixel(sy + dy, sy, alpha);
     }
     enemy_map(line, p, now.bank, now.map, x, sy,
-              now.palette, now.base, y, viewport, pixels);
+               now.palette, now.base, y, viewport, pixels,NULL);
   }
 }
 
@@ -2043,12 +2092,13 @@ static uint32_t object_colour(const SnesRenderRegisters *p,const uint16_t *backg
   return colour_palettes(p,main==object ? palette : background_palette,
       sub==object ? palette : background_palette,brightness,main,sub,inside);
 }
-static void resident_objects(const SmRoomImage *image, const SmRoomImage *old, unsigned index,
+static void resident_objects(const SmRoomScene *rooms,const SmRoomImage *image, const SmRoomImage *old, unsigned index,
     int camera_x, int camera_y, int y, SmViewport view, double alpha, bool actors, uint16_t pixels[SM_MAX_WIDTH]) {
   const uint8_t *r=image->ram;
   SmRasterLine line={0}; line.vram=private_vram[index];
   SnesRenderRegisters p={0}; p.obsel=r[0x52];
   if (actors) for (int phase=7; phase>=0; --phase) for (int slot=31; slot>=0; --slot) {
+    SmObjectClip clip={rooms,image->object_rooms[slot],camera_x,camera_y};
     const uint8_t *e=r+0xf78+slot*64;
     unsigned id=read16(e,0),map=read16(e,22),bank=e[46];
     if (!id || id==0xdaff || (read16(e,14)&0x300) || read16(e,34)!=(unsigned)phase) continue;
@@ -2071,17 +2121,18 @@ static void resident_objects(const SmRoomImage *image, const SmRoomImage *old, u
       if (!ext) continue;
       for (unsigned i=n; i-- >0;) {
         const uint8_t *child=ext+i*8;
-        enemy_map_pixels(&line,&p,bank,read16(child,4),x+(int16_t)read16(child,0),sy+(int16_t)read16(child,2),palette,base,y,view,pixels,true);
+        enemy_map_pixels(&line,&p,bank,read16(child,4),x+(int16_t)read16(child,0),sy+(int16_t)read16(child,2),palette,base,y,view,pixels,true,&clip);
       }
-    } else enemy_map_pixels(&line,&p,bank,map,x,sy,palette,base,y,view,pixels,true);
+    } else enemy_map_pixels(&line,&p,bank,map,x,sy,palette,base,y,view,pixels,true,&clip);
   }
   for (unsigned slot=0; slot<18; ++slot) {
+    SmObjectClip clip={rooms,image->object_rooms[32+slot],camera_x,camera_y};
     unsigned off=slot*2;
     if (!read16(r,0x1997+off)) continue;
     int x=(int16_t)read16(r,0x1a4b+off)+image->placement.x-camera_x;
     int sy=(int16_t)read16(r,0x1a93+off)+image->placement.y-camera_y;
     unsigned gfx=read16(r,0x19bb+off);
-    enemy_map_pixels(&line,&p,0x8d,read16(r,0x1b6b+off),x,sy,gfx&0xff00,gfx&255,y,view,pixels,true);
+    enemy_map_pixels(&line,&p,0x8d,read16(r,0x1b6b+off),x,sy,gfx&0xff00,gfx&255,y,view,pixels,true,&clip);
   }
 }
 static bool object_wins(uint16_t candidate,unsigned room,uint16_t current,unsigned current_room) {
@@ -2098,7 +2149,7 @@ static void world_objects(SmViewport view,int y,int camera_x,int camera_y,const 
       if (old_rooms->rooms[j].placement.room==image->placement.room && old_rooms->rooms[j].placement.state==image->placement.state)
         { old=&old_rooms->rooms[j];break; }
     uint16_t objects[SM_MAX_WIDTH]={0};
-    resident_objects(image,old,i,camera_x,camera_y,y,view,alpha,rooms->logic!=0,objects);
+    resident_objects(rooms,image,old,i,camera_x,camera_y,y,view,alpha,rooms->ownership || rooms->logic!=0,objects);
     for (int x=0; x<view.width; ++x) {
       unsigned previous=owners[x]<rooms->count ? rooms->rooms[owners[x]].placement.room : 65536;
       if (object_wins(objects[x],image->placement.room,pixels[x],previous)) { pixels[x]=objects[x];owners[x]=(uint8_t)i; }
@@ -2455,7 +2506,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
 #if SM_NATIVE_RASTER && SM_NATIVE_CENTER_REUSE
     bool foreign_center=false;
     for (int sx=viewport.extra; sx<viewport.extra+256; ++sx) if (foreign_objects[sx]) { foreign_center=true;break; }
-    reuse_center = !foreign_center && !displaced && mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
+    reuse_center = !(rooms && rooms->ownership) && !foreign_center && !displaced && mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
         !(viewport.extra && wide_windows[y].remove_clamped_edge);
     if (reuse_center) ++render_stats.native_center_lines;
 #endif
@@ -2463,7 +2514,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     int object_y=y;
     if (mode==1 && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y-=camera_dy; }
     sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha, reuse_center);
-    if (viewport.extra && renderer_rom) {
+    if ((viewport.extra || (rooms && rooms->ownership)) && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
        * The native center continues to use captured OAM exclusively. */
       for (int phase = 7; phase >= 0; --phase) {
@@ -2477,7 +2528,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     grapple_pixels(l, &scanout, y, viewport, objects, grapple, grapple_recover_native, grapple_count);
     if (viewport.extra && has_flare)
-      enemy_map(l, &scanout, flare.bank, flare.map, flare.x, flare.y, 0, 0, y, viewport, objects);
+      enemy_map(l, &scanout, flare.bank, flare.map, flare.x, flare.y, 0, 0, y, viewport, objects,NULL);
     if (rooms) for (int sx=0; sx<viewport.width; ++sx) {
       unsigned owner=foreign_owners[sx];
       if (owner<rooms->count && object_wins(foreign_objects[sx],rooms->rooms[owner].placement.room,objects[sx],rooms->root)) {

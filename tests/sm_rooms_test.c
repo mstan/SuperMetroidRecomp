@@ -172,6 +172,73 @@ static void world_combat(const uint8_t *rom) {
   SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
   puts("world enemy beam hits require an open native connection; Off, closed caps and exact hit restore pass");
 }
+static const SmRoomImage *image(unsigned room) {
+  const SmRoomScene *scene=SmRoomsScene();
+  for (unsigned i=0; i<scene->count; ++i) if (scene->rooms[i].placement.room==room) return &scene->rooms[i];
+  assert(0 && "handoff resident missing");return NULL;
+}
+static void image_vram(uint16_t *out,const SmRoomImage *in) {
+  for (unsigned i=0; i<0x8000; ++i) out[i]=(uint16_t)SmShotWord(in->vram,2*i);
+}
+static void retained_projectile(const uint8_t *rom) {
+  if (SmShotWord(original,0x79b)!=0x91f8) return;
+  static uint8_t previous[0x20000],checkpoint[0x20000],finished[0x20000];
+  static uint16_t vram[0x8000],previous_vram[0x8000];
+  for (unsigned mode=0; mode<3; ++mode) {
+    bool logic=mode==0;
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    const SmRoomImage *r=image(0x93aa);SmRoomPlacement entry=r->placement;
+    memcpy(previous,active,sizeof(active));memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,0));
+    put(0x998,8);put(0xaf6,40);put(0xafa,139);put(0x9c2,500);put(0x9c4,500);put(0x18a8,0);put(0x18aa,0);
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    assert(root_door(1,6,1,false));
+    for (unsigned i=0; i<60; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    assert(SmRoomsScene()->open_rooms);
+    /* A native moving projectile is a setup prerequisite. Its actual private
+     * cartridge movement, terrain reaction and player damage are the result. */
+    unsigned slot=34;
+    const unsigned at[]={0x1997,0x1a03,0x1b47,0x1b6b,0x1b8f,0x1bb3,0x1bd7,0x1ab7,0x1adb,0x1a27,0x1a6f,0x1a4b,0x1a93,0x19bb,0xf380};
+    const unsigned value[]={0x9db0,0x9e1e,0x9dda,0x8420,0x7fff,0x0404,0x14,0xfc00,0,0,0,40,122,0,0};
+    for (unsigned i=0; i<sizeof(at)/sizeof(*at); ++i) put(at[i]+slot,(int)value[i]);
+    put(0x198d,0x8000);
+    if (mode==2) put(0x1a4b+slot,4);
+    assert(SmRoomsFrame(active,true,213,logic,true));
+    if (mode==2) { put(0x1a4b+slot,-4);assert(SmRoomsFrame(active,true,213,logic,true)); }
+    memcpy(previous,active,sizeof(active));memcpy(previous_vram,vram,sizeof(vram));
+    r=image(0x91f8);entry=r->placement;memcpy(active,r->ram,sizeof(active));image_vram(vram,r);
+    put(0x998,8);put(0xaf6,2280);put(0xafa,400);put(0x9c2,500);put(0x9c4,500);put(0x18a8,0);put(0x18aa,0);
+    assert(SmRoomsHandoff(previous,previous_vram,active,vram,&entry,1));
+    assert(SmRoomsFrame(active,true,213,logic,true));r=image(0x93aa);
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*end=malloc(bound),*again=malloc(bound);assert(saved && end && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes && SmRoomsValidate(saved,bytes));memcpy(checkpoint,active,sizeof(active));
+    bool crossed=r->object_rooms[49]==0x91f8;unsigned steps=0;
+    for (unsigned frame=0; frame<20; ++frame) {
+      assert(SmRoomsFrame(active,true,213,logic,true));r=image(0x93aa);
+      ++steps;
+      if (r->object_rooms[49]==0x91f8) crossed=true;
+      if (mode==1) assert((int16_t)SmShotWord(r->ram,0x1a4b+slot)==40 && !r->object_rooms[49]);
+      if (SmShotWord(active,0x9c2)<500) break;
+    }
+    if (mode==1) assert(!crossed && SmShotWord(active,0x9c2)==500);
+    else {
+      if (!crossed || SmShotWord(active,0x9c2)>=500)
+        fprintf(stderr,"retained mode%u crossed%u hp%u id%04x x%d y%d owner%04x\n",mode,crossed,SmShotWord(active,0x9c2),
+            SmShotWord(r->ram,0x1997+slot),(int16_t)SmShotWord(r->ram,0x1a4b+slot),
+            (int16_t)SmShotWord(r->ram,0x1a93+slot),r->object_rooms[49]);
+      assert(crossed && SmShotWord(active,0x9c2)<500);
+    }
+    size_t final_bytes=SmRoomsSave(end,bound);assert(final_bytes);memcpy(finished,active,sizeof(active));
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,checkpoint,sizeof(active));
+    for (unsigned i=0; i<steps; ++i) assert(SmRoomsFrame(active,true,213,logic,true));
+    size_t repeated_bytes=SmRoomsSave(again,bound);
+    assert(repeated_bytes==final_bytes && !memcmp(end,again,final_bytes) && !memcmp(active,finished,sizeof(active)));
+    free(saved);free(end);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
+  puts("retained native projectile crosses into Root and damages Samus; Off freezes neighbors but preserves already-crossed objects; exact midflight restore");
+}
 int main(int argc,char **argv) {
   if (argc!=3 && argc!=4) return 2;
   samples();
@@ -239,6 +306,7 @@ int main(int argc,char **argv) {
   world_shots(rom);
   uncapped_entrance(rom);
   world_combat(rom);
+  retained_projectile(rom);
   if (argc==4) {
     f=fopen(argv[3],"rb"); assert(f); assert(fread(original,1,sizeof(original),f)==sizeof(original)); fclose(f);
     assert((original[0x79b] | original[0x79c]<<8)==0x96ba);

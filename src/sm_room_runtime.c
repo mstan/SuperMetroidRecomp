@@ -3,6 +3,7 @@
 #include "sm_door.h"
 #include "sm_shot_view.h"
 #include "snes/interp816.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,9 @@ struct SmRoomRuntime {
   void *shot_context;
   SmEprojQuery world_query;
   void *world_context;
+  SmWorldBirth world_birth;
+  unsigned world_phase;
+  uint32_t simulation_enemies,simulation_projectiles,interaction_enemies,interaction_projectiles;
   SmEprojLoan eproj_loan;
   char error[128];
 };
@@ -97,12 +101,23 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
     if (c->pc==0xff00 && c->sp==0x1fff) return true;
     if (c->waiting || c->stopped) { fail(r,"room routine suspended",entry); return false; }
     if ((c->k&127)==6) {
+      if (c->pc==0x8104) r->world_phase=2;
+      if (c->pc==0x8124) r->world_phase=0;
+      if (c->pc==0x8118 && c->x<36 && !(r->simulation_projectiles&(1u<<(c->x/2)))) c->pc=0x811e;
+      if ((c->pc==0x8091 || c->pc==0x80fe) && r->world_birth && c->a<36 && !(c->a&1))
+        r->world_birth(r->world_context,r->ram,32+c->a/2,r->world_phase);
       if (c->pc==0x8886 || c->pc==0x889e)
         SmEprojBegin(r->ram,&c->x,c->pc==0x8886,r->world_query,r->world_context,&r->eproj_loan);
       else if ((c->pc==0x889d || c->pc==0x88b5) &&
           SmEprojEnd(r->ram,&c->x,c->pc==0x889d,&r->eproj_loan)) {
         c->n=(c->x&0x8000)!=0;c->z=c->x==0;
       }
+    }
+    if ((c->k&127)==0x20) {
+      if (c->pc==0x8fd4) r->world_phase=1;
+      if (c->pc==0x9168) r->world_phase=0;
+      if (c->pc==0x9419 && r->world_birth && c->x<2048 && !(c->x&63))
+        r->world_birth(r->world_context,r->ram,c->x/64,r->world_phase);
     }
     if (r->shot_air && (c->k&127)==0x14 && (c->pc==0xa1cd || c->pc==0xa1ee) &&
         c->x==18 && r->shot_air(r->shot_context,r->ram,word(r->ram+0xdc4)))
@@ -154,7 +169,9 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
     const uint8_t active[0x20000], bool actors) {
   if (!read || !room || !state || !active) return NULL;
   SmRoomRuntime *r=calloc(1,sizeof(*r)); if (!r) return NULL;
-  r->read=read; r->context=context; r->actors=actors;
+  r->read=read; r->context=context;
+  r->simulation_enemies=r->interaction_enemies=UINT32_MAX;
+  r->simulation_projectiles=r->interaction_projectiles=(1u<<18)-1;
   memcpy(r->ram,active,sizeof(r->ram));
   memset(r->ram+0x10000,0,0x10000);
   /* Room-local actors, projectiles, PLMs, FX and sprite submissions cannot
@@ -213,6 +230,12 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   }
   put(r,0xe52,(int)quota);
   if (!actors) return r;
+  SmRoomRuntimeEnableActors(r);
+  return r;
+}
+static void prepare_population(SmRoomRuntime *r) {
+  SmWorldRead read=r->read;void *context=r->context;
+  unsigned quota=word(r->ram+0xe52);
   /* Ordinary populations retain the cartridge's complete initialization.
    * Boss definitions stay dormant individually; they must not suppress other
    * residents or visual effects in the same room. Filtering is local to this
@@ -238,19 +261,28 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
     for (unsigned j=0; j<4; ++j) r->tileset_data[tiles*4+j]=read(context,a+j);
     ++tiles;
   }
+}
+bool SmRoomRuntimeEnableActors(SmRoomRuntime *r) {
+  if (!r || r->error[0]) return false;
+  if (r->actors) return true;
+  r->actors=true;prepare_population(r);
   put(r,0xe1c,65535); put(r,0xe12,1); /* no active-player collision in the isolated probe */
-  if (!call(r,0xa08a1e,3)) return r;
+  if (!call(r,0xa08a1e,3)) return false;
   memcpy(r->vram+0xd800,r->ram+0x7000,0x2800);
   memcpy(r->ram+0xc000,r->ram+0xc200,512);
-  if (!call(r,0xa08a9e,3)) return r;
-  return r;
+  return call(r,0xa08a9e,3);
 }
 void SmRoomRuntimeDestroy(SmRoomRuntime *r) {
   if (r) { interp816_free(r->cpu); free(r); }
 }
 void SmRoomRuntimeSetWorld(SmRoomRuntime *r,SmEprojQuery query,void *context) {
-  if (r) { r->world_query=query;r->world_context=context; }
+  if (r) { r->world_query=query;r->world_context=context;if (!query) r->world_birth=NULL; }
 }
+void SmRoomRuntimeSetBirth(SmRoomRuntime *r,SmWorldBirth birth) { if (r) r->world_birth=birth; }
+void SmRoomRuntimeSetMasks(SmRoomRuntime *r,uint32_t a,uint32_t ep,uint32_t contact_a,uint32_t contact_ep) {
+  if (r) { r->simulation_enemies=a;r->simulation_projectiles=ep;r->interaction_enemies=contact_a;r->interaction_projectiles=contact_ep; }
+}
+bool SmRoomRuntimeActors(const SmRoomRuntime *r) { return r && r->actors; }
 bool SmRoomRuntimeStep(SmRoomRuntime *r, int samus_x, int samus_y, int camera_x, int camera_y) {
   return SmRoomRuntimeStepVisible(r,samus_x,samus_y,camera_x,camera_y,0);
 }
@@ -260,6 +292,15 @@ bool SmRoomRuntimeStepVisible(SmRoomRuntime *r, int samus_x, int samus_y, int ca
   put(r,0x911,camera_x); put(r,0x915,camera_y);
   if (!r->actors) return true;
   if (!call(r,0xa08eb6,3) || !SmActivityAugmentQueues(r->ram,extra)) return false;
+  if (r->simulation_enemies!=UINT32_MAX) for (unsigned list=0; list<2; ++list) {
+    unsigned base=list ? 0x17ec : 0x17ac,count=0;
+    for (unsigned i=0; i<32; ++i) {
+      unsigned index=word(r->ram+base+2*i);if (index==65535) break;
+      if (index>=2048 || (index&63)) { fail(r,"invalid resident activity index",index);return false; }
+      if (r->simulation_enemies&(1u<<(index/64))) { put(r,base+2*count,(int)index);++count; }
+    }
+    put(r,base+2*count,65535);put(r,list ? 0x17a6 : 0x17a4,(int)count*2);
+  }
   return call(r,0xa08fd4,3) && call(r,0x868104,3);
 }
 bool SmRoomRuntimeStepDoors(SmRoomRuntime *r) {
@@ -328,7 +369,7 @@ bool SmRoomRuntimeDoorOpen(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orien
 }
 static bool hit_shots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask,bool projectiles) {
   if (!r || r->error[0] || !active) return false;
-  if (!r->actors || word(active+0xa78) || word(active+0x185e)) return true;
+  if ((!r->actors && !projectiles) || word(active+0xa78) || word(active+0x185e)) return true;
   /* An ordinary impact has already consumed this shot's collision. Plasma's
    * native piercing response leaves that bit clear and retains its own enemy
    * invincibility timer. Never hit twice merely because ownership is remote. */
@@ -357,12 +398,14 @@ static bool hit_shots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int 
   put(r,0x183e,(int)word(active+0x183e));put(r,0x1840,(int)word(active+0x1840));
   r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
   r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
-  bool ok=true;
+  bool ok=true;unsigned previous_phase=r->world_phase;
   if (projectiles) ok=call(r,0xa0996c,3);
+  else r->world_phase=1;
   for (unsigned i=0; !projectiles && ok && i<32; ++i) {
     unsigned index=word(r->ram+0x17ac+2*i);
     if (index==65535) break;
     if (index>=2048 || (index&63)) { fail(r,"invalid resident collision index",index);ok=false;break; }
+    if (!(r->interaction_enemies&(1u<<(index/64)))) continue;
     unsigned at=0xf78+index;
     if (!word(r->ram+at) || (word(r->ram+at+14)&0x400) || word(r->ram+at+40)) continue;
     bool multi=(word(r->ram+at+16)&4)!=0;
@@ -382,7 +425,7 @@ static bool hit_shots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int 
   }
   memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+SM_SHOT_POOL,pool,sizeof(pool));
   for (unsigned i=0; i<sizeof(work)/sizeof(*work); ++i) put(r,work[i],saved[i]);
-  *r->cpu=previous;
+  r->world_phase=previous_phase;*r->cpu=previous;
   return ok;
 }
 bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,unsigned mask) {
@@ -390,7 +433,7 @@ bool SmRoomRuntimeHitShots(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x
 }
 static bool touch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y,bool projectiles) {
   if (!r || r->error[0] || !active) return false;
-  if (!r->actors || word(active+0xa78) || word(active+0x185e)) return true;
+  if ((!r->actors && !projectiles) || word(active+0xa78) || word(active+0x185e)) return true;
   if (projectiles) {
     if (word(active+0x18a8) || word(active+0xa6e)) return true;
     bool candidate=false;
@@ -412,12 +455,14 @@ static bool touch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int orig
   for (unsigned i=0; i<4; ++i) put(r,positions[i],(int)word(r->ram+positions[i])-(i&1 ? origin_y : origin_x));
   r->cpu->db=0xa0;r->cpu->dp=0;r->cpu->mf=r->cpu->xf=r->cpu->e=r->cpu->d=false;
   r->cpu->i=true;r->cpu->waiting=r->cpu->stopped=false;
-  bool ok=true;
+  bool ok=true;unsigned previous_phase=r->world_phase;
   if (projectiles) ok=call(r,0xa09894,3);
+  else r->world_phase=1;
   for (unsigned i=0; !projectiles && ok && i<32; ++i) {
     unsigned index=word(r->ram+0x17ac+2*i);
     if (index==65535) break;
     if (index>=2048 || (index&63)) { fail(r,"invalid resident contact index",index);ok=false;break; }
+    if (!(r->interaction_enemies&(1u<<(index/64)))) continue;
     unsigned at=0xf78+index;
     if (!word(r->ram+at) || (word(r->ram+at+14)&0x400) || word(r->ram+at+40)) continue;
     put(r,0xe54,(int)index);
@@ -430,7 +475,7 @@ static bool touch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int orig
   memcpy(r->ram,scratch,sizeof(scratch));memcpy(r->ram+PLAYER,player,sizeof(player));
   memcpy(r->ram+0x8b,input,sizeof(input));memcpy(r->ram+0x18a8,timers,sizeof(timers));
   for (unsigned i=0; i<3; ++i) put(r,work[i],saved[i]);
-  *r->cpu=previous;return ok;
+  r->world_phase=previous_phase;*r->cpu=previous;return ok;
 }
 bool SmRoomRuntimeTouch(SmRoomRuntime *r,uint8_t active[0x20000],int origin_x,int origin_y) {
   return touch(r,active,origin_x,origin_y,false);
@@ -439,8 +484,12 @@ bool SmRoomRuntimeProjectiles(SmRoomRuntime *r,uint8_t active[0x20000],int origi
     unsigned mask,bool body) {
   /* The cartridge resolves these after enemy-projectile movement, with
    * Samus contact before shootable-projectile reactions. */
-  return (!body || touch(r,active,origin_x,origin_y,true)) &&
-      hit_shots(r,active,origin_x,origin_y,mask,true);
+  if (!r || r->error[0]) return false;
+  uint8_t ids[36];memcpy(ids,r->ram+0x1997,sizeof(ids));
+  for (unsigned i=0; i<18; ++i) if (!(r->interaction_projectiles&(1u<<i))) put(r,0x1997+2*i,0);
+  bool ok=(!body || touch(r,active,origin_x,origin_y,true)) && hit_shots(r,active,origin_x,origin_y,mask,true);
+  for (unsigned i=0; i<18; ++i) if (!(r->interaction_projectiles&(1u<<i))) memcpy(r->ram+0x1997+2*i,ids+2*i,2);
+  return ok;
 }
 bool SmRoomRuntimeDoorClose(SmRoomRuntime *r,unsigned x,unsigned y,unsigned orientation) {
   if (!r || r->error[0] || orientation>=4 || x>=word(r->ram+0x7a5) || y>=word(r->ram+0x7a7)) return false;
@@ -484,6 +533,13 @@ bool SmRoomRuntimeCapture(SmRoomRuntime *r,const uint8_t ram[0x20000],const uint
     memset(r->ram+0x1997,0,36);
   }
   return true;
+}
+bool SmRoomRuntimeCaptureActive(SmRoomRuntime *r,const uint8_t ram[0x20000],const uint16_t vram[0x8000]) {
+  if (!r) return false;
+  bool previous=r->actors;r->actors=true;
+  bool ok=SmRoomRuntimeCapture(r,ram,vram);
+  if (!ok) r->actors=previous;
+  return ok;
 }
 void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t vram[0x8000]) {
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return;
@@ -580,6 +636,7 @@ typedef struct RoomState {
   uint16_t room, state, a, x, y, sp, pc, dp, product, quotient, remainder;
   uint8_t bank, db, flags, emulation, actors;
   uint8_t ram[0x20000], vram[65536], math[8], ppu[0x34], dma[128];
+  uint8_t overlays;
 } RoomState;
 size_t SmRoomRuntimeStateSize(void) { return sizeof(RoomState); }
 bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
@@ -587,7 +644,7 @@ bool SmRoomRuntimeSave(const SmRoomRuntime *r, void *out, size_t size) {
       r->cpu->sp!=0x1fff || r->cpu->pc!=0xff00) return false;
   RoomState *s=calloc(1,sizeof(*s)); if (!s) return false;
   const Interp816 *c=r->cpu;
-  s->magic=0x534d5253; s->version=2; s->actors=r->actors;
+  s->magic=0x534d5253; s->version=3; s->actors=r->actors;s->overlays=r->population!=0;
   s->room=(uint16_t)word(r->ram+0x79b); s->state=(uint16_t)word(r->ram+0x7bb);
   s->a=c->a; s->x=c->x; s->y=c->y; s->sp=c->sp; s->pc=c->pc; s->dp=c->dp;
   s->bank=c->k; s->db=c->db; s->emulation=c->e;
@@ -602,14 +659,17 @@ bool SmRoomRuntimeValidate(const void *in, size_t size, uint16_t room, uint16_t 
   if (!in || size!=sizeof(RoomState)) return false;
   RoomState *s=malloc(sizeof(*s)); if (!s) return false;
   memcpy(s,in,sizeof(*s));
-  bool ok=!(s->magic!=0x534d5253 || s->version!=2 || s->actors!=actors || s->sp!=0x1fff || s->pc!=0xff00 ||
+  bool ok=!(s->magic!=0x534d5253 || s->version!=3 || s->actors!=actors || s->overlays>1 ||
+      (s->overlays && !s->actors) || s->sp!=0x1fff || s->pc!=0xff00 ||
       s->emulation>1 || (s->emulation && (s->flags&0x30)!=0x30) ||
       s->room!=room || s->state!=state ||
       s->room!=word(s->ram+0x79b) || s->state!=word(s->ram+0x7bb));
   free(s); return ok;
 }
 bool SmRoomRuntimeLoad(SmRoomRuntime *r, const void *in, size_t size) {
-  if (!r || !SmRoomRuntimeValidate(in,size,(uint16_t)word(r->ram+0x79b),(uint16_t)word(r->ram+0x7bb),r->actors)) return false;
+  if (!r || !in || size!=sizeof(RoomState)) return false;
+  bool actors=((const uint8_t *)in)[offsetof(RoomState,actors)]!=0;
+  if (!SmRoomRuntimeValidate(in,size,(uint16_t)word(r->ram+0x79b),(uint16_t)word(r->ram+0x7bb),actors)) return false;
   RoomState *s=malloc(sizeof(*s)); if (!s) return false;
   memcpy(s,in,sizeof(*s));
   Interp816 *c=r->cpu;
@@ -621,6 +681,10 @@ bool SmRoomRuntimeLoad(SmRoomRuntime *r, const void *in, size_t size) {
   memcpy(r->ram,s->ram,sizeof(s->ram)); memcpy(r->math,s->math,sizeof(s->math));
   memcpy(r->vram,s->vram,sizeof(s->vram));
   memcpy(r->ppu_registers,s->ppu,sizeof(s->ppu)); memcpy(r->dma_registers,s->dma,sizeof(s->dma));
+  r->actors=s->actors!=0;
+  if (s->overlays) prepare_population(r);else r->population=r->tileset=0;
+  r->simulation_enemies=r->interaction_enemies=UINT32_MAX;
+  r->simulation_projectiles=r->interaction_projectiles=(1u<<18)-1;
   r->error[0]=0;
   free(s); return true;
 }

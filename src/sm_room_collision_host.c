@@ -9,12 +9,17 @@
  * behavior. That callback applies this core room query before its own policy. */
 extern bool SmCombatShotBlockDispatchActive(void);
 static SmEprojLoan eproj_loan;
+static unsigned entity_phase;
 bool SmRoomCollisionFrameBegin(void) {
   bool enabled=g_sm_video.enhanced && g_sm_video.seamless;
   const uint32_t body[]={0x949527,0x94953e},inside[]={0x949b9e,0x949bd3,0x949c18};
   const uint32_t shots[]={0x94a1b5,0x94a1d6,0x94a1cd,0x94a1ee,
       0x94a2a8,0x94a337,0x94a3bb,0x94a3c3,0x94a3cd,0x94a44d,0x94a455,0x94a45f,0x94a4c6,0x94a530};
   const uint32_t eprojs[]={0x868886,0x86889e,0x86889d,0x8688b5};
+  const uint32_t entities[]={0xa08fd4,0xa09168,0x868104,0x868124,0x868091,0x8680fe,0xa09419,0x938070,0x9381d0};
+  entity_phase=0;
+  for (unsigned i=0; i<sizeof(entities)/sizeof(*entities); ++i)
+    if (!snes_mod_hook_arm(entities[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
   if (eproj_loan.active) { fprintf(stderr,"[sm-rooms] unfinished native projectile terrain loan\n");return false; }
   for (unsigned i=0; i<sizeof(eprojs)/sizeof(*eprojs); ++i)
     if (!snes_mod_hook_arm(eprojs[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
@@ -27,6 +32,19 @@ bool SmRoomCollisionFrameBegin(void) {
     return !enabled;
   }
   return true;
+}
+uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
+  unsigned pc=pc24&0x7fffff;
+  if (pc==0x208fd4) entity_phase=1;
+  else if (pc==0x068104) entity_phase=2;
+  else if (pc==0x209168 || pc==0x068124) entity_phase=0;
+  else if ((pc==0x068091 || pc==0x0680fe) && cpu->A<36 && !(cpu->A&1))
+    SmRoomsEntityBorn(cpu->ram,cpu->ram,0,0,32+cpu->A/2,entity_phase);
+  else if (pc==0x209419 && cpu->X<2048 && !(cpu->X&63))
+    SmRoomsEntityBorn(cpu->ram,cpu->ram,0,0,cpu->X/64,entity_phase);
+  else if ((pc==0x138070 || pc==0x1381d0) && cpu->X<20 && !(cpu->X&1))
+    SmRoomsEntityBorn(cpu->ram,cpu->ram,0,0,50+cpu->X/2,3);
+  return 0;
 }
 static bool active_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
   (void)context;return SmRoomsEprojTile(source,source,0,0,x,y,tile);

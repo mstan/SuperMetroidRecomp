@@ -6,6 +6,9 @@
  * extension blocks have already resolved to their actual owning cell. */
 typedef struct SmEprojTile { int x,y; uint16_t tile; uint8_t bts; } SmEprojTile;
 typedef bool (*SmEprojQuery)(void *context,const uint8_t ram[0x20000],int x,int y,SmEprojTile *tile);
+/* Shared native slot numbering: enemies 0..31, enemy projectiles 32..49,
+ * player weapons 50..59. Phase 1 is enemy AI, 2 enemy-projectile AI. */
+typedef void (*SmWorldBirth)(void *context,const uint8_t ram[0x20000],unsigned slot,unsigned phase);
 typedef struct SmEprojLoan {
   bool active,horizontal;
   uint16_t index,slot,tile;

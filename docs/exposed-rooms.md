@@ -336,6 +336,41 @@ replay still matches 250 (`projectile-world-build1-result.json`, exit 0;
 This does not establish completed actor movement, spatial ownership or
 resident-owned objects crossing back onto the active canvas.
 
+Objects now retain a spatial room separately from their native resource pool.
+Native birth hooks preserve provenance when slots are reused; actual open
+connections control subsequent crossings. Captured actor populations survive
+handoff with neighboring logic Off. Per-slot simulation and interaction masks
+let already-crossed objects continue in the active room while ordinary neighbor
+objects remain suspended. Rendering uses this provenance to suppress unrelated
+overlapping room allocations and retain the source OBJ palette across canvases.
+The metadata is part of current-build snapshots and immutable scene publications.
+
+The strict game build and all 28 CTests pass. Owned-ROM checks prove retained
+projectile movement/contact, Off behavior and exact midflight whole-manager and
+player continuation (`ownership-native8-result.json`). Built live checks pass
+ordinary shots On/Off, 250 shot replay checkpoints, native foreign-terrain
+movement On/Off and 15 projectile replay checkpoints (`world-shots7-*`,
+`world-eprojs4-*`). The reverse live fixture uses an actual super shot to open
+the cap, ordinary continuous movement back to A011, and an isolated seeded
+native moving projectile. On crosses into Root and deals 20 damage; Off freezes
+a still-neighbor projectile, but one already in Root continues and deals 20
+damage. Its On replay matches 13 checkpoints (`ownership-live5-result.json`,
+`world-retained3-*`). Gameplay-qualified executable SHA-256:
+`7a151bc748145e58e2154dffe4ddda8c5d6fb92bffe1f30008432c20ec6ecab8`.
+These seeded physics checks do not establish natural projectile graphics.
+After discarding the palette experiment, the same production source was
+rebuilt as `a28a3560c10f2fac74e74b08c19daff9a49a7026340c18aab89759ebe26ca4d6`;
+its owned-ROM manager and all four renderer checks pass
+(`ownership-final-native1-result.json`). The live/replay evidence above belongs
+to the earlier exact executable.
+
+Visual inspection found a separate departed-room terrain defect: the native
+9FE5 canvas is complete before exit (`world-retained3-setup-on/`), but its
+retained canvas contains a black gap after returning to A011
+(`world-retained3-on/flight-5.bmp`). A suspected zero-OBJ palette issue was
+rejected and its experimental change removed. This defect remains open;
+crossing/contact evidence does not qualify full scenery presentation.
+
 ## Outstanding implementation and qualification
 
 **Not release ready.** Ordinary right/left and down/up continuous round trips
@@ -351,12 +386,15 @@ current-build restore and replay. Six acceptance areas remain open:
 2. Finish and live-qualify cross-open-door combat and projectile/actor transfer
    without duplicated hits/rewards. Native weapon, actor-contact and enemy-
    projectile responses and ordinary open/closed/Off routing now pass probes.
-   Physical actor/enemy-projectile
-   transfer, pickups/rewards, area weapons and complete ownership still need
-   implementation. Walls and closed doors must block interaction.
+   Retained enemy-projectile transfer/contact now passes live On/Off checks.
+   General actor terrain/movement, native Root masks for foreign objects,
+   resource retention beyond the original room's visibility, pickups/rewards,
+   area weapons and complete ownership still need implementation. Walls and
+   closed doors must block interaction.
 3. Complete foreground/hatch continuation and dynamic PLM/item/door visuals;
    qualify liquids/raster waves, transition motion, intermediate high-FPS frames,
-   Fit resizing and both HUD anchors.
+   Fit resizing and both HUD anchors. Fix the reproduced departed-room black
+   terrain gap before treating the retained canvas as qualified.
 4. Qualify live Ceres scenery/traversal and dormant encounter helpers. Its graph
    and tileset decoding now cover all six rooms; live gameplay is outstanding.
 5. Qualify rewind, run-ahead, rollback, replay with transitions, two-peer

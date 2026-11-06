@@ -7,7 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct Resident { SmRoomPlacement placement; SmRoomRuntime *runtime; } Resident;
+enum { WORLD_ENEMIES=32,WORLD_EPROJS=18,WORLD_WEAPONS=10,WORLD_ENTITIES=60 };
+enum { WORLD_ENVIRONMENT=1 };
+typedef struct WorldEntity { uint16_t definition,room,pending,flags;int16_t x,y; } WorldEntity;
+typedef struct WorldEntities { uint32_t loaded,open_rooms;WorldEntity slots[WORLD_ENTITIES]; } WorldEntities;
+typedef struct Resident { SmRoomPlacement placement; SmRoomRuntime *runtime;WorldEntities world; } Resident;
+static WorldEntities active_world;
 static const uint8_t *rom;
 static size_t rom_bytes;
 static Resident residents[SM_ROOM_RESIDENTS];
@@ -29,6 +34,7 @@ static uint8_t read_rom(void *unused, uint32_t a) {
 void SmRoomsReset(void) {
   for (unsigned i=0; i<count; ++i) SmRoomRuntimeDestroy(residents[i].runtime);
   memset(residents,0,sizeof(residents)); count=root=0;
+  memset(&active_world,0,sizeof(active_world));
   pending_entry=false;
   camera_dx=camera_dy=0; rebased=false;
   memset(links,0,sizeof(links)); link_count=0;
@@ -208,22 +214,6 @@ static void interaction_rooms(const uint8_t *active,bool reachable[SM_ROOM_RESID
     if (!changed) break;
   }
 }
-static unsigned resident_shots(const uint8_t *active,const SmRoomPlacement *p) {
-  unsigned mask=0;
-  for (unsigned i=0; i<10; ++i) {
-    if (!word(active+0xc18+2*i) || !word(active+0xc40+2*i) || (word(active+0xc04+2*i)&16)) continue;
-    int x=(int16_t)word(active+0xb64+2*i),y=(int16_t)word(active+0xb78+2*i);
-    if (x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
-        x>=p->left && y>=p->top && x<p->right && y<p->bottom) mask|=1u<<i;
-  }
-  return mask;
-}
-static bool resident_body(const uint8_t *active,const SmRoomPlacement *p) {
-  int x=(int16_t)word(active+0xaf6),y=(int16_t)word(active+0xafa);
-  int rx=(int)word(active+0xafe),ry=(int)word(active+0xb00);
-  return x+rx>p->x && y+ry>p->y && x-rx<p->x+p->width && y-ry<p->y+p->height &&
-      x+rx>p->left && y+ry>p->top && x-rx<p->right && y-ry<p->bottom;
-}
 bool SmRoomsShotsActive(const uint8_t active[0x20000]) {
   if (!rom || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
   unsigned index=word(active+0xdde);
@@ -252,29 +242,198 @@ bool SmRoomsShotDoorAir(const uint8_t ram[0x20000],int origin_x,int origin_y,uns
   }
   return false;
 }
+static bool world_context(const uint8_t *active,unsigned room,DoorContext *out) {
+  if (room==root) { *out=(DoorContext){active,NULL,root,word(active+0x7bb),0,0};return true; }
+  for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==room) {
+    const Resident *r=&residents[i];
+    *out=(DoorContext){SmRoomRuntimeRam(r->runtime),r->runtime,room,r->placement.state,r->placement.x,r->placement.y};return true;
+  }
+  return false;
+}
+static bool world_connection(const uint8_t *active,const DoorContext *source,const SmWorldDoor *door,
+    DoorContext *destination,bool *open) {
+  if (!planar_shape(door) || !active_door(source->ram,door) || !world_context(active,door->destination,destination)) return false;
+  static const int dx[4]={1,-1,0,0},dy[4]={0,0,1,-1};unsigned dir=door->direction&3;
+  if (destination->x!=source->x+(door->block_x/16+dx[dir]-door->arrival_x/16)*256 ||
+      destination->y!=source->y+(door->block_y/16+dy[dir]-door->arrival_y/16)*256) return false;
+  for (unsigned i=0; i<link_count; ++i) {
+    const DoorLink *link=&links[i];bool a=link->a==door->definition;
+    if ((!a && link->b!=door->definition) || source->state!=(a ? link->state_a : link->state_b) ||
+        destination->state!=(a ? link->state_b : link->state_a)) continue;
+    unsigned opposite=a ? link->b : link->a,n=0;
+    const SmWorldDoor *other=SmRoomPreviewDoors((uint16_t)destination->room,&n);
+    for (unsigned j=0; j<n; ++j) if (other[j].definition==opposite && planar_shape(&other[j]) && active_door(destination->ram,&other[j])) {
+      *open=interaction_entrance(source->ram,opposite,a ? link->phase_a : link->phase_b) &&
+          interaction_entrance(destination->ram,door->definition,a ? link->phase_b : link->phase_a);
+      return true;
+    }
+  }
+  return false;
+}
+static void entity_values(const uint8_t *ram,unsigned slot,unsigned *definition,int *x,int *y) {
+  unsigned at,px,py;
+  if (slot<WORLD_ENEMIES) { at=0xf78+64*slot;px=at+2;py=at+6; }
+  else if (slot<WORLD_ENEMIES+WORLD_EPROJS) { at=0x1997+2*(slot-WORLD_ENEMIES);px=at+0xb4;py=at+0xfc; }
+  else { unsigned i=2*(slot-WORLD_ENEMIES-WORLD_EPROJS);at=0xc18+i;px=0xb64+i;py=0xb78+i; }
+  *definition=word(ram+at);*x=(int16_t)word(ram+px);*y=(int16_t)word(ram+py);
+  if ((slot<WORLD_ENEMIES && *definition==0xdaff) ||
+      (slot>=WORLD_ENEMIES+WORLD_EPROJS && !word(ram+0xc40+2*(slot-WORLD_ENEMIES-WORLD_EPROJS)))) *definition=0;
+}
+static unsigned initial_entity_room(const uint8_t *active,const uint8_t *ram,int ox,int oy,int x,int y) {
+  unsigned room=word(ram+0x79b);
+  if (x>=0 && y>=0 && x<(int)word(ram+0x7a5)*16 && y<(int)word(ram+0x7a7)*16) return room;
+  /* When enabling the feature, adopt an already-present out-of-allocation
+   * object in its connected namespace. Native births and every subsequent
+   * movement have explicit provenance and still require an open hatch. */
+  DoorContext source;if (!world_context(active,room,&source)) return room;
+  unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)room,&n);
+  int wx=ox+x,wy=oy+y;
+  for (unsigned i=0; i<n; ++i) {
+    const SmWorldDoor *d=&doors[i];unsigned dir=d->direction&3;
+    int plane=dir<2 ? ox+(d->block_x+(dir==0))*16 : oy+(d->block_y+(dir==2))*16;
+    int point=dir<2 ? wx : wy,along=dir<2 ? wy : wx,start=dir<2 ? oy+d->block_y*16 : ox+d->block_x*16;
+    DoorContext destination;bool open=false;
+    if (along>=start && along<start+64 && ((dir==0 || dir==2) ? point>=plane : point<plane) &&
+        world_connection(active,&source,d,&destination,&open) && wx>=destination.x && wy>=destination.y &&
+        wx<destination.x+(int)word(destination.ram+0x7a5)*16 && wy<destination.y+(int)word(destination.ram+0x7a7)*16)
+      return destination.room;
+  }
+  return room;
+}
+static void sync_entity(const uint8_t *active,const uint8_t *ram,int ox,int oy,WorldEntity *entity,unsigned slot) {
+  unsigned definition;int x,y;entity_values(ram,slot,&definition,&x,&y);
+  if (!definition) { memset(entity,0,sizeof(*entity));return; }
+  if (!entity->definition || !entity->room || abs(x-entity->x)>128 || abs(y-entity->y)>128) {
+    unsigned ep=slot-WORLD_ENEMIES;
+    bool environment=slot>=WORLD_ENEMIES && slot<WORLD_ENEMIES+WORLD_EPROJS &&
+        (word(ram+0x1bd7+ep*2)&0x2000) && !word(ram+0x1bb3+ep*2);
+    *entity=(WorldEntity){.definition=(uint16_t)definition,.room=(uint16_t)initial_entity_room(active,ram,ox,oy,x,y),
+        .flags=environment ? WORLD_ENVIRONMENT : 0,.x=(int16_t)x,.y=(int16_t)y};return;
+  }
+  entity->definition=(uint16_t)definition;
+  if (x==entity->x && y==entity->y) { entity->pending=0;return; }
+  DoorContext source;
+  if (world_context(active,entity->room,&source)) {
+    unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)source.room,&n);
+    for (unsigned i=0; i<n; ++i) {
+      const SmWorldDoor *d=&doors[i];unsigned dir=d->direction&3;bool horizontal=dir<2;
+      int plane=(horizontal ? source.x+(d->block_x+(dir==0))*16 : source.y+(d->block_y+(dir==2))*16);
+      int before=horizontal ? ox+entity->x : oy+entity->y,after=horizontal ? ox+x : oy+y;
+      bool crossing=(dir==0 || dir==2) ? before<plane && after>=plane : before>=plane && after<plane;
+      if (!crossing || after==before) continue;
+      int along_before=horizontal ? oy+entity->y : ox+entity->x,along_after=horizontal ? oy+y : ox+x;
+      int along=along_before+(int)((int64_t)(along_after-along_before)*(plane-before)/(after-before));
+      int start=horizontal ? source.y+d->block_y*16 : source.x+d->block_x*16;
+      DoorContext destination;bool open=false;
+      if (along>=start && along<start+64 && world_connection(active,&source,d,&destination,&open) &&
+          (open || entity->pending==d->definition)) { entity->room=(uint16_t)destination.room;break; }
+    }
+  }
+  entity->pending=0;entity->x=(int16_t)x;entity->y=(int16_t)y;
+}
+static void sync_entities(const uint8_t *active,const uint8_t *ram,int ox,int oy,WorldEntities *world,bool weapons) {
+  for (unsigned i=0; i<(weapons ? WORLD_ENTITIES : WORLD_ENEMIES+WORLD_EPROJS); ++i)
+    sync_entity(active,ram,ox,oy,&world->slots[i],i);
+}
+static WorldEntities *resource_entities(const uint8_t *source,int ox,int oy) {
+  if (word(source+0x79b)==root && !ox && !oy) return &active_world;
+  for (unsigned i=0; i<count; ++i) if (SmRoomRuntimeRam(residents[i].runtime)==source &&
+      residents[i].placement.x==ox && residents[i].placement.y==oy) return &residents[i].world;
+  return NULL;
+}
+void SmRoomsEntityBorn(const uint8_t active[0x20000],const uint8_t source[0x20000],int ox,int oy,unsigned slot,unsigned phase) {
+  if (!rom || word(active+0x79b)!=root || slot>=WORLD_ENTITIES) return;
+  WorldEntities *world=resource_entities(source,ox,oy);if (!world) return;
+  unsigned definition;int x,y;entity_values(source,slot,&definition,&x,&y);
+  if (!definition) return;
+  unsigned parent=WORLD_ENTITIES;
+  if (phase==1 && word(source+0xe54)<2048 && !(word(source+0xe54)&63)) parent=word(source+0xe54)/64;
+  if (phase==2 && word(source+0x1991)<36 && !(word(source+0x1991)&1)) parent=WORLD_ENEMIES+word(source+0x1991)/2;
+  unsigned room=word(source+0x79b),flags=slot>=WORLD_ENEMIES && phase==0 ? WORLD_ENVIRONMENT : 0;
+  if (parent<WORLD_ENTITIES && world->slots[parent].definition && parent!=slot) {
+    unsigned parent_def;int px,py;entity_values(source,parent,&parent_def,&px,&py);
+    if (parent_def) sync_entity(active,source,ox,oy,&world->slots[parent],parent);
+    room=world->slots[parent].room;flags=world->slots[parent].flags&WORLD_ENVIRONMENT;
+  }
+  world->slots[slot]=(WorldEntity){.definition=(uint16_t)definition,.room=(uint16_t)room,
+      .flags=(uint16_t)flags,.x=(int16_t)x,.y=(int16_t)y};
+  if (phase==3) {
+    world->slots[slot].x=(int16_t)word(source+0xaf6);world->slots[slot].y=(int16_t)word(source+0xafa);
+    sync_entity(active,source,ox,oy,&world->slots[slot],slot);
+  }
+}
+static bool visible_entity(const uint8_t *active,const DoorContext *resource,const WorldEntity *entity) {
+  if (!entity->definition) return false;
+  int x=resource->x+entity->x,y=resource->y+entity->y;DoorContext owner;
+  if (entity->room==root) {
+    const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)root);
+    if (!room || x<0 || y<0 || x>=room->width*256 || y>=room->height*256) return false;
+    for (unsigned i=0; i<count; ++i) {
+      const SmRoomPlacement *p=&residents[i].placement;
+      if (x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
+          x>=p->left && y>=p->top && x<p->right && y<p->bottom) return false;
+    }
+    return true;
+  }
+  if (!world_context(active,entity->room,&owner) || x<owner.x || y<owner.y ||
+      x>=owner.x+(int)word(owner.ram+0x7a5)*16 || y>=owner.y+(int)word(owner.ram+0x7a7)*16) return false;
+  for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==owner.room) {
+    const SmRoomPlacement *p=&residents[i].placement;
+    return x>=p->left && y>=p->top && x<p->right && y<p->bottom;
+  }
+  return false;
+}
 typedef struct ShotOrigin { int x,y; } ShotOrigin;
 static bool resident_shot_air(void *context,const uint8_t ram[0x20000],unsigned block) {
   const ShotOrigin *p=context;
   return SmRoomsShotDoorAir(ram,p->x,p->y,block);
 }
+static bool sample_room(const uint8_t *active,const uint8_t *resource,int ox,int oy,int bx,int by,
+    WorldEntity *entity,DoorContext *owner,int *x,int *y,bool *air) {
+  unsigned room=entity && entity->room ? entity->room : word(resource+0x79b);
+  if (!world_context(active,room,owner)) return false;
+  int wx=ox/16+bx,wy=oy/16+by;
+  int cx=ox+(entity ? entity->x : 0),cy=oy+(entity ? entity->y : 0);
+  bool visited[SM_ROOM_RESIDENTS+1]={0};
+  for (unsigned pass=0; pass<=count; ++pass) {
+    unsigned key=0;
+    if (owner->room!=root) for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==owner->room) key=i+1;
+    if (visited[key]) return false;
+    visited[key]=true;
+    unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)owner->room,&n);
+    bool advanced=false;
+    for (unsigned i=0; i<n; ++i) {
+      const SmWorldDoor *d=&doors[i];unsigned dir=d->direction&3;bool horizontal=dir<2;
+      int plane=horizontal ? owner->x+(d->block_x+(dir==0))*16 : owner->y+(d->block_y+(dir==2))*16;
+      int point=horizontal ? wx*16+8 : wy*16+8,centre=horizontal ? cx : cy;
+      bool inside=(dir==0 || dir==2) ? centre<plane : centre>=plane;
+      bool beyond=(dir==0 || dir==2) ? point>=plane : point<plane;
+      int along=horizontal ? wy*16+8 : wx*16+8,start=horizontal ? owner->y+d->block_y*16 : owner->x+d->block_x*16;
+      bool trigger=horizontal ? wx==owner->x/16+d->block_x : wy==owner->y/16+d->block_y;
+      DoorContext destination;bool open=false;
+      if (!inside || (!beyond && !trigger) || along<start || along>=start+64 ||
+          !world_connection(active,owner,d,&destination,&open)) continue;
+      if (entity && owner->room==entity->room && open) entity->pending=d->definition;
+      if (trigger && !beyond) { *x=wx-owner->x/16;*y=wy-owner->y/16;*air=true;return true; }
+      *owner=destination;advanced=true;break;
+    }
+    if (advanced) continue;
+    *x=wx-owner->x/16;*y=wy-owner->y/16;*air=false;
+    return *x>=0 && *y>=0 && *x<(int)word(owner->ram+0x7a5) && *y<(int)word(owner->ram+0x7a7);
+  }
+  return false;
+}
 int SmRoomsShotBlock(uint8_t active[0x20000],bool horizontal,uint16_t *index) {
   int bx,by;
   if (!index || !SmRoomsShotsActive(active) || !SmShotSample(active,horizontal,&bx,&by)) return -1;
-  int x=bx*16+8,y=by*16+8;
-  for (unsigned i=0; i<count; ++i) {
-    const SmRoomPlacement *p=&residents[i].placement;
-    if (x<p->x || y<p->y || x>=p->x+p->width || y>=p->y+p->height ||
-        x<p->left || x>=p->right || y<p->top || y>=p->bottom) continue;
-    ShotOrigin origin={p->x,p->y};
-    return SmRoomRuntimeShot(residents[i].runtime,active,p->x,p->y,
-        bx-p->x/16,by-p->y/16,horizontal,resident_shot_air,&origin);
-  }
-  int w=(int)word(active+0x7a5),h=(int)word(active+0x7a7);
-  if (bx>=0 && by>=0 && bx<w && by<h) {
-    unsigned block=(unsigned)(by*w+bx);
-    *index=(uint16_t)(block*2);
-    if (!SmRoomsShotDoorAir(active,0,0,block)) return -1;
-    return 0;
+  unsigned slot=WORLD_ENEMIES+WORLD_EPROJS+word(active+0xdde)/2;
+  WorldEntity *entity=&active_world.slots[slot];sync_entity(active,active,0,0,entity,slot);
+  DoorContext owner;int x,y;bool air=false;
+  if (sample_room(active,active,0,0,bx,by,entity,&owner,&x,&y,&air)) {
+    if (air) return 0;
+    if (!owner.runtime) { *index=(uint16_t)(2*(y*(int)word(active+0x7a5)+x));return -1; }
+    ShotOrigin origin={owner.x,owner.y};
+    return SmRoomRuntimeShot(owner.runtime,active,owner.x,owner.y,x,y,horizontal,resident_shot_air,&origin);
   }
   /* A room allocation ends at real walls, except at a registered connection.
    * Do not let an unsigned row/column alias hit an unrelated native block. */
@@ -284,19 +443,18 @@ int SmRoomsShotBlock(uint8_t active[0x20000],bool horizontal,uint16_t *index) {
 bool SmRoomsEprojTile(const uint8_t active[0x20000],const uint8_t source[0x20000],
     int origin_x,int origin_y,int bx,int by,SmEprojTile *tile) {
   if (!rom || !tile || word(active+0x79b)!=root || word(active+0x998)!=8) return false;
-  int wx=origin_x/16+bx,wy=origin_y/16+by,ox=0,oy=0;
-  const uint8_t *owner=NULL;
-  for (unsigned i=0; i<count; ++i) {
-    const SmRoomPlacement *p=&residents[i].placement;
-    int x=wx*16+8,y=wy*16+8;
-    if (x>=p->x && y>=p->y && x<p->x+p->width && y<p->y+p->height &&
-        x>=p->left && y>=p->top && x<p->right && y<p->bottom) {
-      owner=SmRoomRuntimeRam(residents[i].runtime);ox=p->x/16;oy=p->y/16;break;
-    }
+  WorldEntities *world=resource_entities(source,origin_x,origin_y);WorldEntity *entity=NULL;
+  unsigned index=word(source+0x1991);
+  if (world && index<36 && !(index&1) && word(source+0x1997+index)) {
+    entity=&world->slots[WORLD_ENEMIES+index/2];sync_entity(active,source,origin_x,origin_y,entity,WORLD_ENEMIES+index/2);
   }
-  if (!owner && wx>=0 && wy>=0 && wx<(int)word(active+0x7a5) && wy<(int)word(active+0x7a7)) owner=active;
-  if (!owner) { *tile=(SmEprojTile){bx,by,0x8000,0};return true; }
-  int x=wx-ox,y=wy-oy,w=(int)word(owner+0x7a5),h=(int)word(owner+0x7a7);
+  DoorContext context;int x,y;bool air=false;
+  if (!sample_room(active,source,origin_x,origin_y,bx,by,entity,&context,&x,&y,&air)) {
+    *tile=(SmEprojTile){bx,by,0x8000,0};return true;
+  }
+  if (air) { *tile=(SmEprojTile){bx,by,0,0};return true; }
+  const uint8_t *owner=context.ram;
+  int ox=context.x/16,oy=context.y/16,w=(int)word(owner+0x7a5),h=(int)word(owner+0x7a7);
   bool native=owner==source;
   for (unsigned i=0; i<16; ++i) {
     if (x<0 || y<0 || x>=w || y>=h) break;
@@ -316,6 +474,42 @@ typedef struct EprojOrigin { const uint8_t *active;int x,y; } EprojOrigin;
 static bool resident_eproj_tile(void *context,const uint8_t source[0x20000],int x,int y,SmEprojTile *tile) {
   const EprojOrigin *origin=context;
   return SmRoomsEprojTile(origin->active,source,origin->x,origin->y,x,y,tile);
+}
+static void resident_birth(void *context,const uint8_t *source,unsigned slot,unsigned phase) {
+  const EprojOrigin *origin=context;SmRoomsEntityBorn(origin->active,source,origin->x,origin->y,slot,phase);
+}
+static bool room_reachable(unsigned room,const bool *reachable) {
+  if (room==root) return true;
+  for (unsigned i=0; i<count; ++i) if (residents[i].placement.room==room) return reachable[i+1];
+  return false;
+}
+static uint32_t simulation_mask(const Resident *resident,unsigned first,unsigned n) {
+  uint32_t mask=0;
+  for (unsigned i=0; i<n; ++i) {
+    const WorldEntity *e=&resident->world.slots[first+i];
+    if (!e->definition || logic || e->room==root || (e->flags&WORLD_ENVIRONMENT)) mask|=1u<<i;
+  }
+  return mask;
+}
+static uint32_t interaction_mask(const uint8_t *active,const Resident *resident,const bool *reachable,
+    unsigned first,unsigned n) {
+  const SmRoomPlacement *p=&resident->placement;
+  DoorContext resource={SmRoomRuntimeRam(resident->runtime),resident->runtime,p->room,p->state,p->x,p->y};
+  uint32_t mask=0;
+  for (unsigned i=0; i<n; ++i) {
+    const WorldEntity *e=&resident->world.slots[first+i];
+    if (visible_entity(active,&resource,e) && (e->room==root || (logic && room_reachable(e->room,reachable)))) mask|=1u<<i;
+  }
+  return mask;
+}
+static unsigned world_shots(const uint8_t *active,unsigned target,const bool *reachable) {
+  unsigned mask=0;
+  for (unsigned i=0; i<10; ++i) {
+    const WorldEntity *e=&active_world.slots[WORLD_ENEMIES+WORLD_EPROJS+i];
+    if (e->definition && word(active+0xc40+2*i) && !(word(active+0xc04+2*i)&16) &&
+        (e->room==target || (room_reachable(e->room,reachable) && room_reachable(target,reachable)))) mask|=1u<<i;
+  }
+  return mask;
 }
 static int tile_collision(const uint8_t *ram,int x,int y) {
   int w=(int)word(ram+0x7a5),h=(int)word(ram+0x7a7);
@@ -412,8 +606,10 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
   unsigned old_room=word(previous+0x79b),old_state=word(previous+0x7bb);
   const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)old_room);
   if (!room || !p || word(active+0x79b)!=p->room) return false;
-  SmRoomRuntime *departing=SmRoomRuntimeCreateConfigured(read_rom,NULL,room,(uint16_t)old_state,0,previous,logic);
-  if (!departing || !SmRoomRuntimeCapture(departing,previous,previous_vram)) {
+  sync_entities(previous,previous,0,0,&active_world,true);
+  WorldEntities departing_world=active_world,arriving_world={.loaded=1};
+  SmRoomRuntime *departing=SmRoomRuntimeCreateConfigured(read_rom,NULL,room,(uint16_t)old_state,0,previous,false);
+  if (!departing || !SmRoomRuntimeCaptureActive(departing,previous,previous_vram)) {
     SmRoomRuntimeDestroy(departing); return false;
   }
   for (unsigned i=0; i<count;) {
@@ -421,6 +617,12 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
       if (residents[i].placement.state==word(active+0x7bb)) {
         if (!SmRoomRuntimePromoteDoors(residents[i].runtime,active)) { SmRoomRuntimeDestroy(departing); return false; }
         SmRoomRuntimePromote(residents[i].runtime,active,vram);
+        bool boss=false;
+        for (unsigned slot=0; slot<32; ++slot) {
+          unsigned id=word(active+0xf78+64*slot);
+          if (id && (read_rom(NULL,0xa00010u+id) || read_rom(NULL,0xa00011u+id))) boss=true;
+        }
+        if (SmRoomRuntimeActors(residents[i].runtime) && !boss) arriving_world=residents[i].world;
       }
       SmRoomRuntimeDestroy(residents[i].runtime);
       residents[i]=residents[--count];
@@ -439,22 +641,54 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
   if (direction==2) q.bottom=p->top-p->y;
   if (direction==3) q.top=p->bottom-p->y;
   if (count==SM_ROOM_RESIDENTS) SmRoomRuntimeDestroy(residents[--count].runtime);
-  residents[count++]=(Resident){q,departing}; pending_entry=true;
+  memset(departing_world.slots+WORLD_ENEMIES+WORLD_EPROJS,0,WORLD_WEAPONS*sizeof(WorldEntity));
+  departing_world.loaded=1;
+  residents[count++]=(Resident){q,departing,departing_world}; pending_entry=true;
+  for (unsigned i=WORLD_ENEMIES+WORLD_EPROJS; i<WORLD_ENTITIES; ++i) {
+    arriving_world.slots[i]=active_world.slots[i];
+    if (arriving_world.slots[i].definition) {
+      arriving_world.slots[i].x=(int16_t)(arriving_world.slots[i].x-p->x);
+      arriving_world.slots[i].y=(int16_t)(arriving_world.slots[i].y-p->y);
+    }
+  }
+  active_world=arriving_world;
   camera_dx+=(int16_t)word(previous+0x911)-p->x-(int16_t)word(active+0x911);
   camera_dy+=(int16_t)word(previous+0x915)-p->y-(int16_t)word(active+0x915);
   rebased=true;
   return true;
 }
+static void update_connections(const uint8_t *active) {
+  for (unsigned i=0; i<=count; ++i) {
+    WorldEntities *world=i ? &residents[i-1].world : &active_world;
+    unsigned room=i ? residents[i-1].placement.room : root,n=0;DoorContext source;
+    world->open_rooms=0;if (!world_context(active,room,&source)) continue;
+    const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)room,&n);
+    for (unsigned j=0; j<n; ++j) {
+      DoorContext target;bool open=false;
+      if (!world_connection(active,&source,&doors[j],&target,&open) || !open) continue;
+      if (target.room==root) world->open_rooms|=1;
+      else for (unsigned k=0; k<count; ++k) if (residents[k].placement.room==target.room) world->open_rooms|=1u<<(k+1);
+    }
+  }
+}
 static bool publish(void) {
   size_t bytes=SmRoomSceneBytes(count);
   SmRoomScene *next=calloc(1,bytes); if (!next) return false;
-  *next=(SmRoomScene){.version=2,.count=count,.logic=logic,.seamless=seamless,.root=root,
-      .camera_dx=camera_dx,.camera_dy=camera_dy};
+  const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)root);
+  *next=(SmRoomScene){.version=3,.count=count,.logic=logic,.seamless=seamless,.root=root,
+      .camera_dx=camera_dx,.camera_dy=camera_dy,.ownership=room!=NULL,.open_rooms=active_world.open_rooms,
+      .root_width=room ? room->width*256u : 0,.root_height=room ? room->height*256u : 0};
+  for (unsigned j=0; j<WORLD_ENTITIES; ++j) next->object_rooms[j]=active_world.slots[j].room;
   for (unsigned i=0; i<count; ++i) {
     SmRoomImage *out=&next->rooms[i];
     out->placement=residents[i].placement;
     memcpy(out->ram,SmRoomRuntimeRam(residents[i].runtime),sizeof(out->ram));
     memcpy(out->vram,SmRoomRuntimeVram(residents[i].runtime),sizeof(out->vram));
+    out->open_rooms=residents[i].world.open_rooms;
+    for (unsigned j=0; j<WORLD_ENEMIES+WORLD_EPROJS; ++j) {
+      const WorldEntity *e=&residents[i].world.slots[j];
+      if (logic || e->room==root || (e->flags&WORLD_ENVIRONMENT)) out->object_rooms[j]=e->room;
+    }
   }
   free(publication); publication=next; return true;
 }
@@ -465,6 +699,12 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   if (game_state>=9 && game_state<=13) pending_entry=true;
   if (game_state!=8) return true;
   unsigned current=word(active+0x79b);
+  if ((current!=root || pending_entry) && !rebased) {
+    camera_dx=camera_dy=0;memset(&active_world,0,sizeof(active_world));
+  }
+  if (current!=root || pending_entry) { root=current;logic=requested_logic;seamless=requested_seamless; }
+  pending_entry=false;active_world.loaded=1;
+  sync_entities(active,active,0,0,&active_world,true);
   if (word(active+0xa78)) {
     /* Power bombs freeze actors, but the cartridge still processes door PLMs.
      * Mirror and animate those faces without advancing dormant gameplay/FX. */
@@ -475,12 +715,8 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
       if (!SmRoomRuntimeStepDoors(residents[i].runtime)) return false;
       SmRoomRuntimeDoorBits(residents[i].runtime,active);
     }
-    return publish();
+    update_connections(active);return publish();
   }
-  bool previous_logic=logic;
-  if (current!=root && !rebased) camera_dx=camera_dy=0;
-  if (current!=root || pending_entry) { root=current; logic=requested_logic; seamless=requested_seamless; }
-  pending_entry=false;
   if (!seamless) camera_dx=camera_dy=0;
   if (!rebased) {
     camera_dx+=camera_dx < -8 ? 8 : camera_dx>8 ? -8 : -camera_dx;
@@ -497,43 +733,54 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
   bool ok=true;
   for (unsigned i=0; i<SmRoomPreviewCount(); ++i) {
     SmRoomPlacement p; if (!SmRoomPreviewPlacement(i,&p)) continue;
-    SmRoomRuntime *runtime=NULL;
+    SmRoomRuntime *runtime=NULL;WorldEntities world={0};
     for (unsigned j=0; j<old_count; ++j)
-      if (previous_logic==logic && old[j].runtime && old[j].placement.room==p.room && old[j].placement.state==p.state &&
+      if (old[j].runtime && old[j].placement.room==p.room && old[j].placement.state==p.state &&
           (old[j].placement.incoming==p.incoming || !old[j].placement.incoming)) {
-        runtime=old[j].runtime; old[j].runtime=NULL; break;
+        runtime=old[j].runtime;world=old[j].world;old[j].runtime=NULL;break;
       }
     if (!runtime) {
       const SmWorldRoom *room=SmRoomPreviewRoom(p.room);
       runtime=SmRoomRuntimeCreateConfigured(read_rom,NULL,room,p.state,p.incoming,active,logic);
       SmRoomRuntimeBackground(runtime,SmRoomPreviewVram(i));
     }
+    if (runtime && logic && !SmRoomRuntimeEnableActors(runtime)) ok=false;
     if (!runtime || *SmRoomRuntimeError(runtime)) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X state=%04X: %s\n",root,p.room,p.state,SmRoomRuntimeError(runtime));
       SmRoomRuntimeDestroy(runtime); ok=false; break;
     }
-    residents[count++]=(Resident){p,runtime};
+    world.loaded=SmRoomRuntimeActors(runtime);
+    residents[count++]=(Resident){p,runtime,world};
   }
   for (unsigned i=0; i<old_count; ++i) SmRoomRuntimeDestroy(old[i].runtime);
   if (!ok || !mirror_doors(active)) return false;
   bool reachable[SM_ROOM_RESIDENTS+1];interaction_rooms(active,reachable);
   for (unsigned i=0; i<count; ++i) {
-    const SmRoomPlacement *p=&residents[i].placement; SmRoomRuntime *runtime=residents[i].runtime;
+    Resident *resident=&residents[i];const SmRoomPlacement *p=&resident->placement;SmRoomRuntime *runtime=resident->runtime;
     SmRoomRuntimeProgress(runtime,active);
+    sync_entities(active,SmRoomRuntimeRam(runtime),p->x,p->y,&resident->world,false);
+    uint32_t sim_a=simulation_mask(resident,0,32),sim_ep=simulation_mask(resident,32,18);
+    uint32_t a=interaction_mask(active,resident,reachable,0,32),ep=interaction_mask(active,resident,reachable,32,18);
+    SmRoomRuntimeSetMasks(runtime,sim_a,sim_ep,a,ep);
     EprojOrigin origin={active,p->x,p->y};SmRoomRuntimeSetWorld(runtime,resident_eproj_tile,&origin);
-    bool failed=(reachable[i+1] && !SmRoomRuntimeHitShots(runtime,active,p->x,p->y,resident_shots(active,p))) ||
-        (reachable[i+1] && resident_body(active,p) && !SmRoomRuntimeTouch(runtime,active,p->x,p->y)) ||
+    SmRoomRuntimeSetBirth(runtime,resident_birth);
+    unsigned shots=world_shots(active,root,reachable);
+    if (reachable[i+1]) shots|=world_shots(active,p->room,reachable);
+    bool failed=!SmRoomRuntimeHitShots(runtime,active,p->x,p->y,shots) ||
+        (a && !SmRoomRuntimeTouch(runtime,active,p->x,p->y)) ||
         !SmRoomRuntimeStepVisible(runtime,(int16_t)word(active+0xaf6)-p->x,(int16_t)word(active+0xafa)-p->y,
-        x-p->x,y-p->y,extra) ||
-        (reachable[i+1] && !SmRoomRuntimeProjectiles(runtime,active,p->x,p->y,resident_shots(active,p),resident_body(active,p))) ||
-        !SmRoomRuntimeStepEffects(runtime);
+        x-p->x,y-p->y,extra) || !SmRoomRuntimeStepEffects(runtime);
+    sync_entities(active,SmRoomRuntimeRam(runtime),p->x,p->y,&resident->world,false);
+    a=interaction_mask(active,resident,reachable,0,32);ep=interaction_mask(active,resident,reachable,32,18);
+    SmRoomRuntimeSetMasks(runtime,sim_a,sim_ep,a,ep);
+    if (!failed) failed=!SmRoomRuntimeProjectiles(runtime,active,p->x,p->y,shots,ep!=0);
     SmRoomRuntimeSetWorld(runtime,NULL,NULL);
     if (failed) {
       fprintf(stderr,"[sm-rooms] root=%04X resident=%04X: %s\n",root,p->room,SmRoomRuntimeError(runtime)); return false;
     }
     SmRoomRuntimeDoorBits(runtime,active);
   }
-  return ok && publish();
+  update_connections(active);return ok && publish();
 }
 
 typedef struct RoomsState {
@@ -542,35 +789,51 @@ typedef struct RoomsState {
   uint32_t links;
 } RoomsState;
 size_t SmRoomsStateBound(void) {
-  return sizeof(RoomsState)+SM_ROOM_RESIDENTS*(sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize())+sizeof(links);
+  return sizeof(RoomsState)+SM_ROOM_RESIDENTS*(sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities))+sizeof(links)+sizeof(WorldEntities);
 }
 size_t SmRoomsSave(void *out, size_t capacity) {
-  size_t unit=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize(), bytes=sizeof(RoomsState)+count*unit+link_count*sizeof(DoorLink);
+  size_t unit=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities);
+  size_t bytes=sizeof(RoomsState)+count*unit+link_count*sizeof(DoorLink)+sizeof(WorldEntities);
   if (!out || capacity<bytes) return 0;
-  RoomsState h={0x534d5257,4,count,root,logic,seamless,(uint32_t)unit,pending_entry,camera_dx,camera_dy,link_count};
+  RoomsState h={0x534d5257,5,count,root,logic,seamless,(uint32_t)unit,pending_entry,camera_dx,camera_dy,link_count};
   memcpy(out,&h,sizeof(h)); uint8_t *p=(uint8_t *)out+sizeof(h);
   for (unsigned i=0; i<count; ++i,p+=unit) {
     memcpy(p,&residents[i].placement,sizeof(SmRoomPlacement));
     if (!SmRoomRuntimeSave(residents[i].runtime,p+sizeof(SmRoomPlacement),SmRoomRuntimeStateSize())) return 0;
+    memcpy(p+sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize(),&residents[i].world,sizeof(WorldEntities));
   }
   memcpy(p,links,link_count*sizeof(DoorLink));
+  memcpy(p+link_count*sizeof(DoorLink),&active_world,sizeof(active_world));
   return bytes;
+}
+static bool valid_entities(const WorldEntities *world,bool weapons,uint32_t room_mask) {
+  if (world->loaded>1 || (world->open_rooms&~room_mask)) return false;
+  for (unsigned i=0; i<WORLD_ENTITIES; ++i) {
+    const WorldEntity *e=&world->slots[i];
+    if (e->flags&~WORLD_ENVIRONMENT) return false;
+    if (!e->definition) { if (e->room || e->pending || e->flags || e->x || e->y) return false; }
+    else if ((!weapons && i>=WORLD_ENEMIES+WORLD_EPROJS) || e->room<0x8000 ||
+        (e->pending && (e->pending<0x88fc || e->pending>=0xacf0))) return false;
+  }
+  return true;
 }
 bool SmRoomsValidate(const void *in, size_t size) {
   RoomsState h;
   if (!in || size<sizeof(h)) return false;
   memcpy(&h,in,sizeof(h));
-  if (h.magic!=0x534d5257 || h.version!=4 || h.count>SM_ROOM_RESIDENTS || h.root>65535 || h.links>MAX_LINKS ||
+  if (h.magic!=0x534d5257 || h.version!=5 || h.count>SM_ROOM_RESIDENTS || h.root>65535 || h.links>MAX_LINKS ||
       h.camera_dx < -4096 || h.camera_dx>4096 || h.camera_dy < -4096 || h.camera_dy>4096 ||
-      h.logic>1 || h.seamless>1 || h.pending_entry>1 || h.unit!=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize() ||
-      size!=sizeof(h)+(size_t)h.count*h.unit+h.links*sizeof(DoorLink)) return false;
+      h.logic>1 || h.seamless>1 || h.pending_entry>1 || h.unit!=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities) ||
+      size!=sizeof(h)+(size_t)h.count*h.unit+h.links*sizeof(DoorLink)+sizeof(WorldEntities)) return false;
   const uint8_t *p=(const uint8_t *)in+sizeof(h);
   for (unsigned i=0; i<h.count; ++i,p+=h.unit) {
     SmRoomPlacement v; memcpy(&v,p,sizeof(v));
     if (v.reserved || v.room<0x8000 || v.room==h.root || v.state<0x8000 || v.width<=0 || v.width>4096 || v.width%256 ||
         v.height<=0 || v.height>4096 || v.height%256 || v.left>=v.right || v.top>=v.bottom ||
         v.x < -65536 || v.x>65536 || v.y < -65536 || v.y>65536) return false;
-    if (!SmRoomRuntimeValidate(p+sizeof(v),SmRoomRuntimeStateSize(),v.room,v.state,h.logic!=0)) return false;
+    WorldEntities world;memcpy(&world,p+sizeof(v)+SmRoomRuntimeStateSize(),sizeof(world));
+    if (!valid_entities(&world,false,(1u<<(h.count+1))-1) ||
+        !SmRoomRuntimeValidate(p+sizeof(v),SmRoomRuntimeStateSize(),v.room,v.state,world.loaded!=0)) return false;
   }
   for (unsigned i=0; i<h.links; ++i) {
     DoorLink link; memcpy(&link,p+i*sizeof(link),sizeof(link));
@@ -581,7 +844,8 @@ bool SmRoomsValidate(const void *in, size_t size) {
       if (other.a==link.a && other.b==link.b && other.state_a==link.state_a && other.state_b==link.state_b) return false;
     }
   }
-  return true;
+  WorldEntities world;memcpy(&world,p+h.links*sizeof(DoorLink),sizeof(world));
+  return valid_entities(&world,true,(1u<<(h.count+1))-1);
 }
 bool SmRoomsLoad(const void *in, size_t size) {
   if (!SmRoomsValidate(in,size)) return false;
@@ -596,8 +860,9 @@ bool SmRoomsLoad(const void *in, size_t size) {
     const SmRoomPlacement *v=&next[i].placement;
     SmWorldRoom room={.header=v->room,.width=(uint8_t)(v->width/256),.height=(uint8_t)(v->height/256)};
     room.area=read_rom(NULL,0x8f0001u+v->room);
-    next[i].runtime=SmRoomRuntimeCreateConfigured(read_rom,NULL,&room,v->state,v->incoming,seed,h.logic!=0);
+    next[i].runtime=SmRoomRuntimeCreateConfigured(read_rom,NULL,&room,v->state,v->incoming,seed,false);
     if (!next[i].runtime || !SmRoomRuntimeLoad(next[i].runtime,p+sizeof(SmRoomPlacement),SmRoomRuntimeStateSize())) { ok=false; break; }
+    memcpy(&next[i].world,p+sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize(),sizeof(WorldEntities));
   }
   free(seed);
   if (!ok) { for (unsigned i=0; i<h.count; ++i) SmRoomRuntimeDestroy(next[i].runtime); return false; }
@@ -606,5 +871,6 @@ bool SmRoomsLoad(const void *in, size_t size) {
   pending_entry=h.pending_entry!=0;
   camera_dx=h.camera_dx; camera_dy=h.camera_dy;
   link_count=h.links; memcpy(links,p,link_count*sizeof(DoorLink));
+  memcpy(&active_world,p+link_count*sizeof(DoorLink),sizeof(active_world));
   return publish();
 }
