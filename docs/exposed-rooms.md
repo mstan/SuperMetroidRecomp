@@ -20,6 +20,11 @@ and transition choices remain intact; those room choices take effect again when
 Connected rooms is On. Netplay fixes this choice to the host's initial profile
 for the match, and replay format 5 records live changes.
 
+Current-room preview margins follow the native door palette fade and scanline
+brightness. The fade uses the palette producer captured with the displayed
+frame; pending guest state can already contain the following step. Native
+foreground, hatch and HUD colours retain the cartridge's palette behavior.
+
 ## Architecture
 
 `sm_rooms.c` derives placements from the cartridge's reciprocal door definitions.
