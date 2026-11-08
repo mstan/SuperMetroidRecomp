@@ -26,7 +26,7 @@ def ports():
     finally:
         for s in sockets:s.close()
 
-def run_pair(a,name,mismatch):
+def run_pair(a,name,mismatch,video_settings=None):
     root=a.out/name;root.mkdir();addresses=ports();jobs=[]
     exe=a.build/('SuperMetroidSNESRecomp.exe' if os.name=='nt' else 'SuperMetroidSNESRecomp')
     for seat in range(2):
@@ -35,6 +35,9 @@ def run_pair(a,name,mismatch):
         config=config.replace('Volume = 100','Volume = 0').replace('Fullscreen = 1','Fullscreen = 0')
         config=config.replace('EnableGamepad1 = true','EnableGamepad1 = false').replace('EnableGamepad2 = true','EnableGamepad2 = false')
         (p/'config.ini').write_text(config);shutil.copytree(SOURCE/'mods/preloaded/packages',p/'mods/preloaded/packages')
+        if video_settings is not None:
+            (p/'sm-video.ini').write_text('[SuperMetroidVideo]\n'+''.join(
+                f'{key}={value}\n' for key,value in video_settings[seat].items()))
         different = mismatch and seat == 1
         # With the new sound option selected, make that option the mismatch.
         if a.mismatch_ship_save:

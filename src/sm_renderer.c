@@ -2103,12 +2103,40 @@ static void hud_tail_matte(const SnesRenderRegisters *p, const SmRasterLine *lin
   }
 }
 
+static void native_preview_fade(const uint8_t *ram,const SmRoomScene *rooms,uint8_t colors[32]) {
+  for (unsigned c=0;c<32;++c) colors[c]=(uint8_t)c;
+  unsigned state=read16(ram,0x998),phase=read16(ram,0x99c);
+  if (rooms || state<9 || state>11) return;
+  /* ROM scenery has its own unfaded palette. Match the cartridge's native
+   * palette transition while its ordinary center fades/loads, rather than
+   * leaving a bright strip outside the 256-pixel hardware view. Resident
+   * native canvases deliberately retain their separate presentation. */
+  if (phase>0xe2db && phase<0xe737) { memset(colors,0,32);return; }
+  if (phase!=0xe2db && phase!=0xe737) return;
+  unsigned denominator=read16(ram,0xc402),steps=read16(ram,0xc400);
+  if (denominator>255) return;
+  /* The cartridge increments the counter after producing this palette. */
+  if (steps) --steps;
+  if (steps>denominator+1) steps=denominator+1;
+  for (unsigned c=0;c<32;++c) {
+    int value=phase==0xe2db ? (int)c : 0,target=phase==0xe2db ? 0 : (int)c;
+    /* $82:DAA6 advances each 5-bit component using 8-bit fixed fractions.
+     * Reproduce its rounding, including short Faster Doors denominators. */
+    for (unsigned n=1;n<=steps;++n) {
+      if (n==denominator+1) { value=target;break; }
+      int delta=abs(target-value)*256/(int)(denominator-n+1);
+      value=(value*256+(target<value ? -delta : delta))/256;
+    }
+    colors[c]=(uint8_t)value;
+  }
+}
 /* Neighbor scenery replaces the old finished-pixel room matte. Only widened
  * pixels outside the active rectangle are eligible; the captured native
  * picture and active room's effects retain their existing ownership. */
 static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera_y,
                                 int room_width, int room_height,
-                                const uint8_t padding[256], const uint8_t brightness[32], uint32_t *row,
+                                const uint8_t padding[256], const uint8_t brightness[32],
+                                const uint8_t preview_brightness[32],uint32_t *row,
                                 const uint16_t *active_objects, const uint16_t *active_palette,
                                 const uint8_t *object_owners,
                                 const SmRoomScene *rooms, const SmRoomScene *old_rooms, double alpha);
@@ -2247,7 +2275,8 @@ static void world_objects(SmViewport view,int y,int camera_x,int camera_y,const 
 }
 static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera_y,
                                 int room_width, int room_height,
-                                const uint8_t padding[256], const uint8_t brightness[32], uint32_t *row,
+                                const uint8_t padding[256], const uint8_t brightness[32],
+                                const uint8_t preview_brightness[32],uint32_t *row,
                                 const uint16_t *active_objects, const uint16_t *active_palette,
                                 const uint8_t *object_owners,
                                 const SmRoomScene *rooms, const SmRoomScene *old_rooms, double alpha) {
@@ -2309,8 +2338,8 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
         !padding[(wy/256)*16+wx/256]) continue;
     uint16_t color;
     if (SmRoomPreviewPixelAt(wx, wy, camera_x, camera_y, &color))
-      row[sx] = (uint32_t)brightness[color & 31] << 16 |
-                (uint32_t)brightness[(color >> 5) & 31] << 8 | brightness[(color >> 10) & 31];
+      row[sx] = (uint32_t)preview_brightness[color & 31] << 16 |
+                (uint32_t)preview_brightness[(color >> 5) & 31] << 8 | preview_brightness[(color >> 10) & 31];
   }
 }
 
@@ -2542,6 +2571,10 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
 #endif
     return native_world(out,viewport,hud_anchored,f,previous,rooms,alpha);
   }
+  /* The verified pre-NMI producer owns the displayed palette; pending guest
+   * RAM can already contain the following fade step. */
+  const uint8_t *preview_state=f->object_state_valid ? f->object_ram : f->ram;
+  uint8_t preview_colors[32];native_preview_fade(preview_state,rooms,preview_colors);
   if (room && viewport.extra)
     SmRoomPreviewPrepare(f->ram, (int16_t)read16(f->ram, 0x911)-viewport.extra-32,
         (int16_t)read16(f->ram, 0x915)-32,
@@ -2695,6 +2728,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     uint8_t brightness[32];
     for (unsigned c = 0; c < 32; ++c)
       brightness[c] = (uint8_t)(((c << 3) | (c >> 2)) * (scanout.inidisp & 15) / 15);
+    uint8_t preview_brightness[32];
+    for (unsigned c=0;c<32;++c) preview_brightness[c]=brightness[preview_colors[c]];
     /* The IRQ status band is an opaque screen-space composite. Moving its
      * three column groups together retains HUD OBJ icons, palette effects
      * and energy digits without moving similarly shaped world sprites. */
@@ -2916,7 +2951,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
           brightness, &wide_windows[y], out + y * viewport.width);
       neighboring_scenery(viewport, y, matte_x, matte_y,
-          read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width,
+          read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, preview_brightness,out + y * viewport.width,
           objects,l->palette,object_owners,rooms,old_rooms,alpha);
       if (!hud_tail) continue_foreground(viewport,y,matte_x,matte_y,f->ram,l->vram,l->palette,&scanout,
           objects,object_owners,brightness,out+y*viewport.width,rooms,&wide_windows[y]);
@@ -3029,7 +3064,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
         brightness, &wide_windows[y], out + y * viewport.width);
     if (mode == 1 || mode == 7)
       neighboring_scenery(viewport, y, matte_x, matte_y,
-          read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, out + y * viewport.width,
+          read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, preview_brightness,out + y * viewport.width,
           objects,l->palette,object_owners,rooms,old_rooms,alpha);
     if (!hud_tail) continue_foreground(viewport,y,matte_x,matte_y,f->ram,l->vram,l->palette,&scanout,
         objects,object_owners,brightness,out+y*viewport.width,rooms,&wide_windows[y]);

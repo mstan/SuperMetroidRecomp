@@ -65,7 +65,7 @@ static void *snapshot;
 static size_t snapshot_capacity;
 static void *room_hash_buffer;
 static size_t room_hash_capacity;
-static bool playback_rooms;
+static bool playback_rooms, playback_connected;
 static uint32_t rom_identity;
 extern Snes *g_snes;
 extern uint8_t g_ram[0x20000];
@@ -198,7 +198,7 @@ static bool start_segment(void) {
   segment_bytes=0;
   snprintf(path,sizeof(path),"%s-%06u.replay",stem,segment);
   char header[512];
-  snprintf(header,sizeof(header),"SMREPLAY 4\nBUILD %s %s %s %s\nROM %08x\nMODS %08x\nMODE lle\n",
+  snprintf(header,sizeof(header),"SMREPLAY 5\nBUILD %s %s %s %s\nROM %08x\nMODS %08x\nMODE lle\n",
       SNESRECOMP_BUILD_VERSION,SM_REPLAY_REVISION,SM_REPLAY_ENGINE,SM_REPLAY_TARGET,rom_identity,
       mods_identity());
   if(!SnesReplayWriterBegin(writer,path,header,config_path,"mods/preloaded/state.toml",
@@ -231,7 +231,7 @@ static bool write_snapshot(void) {
 static unsigned policy(void) {
   return g_sm_video.enhanced | g_sm_video.fps_enabled<<1 | g_sm_video.hud_anchored<<2 |
       snesrecomp_desktop_new_renderer()<<3 | g_config.no_sprite_limits<<4 | rtl_apu_extended_frame_timing()<<5 |
-      g_sm_video.neighboring_logic<<6 | g_sm_video.seamless<<7;
+      g_sm_video.neighboring_logic<<6 | g_sm_video.seamless<<7 | g_sm_video.connected_rooms<<8;
 }
 static bool replay_floor_active(void) {
   /* Policy labels select registered replacements, not the SM scheduler.
@@ -258,7 +258,8 @@ static bool load_playback(void) {
   char line[512], version[80], revision[80], engine[80], target[80], tail;
   unsigned rom, mods=0;
   if (!fgets(line,sizeof(line),stream)) { error("missing replay header"); return false; }
-  playback_rooms=!strcmp(line,"SMREPLAY 4\n");
+  playback_connected=!strcmp(line,"SMREPLAY 5\n");
+  playback_rooms=playback_connected || !strcmp(line,"SMREPLAY 4\n");
   bool with_mods=playback_rooms || !strcmp(line,"SMREPLAY 3\n");
   if((strcmp(line,"SMREPLAY 2\n") && !with_mods) ||
       !fgets(line,sizeof(line),stream) || sscanf(line,"BUILD %79s %79s %79s %79s %c",version,revision,engine,target,&tail)!=4 ||
@@ -311,10 +312,12 @@ static bool playback_begin(uint32_t *inputs) {
   } else if(!playback_rows) {error("first input has no machine checkpoint");return false;}
   unsigned frame, word, flags, aspect, fps, extra;
   if(sscanf(line,"I %u %x %x %u %u %u %c",&frame,&word,&flags,&aspect,&fps,&extra,&tail)!=6 ||
-      flags>(playback_rooms ? 255u : 63u) || aspect>=SM_ASPECT_COUNT || !SmValidFps(fps) || !SmActivityExtraValid(extra) || frame!=next_frame) {
+      flags>(playback_connected ? 511u : playback_rooms ? 255u : 63u) || aspect>=SM_ASPECT_COUNT || !SmValidFps(fps) || !SmActivityExtraValid(extra) || frame!=next_frame) {
     error("invalid input/settings record or discontinuity without checkpoint");return false;
   }
-  g_sm_video=(SmVideoSettings){(flags&1)!=0,(SmAspect)aspect,fps,(flags&2)!=0,(flags&4)!=0,(flags&64)!=0,(flags&128)!=0};
+  g_sm_video=(SmVideoSettings){.enhanced=(flags&1)!=0,.aspect=(SmAspect)aspect,.fps=fps,
+      .fps_enabled=(flags&2)!=0,.hud_anchored=(flags&4)!=0,.neighboring_logic=(flags&64)!=0,
+      .seamless=(flags&128)!=0,.connected_rooms=!playback_connected || (flags&256)!=0};
   SmActivityRestore(extra);
   snesrecomp_desktop_set_new_renderer((flags&8)!=0); g_config.no_sprite_limits=(flags&16)!=0;
   if(flags&32)RtlEnableExtendedFrameTiming();

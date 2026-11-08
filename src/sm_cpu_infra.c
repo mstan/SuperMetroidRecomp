@@ -4,6 +4,7 @@
 #include "sm_replay.h"
 #include "sm_video.h"
 #include "sm_renderer.h"
+#include "sm_display.h"
 #include "sm_activity.h"
 #include "sm_rooms.h"
 #include "sm_seamless.h"
@@ -14,9 +15,11 @@ static bool SmFrameBegin(uint32_t *inputs) {
   if (!SmActivityFrameBegin()) return false;
   if (!SmReplayBegin(inputs)) return false;
   if (!SmRoomCollisionFrameBegin()) return false;
-  if (g_sm_video.enhanced && g_sm_video.seamless && !SmSeamlessDoor()) return false;
-  if (!SmRoomsNativeFrame(g_ram,g_ppu->vram,g_sm_video.enhanced)) return false;
-  if (!SmRoomsFrame(g_ram,g_sm_video.enhanced,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||
+  bool rooms=SmConnectedRoomsEnabled();
+  if (rooms && g_sm_video.seamless && !SmSeamlessDoor()) return false;
+  SmDisplay_SyncCaptureGeneration();
+  if (!SmRoomsNativeFrame(g_ram,g_ppu->vram,rooms)) return false;
+  if (!SmRoomsFrame(g_ram,rooms,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||
       !SmRendererLatchRooms(SmRoomsScene())) return false;
   /* Playback may restore a checkpoint and change presentation at this exact
    * boundary, so latch objects after those changes. */

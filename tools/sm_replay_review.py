@@ -81,7 +81,8 @@ class ReviewGame:
         (self.runtime/'sm-video.ini').write_text(f'[SuperMetroidVideo]\nEnhancedRenderer=1\nAspect={aspect}\nPresentationEnabled=1\nPresentationFPS=120\n'
             f"HudAnchored={int(case['hud'])}\n"
             f"NeighboringRoomLogic={int(case.get('neighboring_logic',True))}\n"
-            f"SeamlessRooms={int(case.get('seamless',True))}\n",encoding='utf-8')
+            f"SeamlessRooms={int(case.get('seamless',True))}\n"
+            f"ConnectedRooms={int(case.get('connected_rooms',True))}\n",encoding='utf-8')
         env=os.environ.copy()
         for key in list(env):
             if key.startswith(('SDL_','SM_','SNESRECOMP_')):env.pop(key)

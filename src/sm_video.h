@@ -23,9 +23,15 @@ typedef struct SmVideoSettings {
   bool hud_anchored; /* Anchor energy left and minimap right. */
   bool neighboring_logic;
   bool seamless;
+  bool connected_rooms;
 } SmVideoSettings;
 
 extern SmVideoSettings g_sm_video;
+
+/* Widescreen remains available without resident-room simulation or hooks. */
+static inline bool SmConnectedRoomsEnabled(void) {
+  return g_sm_video.enhanced && g_sm_video.connected_rooms;
+}
 
 /* Where g_sm_video lives beside the executable. The launcher's Mods page and
  * the pause menu's Options tab both write it. */

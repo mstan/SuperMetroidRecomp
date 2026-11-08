@@ -177,6 +177,8 @@ static const RecompRuntimeUiItem kItems[] = {
   { "aspect", kSection, "Aspect ratio", NULL,
     RECOMP_RUNTIME_UI_CHOICE, 0, SM_ASPECT_COUNT - 1, 1,
     g_aspect_choices, SM_ASPECT_COUNT, NULL },
+  { "connected_rooms", kSection, "Connected rooms", NULL,
+    RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
   /* The framework's own display settings (host_api.h, snesrecomp PR #186).
    * Each change applies live to the running window; the host marks its
    * config dirty and writes config.ini at shutdown, so it survives the
@@ -215,6 +217,7 @@ static bool *BoolField(const RecompRuntimeUiItem *item) {
   if (!strcmp(item->key, "widescreen")) return &g_sm_video.enhanced;
   if (!strcmp(item->key, "hud")) return &g_sm_video.hud_anchored;
   if (!strcmp(item->key, "fps")) return &g_sm_video.fps_enabled;
+  if (!strcmp(item->key, "connected_rooms")) return &g_sm_video.connected_rooms;
   return NULL;
 }
 
@@ -279,6 +282,8 @@ static int IsEnabled(void *ctx, const RecompRuntimeUiItem *item) {
   if (!strcmp(item->key, "widescreen") || !strcmp(item->key, "aspect"))
     return SmActivityGeometryMutable();
   if (!strcmp(item->key, "hud")) return g_sm_video.enhanced;
+  if (!strcmp(item->key, "connected_rooms"))
+    return g_sm_video.enhanced && SmActivityGeometryMutable();
   /* The host ignores a scale change while fullscreen, so the row is too. */
   if (!strcmp(item->key, "window_scale")) return !snesrecomp_get_fullscreen();
   return 1;

@@ -114,7 +114,7 @@ static bool BreakableShotBlock(const CpuState *cpu) {
 
 /* BlockColl_{Horiz,Vert}_CheckColl: JSR (table,X), X = block type * 2. */
 uint32 SmCombatShotBlockDispatchHook(CpuState *cpu, uint32 pc24) {
-  if (g_sm_video.enhanced && g_sm_video.seamless) {
+  if (SmConnectedRoomsEnabled() && g_sm_video.seamless) {
     /* CheckColl's PHX preserves the original byte index even when a native
      * extension block moves cur_block_index to a remote anchor. */
     unsigned index=cpu->ram[(cpu->S+1)&65535] | cpu->ram[(cpu->S+2)&65535]<<8;

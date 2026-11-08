@@ -12,7 +12,7 @@ extern bool SmCombatShotBlockDispatchActive(void);
 static SmEprojLoan eproj_loan;
 static unsigned entity_phase;
 bool SmRoomCollisionFrameBegin(void) {
-  bool enabled=g_sm_video.enhanced && g_sm_video.seamless;
+  bool enabled=SmConnectedRoomsEnabled() && g_sm_video.seamless;
   const uint32_t body[]={0x949527,0x94953e},inside[]={0x949b9e,0x949bd3,0x949c18};
   const uint32_t shots[]={0x94a1b5,0x94a1d6,0x94a1cd,0x94a1ee,
       0x94a2a8,0x94a337,0x94a3bb,0x94a3c3,0x94a3cd,0x94a44d,0x94a455,0x94a45f,0x94a4c6,0x94a530};
@@ -24,16 +24,16 @@ bool SmRoomCollisionFrameBegin(void) {
   for (unsigned i=0; i<4; ++i) if (!snes_mod_hook_arm(viewport[i],SmActivityExtra()!=0)) return false;
   entity_phase=0;
   for (unsigned i=0; i<sizeof(entities)/sizeof(*entities); ++i)
-    if (!snes_mod_hook_arm(entities[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+    if (!snes_mod_hook_arm(entities[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   if (eproj_loan.active) { fprintf(stderr,"[sm-rooms] unfinished native projectile terrain loan\n");return false; }
   for (unsigned i=0; i<sizeof(eprojs)/sizeof(*eprojs); ++i)
-    if (!snes_mod_hook_arm(eprojs[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+    if (!snes_mod_hook_arm(eprojs[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   for (unsigned i=0; i<sizeof(actors)/sizeof(*actors); ++i)
-    if (!snes_mod_hook_arm(actors[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+    if (!snes_mod_hook_arm(actors[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   for (unsigned i=0; i<sizeof(contacts)/sizeof(*contacts); ++i)
-    if (!snes_mod_hook_arm(contacts[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+    if (!snes_mod_hook_arm(contacts[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   for (unsigned i=0; i<sizeof(shots)/sizeof(*shots); ++i)
-    if (!snes_mod_hook_arm(shots[i],g_sm_video.enhanced) && g_sm_video.enhanced) return false;
+    if (!snes_mod_hook_arm(shots[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   for (unsigned i=0; i<2; ++i)
     if (!snes_mod_hook_arm(body[i],enabled || SmCombatShotBlockDispatchActive())) return false;
   for (unsigned i=0; i<3; ++i) if (!snes_mod_hook_arm(inside[i],enabled)) {
@@ -44,7 +44,7 @@ bool SmRoomCollisionFrameBegin(void) {
   return true;
 }
 uint32 SmRoomSolidEntryHook(CpuState *cpu,uint32 pc24) {
-  if (g_sm_video.enhanced && g_sm_video.seamless && cpu->X<2048 && !(cpu->X&63) &&
+  if (SmConnectedRoomsEnabled() && g_sm_video.seamless && cpu->X<2048 && !(cpu->X&63) &&
       SmRoomsEntryFrameAir(cpu->ram,cpu->X/64)) return (pc24&0xff0000u)|0xa9e9;
   return 0;
 }
@@ -74,7 +74,7 @@ uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
   return 0;
 }
 uint32 SmRoomInteractionHook(CpuState *cpu,uint32 pc24) {
-  if (!g_sm_video.enhanced) return 0;
+  if (!SmConnectedRoomsEnabled()) return 0;
   unsigned pc=pc24&0xffff,index,slot,target;
   if (pc==0xa326) entity_phase=1; /* native PB death/drop children inherit their actor's spatial room */
   if ((pc24&0x7fffff)==0x068d5c) {
@@ -98,7 +98,7 @@ static bool active_eproj_tile(void *context,const uint8_t source[0x20000],int x,
   (void)context;return SmRoomsEprojTile(source,source,0,0,x,y,tile);
 }
 uint32 SmRoomEnemyBlockHook(CpuState *cpu,uint32 pc24) {
-  if (!g_sm_video.enhanced) return 0;
+  if (!SmConnectedRoomsEnabled()) return 0;
   bool horizontal=(pc24&65535)==0xc845;uint16_t original=cpu->X,index=original;
   int result=SmRoomsEnemyBlock(cpu->ram,cpu->ram,0,0,horizontal,&index);cpu->X=index;
   if (result==-1) {
@@ -113,7 +113,7 @@ uint32 SmRoomEnemyBlockHook(CpuState *cpu,uint32 pc24) {
 uint32 SmRoomEprojBlockHook(CpuState *cpu,uint32 pc24) {
   unsigned pc=pc24&65535;
   if (pc==0x8886 || pc==0x889e) {
-    if (g_sm_video.enhanced)
+    if (SmConnectedRoomsEnabled())
       SmEprojBegin(cpu->ram,&cpu->X,pc==0x8886,active_eproj_tile,NULL,&eproj_loan);
   } else if (SmEprojEnd(cpu->ram,&cpu->X,pc==0x889d,&eproj_loan)) {
     cpu->_flag_N=(cpu->X&0x8000)!=0;cpu->_flag_Z=cpu->X==0;
@@ -123,12 +123,12 @@ uint32 SmRoomEprojBlockHook(CpuState *cpu,uint32 pc24) {
 }
 uint32 SmRoomInsideDispatchHook(CpuState *cpu,uint32 pc24) {
   (void)pc24;
-  if (g_sm_video.enhanced && g_sm_video.seamless && SmRoomCollisionInside(cpu->ram)>=0)
+  if (SmConnectedRoomsEnabled() && g_sm_video.seamless && SmRoomCollisionInside(cpu->ram)>=0)
     cpu->X=0; /* native ordinary-air reaction: no foreign PLM/script execution */
   return 0;
 }
 uint32 SmRoomShotBoundsHook(CpuState *cpu,uint32 pc24) {
-  if (!g_sm_video.enhanced || !SmRoomsShotsActive(cpu->ram)) return 0;
+  if (!SmConnectedRoomsEnabled() || !SmRoomsShotsActive(cpu->ram)) return 0;
   /* The following block reaction resolves signed world cells. Keep the
    * cartridge's movement, radii, span loops, impacts and wave-beam rules. */
   unsigned pc=pc24&65535;
@@ -138,12 +138,12 @@ uint32 SmRoomShotBoundsHook(CpuState *cpu,uint32 pc24) {
 }
 uint32 SmRoomShotDispatchHook(CpuState *cpu,uint32 pc24) {
   (void)pc24;
-  if (g_sm_video.enhanced && SmRoomsShotsActive(cpu->ram) && cpu->X==18 &&
+  if (SmConnectedRoomsEnabled() && SmRoomsShotsActive(cpu->ram) && cpu->X==18 &&
       SmRoomsShotDoorAir(cpu->ram,0,0,SmShotWord(cpu->ram,0xdc4))) cpu->X=0;
   return 0;
 }
 uint32 SmRoomShotBlockHook(CpuState *cpu,uint32 pc24) {
-  if (!g_sm_video.enhanced) return 0;
+  if (!SmConnectedRoomsEnabled()) return 0;
   bool horizontal=(pc24&65535)==0xa1b5;
   uint16_t index=cpu->X;
   int result=SmRoomsShotBlock(cpu->ram,horizontal,&index);

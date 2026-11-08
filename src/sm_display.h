@@ -11,6 +11,8 @@ bool SmDisplay_IsWidescreenActive(void);
 int SmDisplay_GetCurrentFrameWidth(void);
 struct SmPlayerView;
 bool SmDisplay_GetPlayer(struct SmPlayerView *player);
+/* Clear a jumped timeline before publishing its first restored room/OAM state. */
+void SmDisplay_SyncCaptureGeneration(void);
 
 typedef struct SmDisplayViewport {
   int x, y, width, height;

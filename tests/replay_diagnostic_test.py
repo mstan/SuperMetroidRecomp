@@ -92,6 +92,15 @@ class ReplayInspectorTest(unittest.TestCase):
         self.write(record.replace("df", "100") + checks)
         with self.assertRaises(ValueError): replay.inspect(self.path)
 
+    def test_connected_room_policy(self):
+        self.header = self.header.replace("SMREPLAY 1", "SMREPLAY 5").replace("MODE lle", "MODS 0badf00d\nMODE lle")
+        checks = self.complete.replace("V 13", "R 13 11223344\nV 13")
+        for flags in ("df", "1df"):
+            self.write(self.input.replace("1f", flags).rstrip() + " 213\n" + checks)
+            replay.inspect(self.path)
+        self.write(self.input.replace("1f", "200").rstrip() + " 213\n" + checks)
+        with self.assertRaises(ValueError): replay.inspect(self.path)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -84,7 +84,7 @@ static bool g_sm_composed_hud;
 /* The shared generation changes on visible timeline jumps and is preserved
  * across speculative rollback. A rollback's on_state_loaded hook must not
  * erase the future raster that run-ahead has just captured for presentation. */
-static void SmSyncCaptureGeneration(void) {
+void SmDisplay_SyncCaptureGeneration(void) {
   uint64_t generation = RtlStateGeneration();
   if (generation != g_sm_capture_generation) {
     SmRendererReset();
@@ -169,7 +169,7 @@ static void SmPrepareFrame(int drawable_w, int drawable_h, int *frame_w, int *fr
 /* Simulation owns these: the renderer's per-frame capture runs exactly once
  * per simulated frame, never for an interpolated present. */
 static void SmBeginSimFrame(unsigned number) {
-  SmSyncCaptureGeneration();
+  SmDisplay_SyncCaptureGeneration();
   SmPauseOptions_SyncToGuest();
   SmRendererSetInterpolationEnabled(g_sm_video.fps_enabled);
   if (SmCustomRendererEnabled()) SmRendererBeginFrame(g_ram, number);
@@ -250,7 +250,7 @@ static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
   SmRendererSetHdEnabled(g_config.mode7.enabled && !g_config.frame_blend && !overlay && SmCustomRendererEnabled());
   if (!SmCustomRendererEnabled() && !overlay && !mod_overlay)
     return 0;
-  SmSyncCaptureGeneration();
+  SmDisplay_SyncCaptureGeneration();
   int drew = 0;
 #if SM_NATIVE_RASTER
   drew = g_sm_composed_ready && alpha >= 1 &&
