@@ -109,6 +109,27 @@ int main(void) {
   for (int i = 0; i < 256 * 224; ++i) drawn += frame[i] != 0;
   assert(drawn > 0);
 
+  /* Run inversion follows the native binding and never changes menu input. */
+  SmRunByDefaultActivate();
+  SetWord(kCfgRun, 0x0080); /* A */
+  assert(Step(SNES_PAD_RIGHT, 0, 0) == (SNES_PAD_RIGHT | SNES_PAD_A));
+  assert(Step(SNES_PAD_RIGHT | SNES_PAD_A, 0, 0) == SNES_PAD_RIGHT);
+  assert(Step(SNES_PAD_LEFT | SNES_PAD_X | SNES_PAD_B, 0, 0) ==
+         (SNES_PAD_LEFT | SNES_PAD_X | SNES_PAD_B | SNES_PAD_A));
+  SetWord(kCfgRun, 0x4000); /* remapped to Y */
+  assert(Step(SNES_PAD_LEFT, 0, 0) == (SNES_PAD_LEFT | SNES_PAD_Y));
+  assert(Step(SNES_PAD_LEFT | SNES_PAD_Y | SNES_PAD_A, 0, 0) ==
+         (SNES_PAD_LEFT | SNES_PAD_A));
+  assert(g_transform(SNES_PAD_RIGHT, &other) == (SNES_PAD_RIGHT | SNES_PAD_Y));
+  const unsigned native_screens[] = {0, 1, 9, 11, 12, 15, 42};
+  for (unsigned i = 0; i < sizeof(native_screens) / sizeof(native_screens[0]); ++i) {
+    SetWord(kGameState, native_screens[i]);
+    assert(Step(SNES_PAD_Y | SNES_PAD_START, 0, 0) ==
+           (SNES_PAD_Y | SNES_PAD_START));
+  }
+  SnesModInputContext no_game = {.player = 0};
+  assert(g_transform(SNES_PAD_A, &no_game) == SNES_PAD_A);
+
   puts("sm_controls_test: PASS");
   return 0;
 }
