@@ -79,10 +79,10 @@ def read_rows(path):
 
 
 def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None, env_overrides=None,
-             seed_state=None, seed_slot=0, shared_resources=None, video_settings=None):
+             seed_state=None, seed_slot=0, shared_resources=None, video_settings=None, paced=False):
     exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
     config = (SOURCE / "config.ini").read_text(encoding="utf8")
-    config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
+    config = config.replace("DisableFrameDelay = 0", f"DisableFrameDelay = {0 if paced else 1}")
     config = config.replace("Volume = 100", "Volume = 0").replace("Fullscreen = 1", "Fullscreen = 0")
     config = config.replace("EnableGamepad1 = true", "EnableGamepad1 = false")
     config = config.replace("EnableGamepad2 = true", "EnableGamepad2 = false")
