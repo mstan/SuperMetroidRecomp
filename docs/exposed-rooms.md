@@ -13,6 +13,13 @@ encounter locks and progression helpers start through actual room entry.
 Continuous traversal is the default. Native transitions retain their scrolling
 and body animation while complete room images remain available to presentation.
 
+Connected rooms defaults On. Turn it Off in the launcher's Widescreen options
+or the native pause Options tab to use current-room widescreen with original
+room gameplay and door transitions. Aspect ratio and the saved neighboring-logic
+and transition choices remain intact; those room choices take effect again when
+Connected rooms is On. Netplay fixes this choice to the host's initial profile
+for the match, and replay format 5 records live changes.
+
 ## Architecture
 
 `sm_rooms.c` derives placements from the cartridge's reciprocal door definitions.

@@ -13,7 +13,7 @@ static const char *const features[] = {"widescreen", "presentation-fps"};
 static const char *const names[] = {"Widescreen", "Higher FPS"};
 static const char *const versions[] = {"1", "2"};
 static const char *const descriptions[] = {
-  "Render a wider room view and keep enemies active throughout it, with optional HUD anchoring.",
+  "Render a wider view with optional connected rooms and HUD anchoring.",
   "Smooth object and camera motion at your display rate while keeping game timing unchanged."
 };
 static const char *const aspects[] = {"Fit", "16:9", "21:9", "32:9"};
