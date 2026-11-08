@@ -682,6 +682,31 @@ static void player_pickups(SmRoomRuntime *r) {
   assert(SmRoomRuntimeLoad(r,original,size));free(original);
   puts("native health/ammo drops reward Root once by body or live grapple; ineligible drops retained; private player restored");
 }
+static void liquid_initialization(const SmWorld *world) {
+  static uint8_t seed[0x20000],entered[0x20000];static uint16_t vram[0x8000];
+  const unsigned rooms[]={0xa011,0xd104,0xadde};
+  const unsigned types[]={0,6,2};
+  for (unsigned sample=0;sample<3;++sample) for (unsigned actors=0;actors<2;++actors) {
+    memcpy(seed,active,sizeof(seed));
+    /* A resident must not inherit a different room's submerged surface. */
+    SmShotPut(seed,0x195e,0);SmShotPut(seed,0x1962,0);
+    const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)rooms[sample]);assert(room);
+    uint16_t state=SmWorldRoomState(room,Read,NULL,seed);
+    SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,seed,actors!=0);
+    assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r);
+    if (SmShotWord(ram,0x196e)!=types[sample]) fprintf(stderr,"liquid fixture room %04X: type %u expected %u\n",rooms[sample],SmShotWord(ram,0x196e),types[sample]);
+    assert(SmShotWord(ram,0x196e)==types[sample]);
+    if (!sample) assert(SmShotWord(ram,0x195e)==0xffff && SmShotWord(ram,0x1962)==0xffff);
+    else if (types[sample]==6) assert(SmShotWord(ram,0x195e)==SmShotWord(ram,0x1978) && SmShotWord(ram,0x1962)==0xffff);
+    else assert(SmShotWord(ram,0x1962)==SmShotWord(ram,0x1978) && SmShotWord(ram,0x195e)==0xffff);
+    memcpy(entered,ram,sizeof(entered));SmShotPut(entered,0x195e,123);SmShotPut(entered,0x1962,456);
+    SmRoomRuntimePromote(r,entered,vram);
+    assert(!memcmp(entered+0x195c,ram+0x195c,0x198d-0x195c));
+    assert(SmShotWord(seed,0x195e)==0 && SmShotWord(seed,0x1962)==0);
+    SmRoomRuntimeDestroy(r);
+  }
+  puts("dry resident promotion keeps liquid absent; water and lava retain their native selected surfaces with logic On/Off");
+}
 static void item_scenery(const SmWorld *world) {
   static uint8_t seed[0x20000];memcpy(seed,active,sizeof(seed));memset(seed+0xd870,0,64);SmShotPut(seed,0x79b,0);
   for (unsigned sample=0; sample<4; ++sample) {
@@ -864,6 +889,7 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  liquid_initialization(world);
   if (strtoul(argv[3],NULL,16)==0x9fe5) { item_scenery(world);ceres_scenery(world);ceres_environment(world);visible_candy(world);deleted_grapple_entry(world); }
   ceres_entry_promotion(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);

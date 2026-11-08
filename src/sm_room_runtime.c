@@ -285,6 +285,12 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   /* Room-local actors, projectiles, PLMs, FX and sprite submissions cannot
    * inherit the active room's occupants. Keep equipment/progression globals. */
   memset(r->ram+0xc0c,0,0x2000-0xc0c);
+  /* The nonzero FX defaults from InitializeSpecialEffectsForNewRoom
+   * ($88:82C1) precede LoadFXHeader in the cartridge loader. A zero liquid
+   * surface means submerged, so a dry resident must retain the absent
+   * surface sentinels when its running FX state is promoted. */
+  put(r,0x195e,65535); put(r,0x1962,65535);
+  put(r,0x1976,0x8000); put(r,0x1982,2);
   memset(r->ram+0x370,0,0x400);
   memset(r->ram+0x619,0,0x24);
   put(r,0x330,0); /* never inherit the active machine's pending VRAM requests */
