@@ -157,6 +157,17 @@ def main():
     if args.headless:
         config_text += "\n[General]\nDisableFrameDelay=1\n[Graphics]\nRenderer=software\nOutputMethod=SDL\nVSync=0\n"
     (work / "config.ini").write_text(config_text, encoding="utf-8")
+    # --config gives the runtime an isolated profile rooted at cwd. Restore
+    # the recording's selections there, using the exact runtime's catalog;
+    # merely retaining capture.replay.mods.toml does not activate those mods.
+    mod_state = source.with_name(source.name + ".mods.toml")
+    if mod_state.is_file():
+        catalog = work / "mods/preloaded"
+        catalog.mkdir(parents=True)
+        packages = exe.parent / "mods/preloaded/packages"
+        if packages.is_dir():
+            shutil.copytree(packages, catalog / "packages")
+        shutil.copy2(mod_state, catalog / "state.toml")
     env = {key: value for key, value in os.environ.items()
            if not key.startswith(("SM_", "SNESRECOMP_", "SNES_NET"))}
     env.update(SM_REPLAY_RECORD="0", SM_REPLAY_DIR=str(work), SNESRECOMP_RUNAHEAD="0",

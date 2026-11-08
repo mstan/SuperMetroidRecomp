@@ -38,6 +38,7 @@
 
 enum {
   kGameState = 0x0998, kEquipped = 0x09A2,
+  kCfgRun = 0x09B6,
   kCfgItemCancel = 0x09B8, kCfgItemSwitch = 0x09BA,
   kCfgAimDown = 0x09BC, kCfgAimUp = 0x09BE,
   kMaxMissiles = 0x09C8, kMaxSupers = 0x09CC, kMaxPowerBombs = 0x09D0,
@@ -59,6 +60,18 @@ static uint16_t HostButtons(uint16_t guest) {
 }
 
 static bool InGameplay(const uint8_t *wram) { return Word(wram, kGameState) == 8; }
+
+/* Invert the configured Run button before recording/exchange, so the guest
+ * receives ordinary deterministic input. Menus and demos retain native input. */
+static uint16_t SmRunByDefault(uint16_t buttons, const SnesModInputContext *ctx) {
+  if (!ctx->wram || !InGameplay(ctx->wram)) return buttons;
+  return (uint16_t)(buttons ^ HostButtons(Word(ctx->wram, kCfgRun)));
+}
+
+static void SmRunByDefaultActivate(void) {
+  snes_mod_register_input_transform(SmRunByDefault);
+  fprintf(stderr, "[mods] run by default: hold the configured Run button to walk\n");
+}
 
 /* One seat's macro state. A pulse is held for one frame and then released
  * for one, so every pulse is a new press to the game. */
@@ -208,4 +221,6 @@ SNES_MOD_CONSTRUCTOR(sm_register_controls_plugins) {
                                       SmZeroMissionActivate);
   snes_mod_register_activation_plugin("super-metroid.controls.radial-menu",
                                       SmRadialMenuActivate);
+  snes_mod_register_activation_plugin("super-metroid.run-by-default",
+                                      SmRunByDefaultActivate);
 }

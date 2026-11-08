@@ -125,6 +125,11 @@ Screenshots supplied by the project owner from the custom-renderer build.
 
 ## Releases
 
+Two additional elective mods are available in the launcher, both disabled by
+default: **One-missile red doors** opens red doors with one standard missile,
+and **Run by default (hold to walk)** inverts your configured Run button during
+gameplay. Each has its own switch; menu controls retain their normal behavior.
+
 The v0.4.2 release includes forty configurable gameplay, movement, combat, map,
 HUD and pacing features under **Mods**. Elective enhancements start disabled;
 correctness fixes start enabled. See the [release notes](docs/releases/v0.4.2.md)
