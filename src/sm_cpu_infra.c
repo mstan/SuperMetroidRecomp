@@ -4,6 +4,7 @@
 #include "sm_replay.h"
 #include "sm_video.h"
 #include "sm_renderer.h"
+#include "sm_display.h"
 #include "sm_activity.h"
 #include "sm_rooms.h"
 #include "sm_seamless.h"
@@ -16,6 +17,7 @@ static bool SmFrameBegin(uint32_t *inputs) {
   if (!SmRoomCollisionFrameBegin()) return false;
   bool rooms=SmConnectedRoomsEnabled();
   if (rooms && g_sm_video.seamless && !SmSeamlessDoor()) return false;
+  SmDisplay_SyncCaptureGeneration();
   if (!SmRoomsNativeFrame(g_ram,g_ppu->vram,rooms)) return false;
   if (!SmRoomsFrame(g_ram,rooms,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||
       !SmRendererLatchRooms(SmRoomsScene())) return false;

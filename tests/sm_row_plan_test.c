@@ -23,7 +23,40 @@ static void put_word(unsigned address, unsigned value) {
   test_ram[address + 1] = (uint8_t)(value >> 8);
 }
 
+static void native_preview_palette_fade(void) {
+  /* Cartridge $82:DAA6 reference vectors for maximum 5-bit intensity. */
+  const unsigned denominators[]={2,5,12};
+  const uint8_t out[][14]={{31,15,0,0},{31,24,18,12,6,0,0},
+      {31,28,25,22,19,16,13,10,8,6,4,2,0,0}};
+  const uint8_t in[][14]={{0,15,31,31},{0,6,12,18,24,31,31},
+      {0,2,4,6,8,10,13,16,19,22,25,28,31,31}};
+  uint8_t colors[32];memset(test_ram,0,sizeof(test_ram));put_word(0x998,11);
+  for (unsigned speed=0;speed<3;++speed) {
+    unsigned denominator=denominators[speed];put_word(0xc402,denominator);
+    for (unsigned step=0;step<=denominator+1;++step) {
+      put_word(0xc400,step+1);put_word(0x99c,0xe2db);
+      native_preview_fade(test_ram,NULL,colors);assert(colors[0]==0 && colors[31]==out[speed][step]);
+      put_word(0x99c,0xe737);
+      native_preview_fade(test_ram,NULL,colors);assert(colors[0]==0 && colors[31]==in[speed][step]);
+    }
+  }
+  const unsigned dark_phases[]={0xe2f7,0xe310,0xe38e,0xe3c0,0xe4a9,0xe659,0xe6a2};
+  for (unsigned i=0;i<sizeof(dark_phases)/sizeof(dark_phases[0]);++i) {
+    put_word(0x99c,dark_phases[i]);native_preview_fade(test_ram,NULL,colors);
+    for (unsigned c=0;c<32;++c) assert(colors[c]==0);
+    SmRoomScene scene={.version=4};native_preview_fade(test_ram,&scene,colors);
+    for (unsigned c=0;c<32;++c) assert(colors[c]==c);
+  }
+  /* Pausing retains the last door phase but fades through ordinary INIDISP. */
+  const unsigned unrelated_states[]={8,12,13,14};
+  for (unsigned i=0;i<sizeof(unrelated_states)/sizeof(unrelated_states[0]);++i) {
+    put_word(0x998,unrelated_states[i]);native_preview_fade(test_ram,NULL,colors);
+    for (unsigned c=0;c<32;++c) assert(colors[c]==c);
+  }
+}
+
 int main(void) {
+  native_preview_palette_fade();
   const int widths[] = {256, 342, 682, SM_MAX_WIDTH};
   for (unsigned iteration = 0; iteration < 512; ++iteration) {
     memset(&test_registers, 0, sizeof(test_registers));
