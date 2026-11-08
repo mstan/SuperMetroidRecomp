@@ -696,7 +696,10 @@ static void liquid_initialization(const SmWorld *world) {
     assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r);
     if (SmShotWord(ram,0x196e)!=types[sample]) fprintf(stderr,"liquid fixture room %04X: type %u expected %u\n",rooms[sample],SmShotWord(ram,0x196e),types[sample]);
     assert(SmShotWord(ram,0x196e)==types[sample]);
-    if (!sample) assert(SmShotWord(ram,0x195e)==0xffff && SmShotWord(ram,0x1962)==0xffff);
+    if (!sample) {
+      assert(SmShotWord(ram,0x195e)==0xffff && SmShotWord(ram,0x1962)==0xffff);
+      assert(SmShotWord(ram,0x1976)==0x8000 && SmShotWord(ram,0x1982)==2);
+    }
     else if (types[sample]==6) assert(SmShotWord(ram,0x195e)==SmShotWord(ram,0x1978) && SmShotWord(ram,0x1962)==0xffff);
     else assert(SmShotWord(ram,0x1962)==SmShotWord(ram,0x1978) && SmShotWord(ram,0x195e)==0xffff);
     memcpy(entered,ram,sizeof(entered));SmShotPut(entered,0x195e,123);SmShotPut(entered,0x1962,456);
