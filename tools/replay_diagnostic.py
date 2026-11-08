@@ -25,16 +25,17 @@ def inspect(path):
         raise ValueError("oversized replay segment")
     lines = path.read_text(encoding="utf-8").splitlines()
     # Format 3 adds a MODS line: the gameplay-mod set's identity.
-    resident = lines[0] == "SMREPLAY 4"
+    connected = lines[0] == "SMREPLAY 5"
+    resident = connected or lines[0] == "SMREPLAY 4"
     mods = resident or lines[0] == "SMREPLAY 3"
     header = 5 if mods else 4
-    if (len(lines) < header or lines[0] not in ("SMREPLAY 1", "SMREPLAY 2", "SMREPLAY 3", "SMREPLAY 4") or
+    if (len(lines) < header or lines[0] not in ("SMREPLAY 1", "SMREPLAY 2", "SMREPLAY 3", "SMREPLAY 4", "SMREPLAY 5") or
             len(lines[1].split()) != 5 or not lines[1].startswith("BUILD ") or
             len(lines[2].split()) != 2 or not lines[2].startswith("ROM ") or
             (mods and (len(lines[3].split()) != 2 or not lines[3].startswith("MODS "))) or
             lines[header - 1] != "MODE lle"):
         raise ValueError("unsupported or truncated replay header")
-    activity = lines[0] in ("SMREPLAY 2", "SMREPLAY 3", "SMREPLAY 4")
+    activity = lines[0] in ("SMREPLAY 2", "SMREPLAY 3", "SMREPLAY 4", "SMREPLAY 5")
     if not 0 <= int(lines[2].split()[1], 16) <= 0xffffffff:
         raise ValueError("invalid ROM identity")
     state_path = path.with_name(path.name + ".sav")
@@ -65,7 +66,7 @@ def inspect(path):
                     if activity and not 0 <= int(fields[6]) <= 214:
                         raise ValueError("invalid simulation viewport")
                     if not (0 <= frame <= 0xffffffff and 0 <= word <= 0xffffffff and
-                            0 <= flags <= (255 if resident else 63) and 0 <= aspect < 5 and
+                            0 <= flags <= (511 if connected else 255 if resident else 63) and 0 <= aspect < 5 and
                             fps in (0, 60, 90, 120, 144, 165, 240, 360) and
                             (next_frame is None or next_frame == frame)):
                         raise ValueError("invalid input/settings or discontinuity without checkpoint")

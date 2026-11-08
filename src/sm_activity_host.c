@@ -32,24 +32,26 @@ static bool network_active(void) {
 static void capture_profile(uint8_t out[2]) {
   if (!local_profile_valid) {
     local_extra = local_view(); local_profile_valid = true;
-    local_flags=(g_sm_video.enhanced ? 4u : 0u) | (g_sm_video.neighboring_logic ? 8u : 0u) | (g_sm_video.seamless ? 16u : 0u);
+    local_flags=(g_sm_video.enhanced ? 4u : 0u) | (g_sm_video.neighboring_logic ? 8u : 0u) |
+        (g_sm_video.seamless ? 16u : 0u) | (g_sm_video.connected_rooms ? 64u : 0u);
   }
   out[0] = (uint8_t)local_extra; out[1] = (uint8_t)((SM_VIEW_ACTIVITY ? (0xa0 | SM_ACTIVITY_PROFILE) : 0xa0) | local_flags);
 }
 static void apply_profile(const uint8_t in[2]) {
   unsigned expected = SM_VIEW_ACTIVITY ? (0xa0 | SM_ACTIVITY_PROFILE) : 0xa0;
-  if ((in[1]&0xe3) != expected || !SmActivityExtraValid(in[0]) ||
-      (network_profile_valid && (network_extra != in[0] || network_flags!=(in[1]&28u)))) {
+  if ((in[1]&0xa3) != expected || !SmActivityExtraValid(in[0]) ||
+      (network_profile_valid && (network_extra != in[0] || network_flags!=(in[1]&92u)))) {
     if (!network_error) fprintf(stderr, "[sm-activity] incompatible or changing netplay viewport profile\n");
     network_error = true; snesrecomp_request_exit(); return;
   }
   if (!network_profile_valid)
     fprintf(stderr, "[sm-activity] netplay viewport profile=%u extra=%u fixed for this match\n", expected, in[0]);
   network_extra = in[0]; network_profile_valid = true;
-  network_flags=in[1]&28u;
+  network_flags=in[1]&92u;
   g_sm_video.enhanced=(network_flags&4)!=0;
   g_sm_video.neighboring_logic=(network_flags&8)!=0;
   g_sm_video.seamless=(network_flags&16)!=0;
+  g_sm_video.connected_rooms=(network_flags&64)!=0;
   SmActivityRestore(network_extra);
 }
 #endif

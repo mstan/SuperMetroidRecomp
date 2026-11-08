@@ -17,7 +17,7 @@ SmVideoSettings g_sm_video;
 
 void SmVideoDefaults(SmVideoSettings *s) {
   *s = (SmVideoSettings){.enhanced = true, .aspect = SM_ASPECT_FIT, .hud_anchored = true,
-      .neighboring_logic = true, .seamless = true};
+      .neighboring_logic = true, .seamless = true, .connected_rooms = true};
 }
 
 const char *SmAspectName(SmAspect aspect) {
@@ -95,6 +95,9 @@ bool SmVideoLoad(SmVideoSettings *s, const char *path) {
     } else if (!strcmp(key, "SeamlessRooms")) {
       if (!strcmp(value,"0") || !strcmp(value,"1")) s->seamless=value[0]=='1';
       else valid=false;
+    } else if (!strcmp(key, "ConnectedRooms")) {
+      if (!strcmp(value,"0") || !strcmp(value,"1")) s->connected_rooms=value[0]=='1';
+      else valid=false;
     } else if (!strcmp(key, "Aspect")) {
       if (!SmParseAspect(value, &s->aspect)) valid = false;
     } else if (!strcmp(key, "PresentationFPS")) {
@@ -114,9 +117,9 @@ bool SmVideoSave(const SmVideoSettings *s, const char *path) {
   if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return false;
   FILE *f = fopen(temporary, "w");
   if (!f) return false;
-  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\n",
+  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\nConnectedRooms=%d\n",
                     s->enhanced, SmAspectName(s->aspect), s->fps_enabled, s->fps, s->hud_anchored,
-                    s->neighboring_logic,s->seamless) > 0;
+                    s->neighboring_logic,s->seamless,s->connected_rooms) > 0;
   if (fclose(f)) ok = false;
   if (ok) {
 #ifdef _WIN32

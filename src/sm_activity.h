@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 /* Simulation geometry, distinct from the read-only renderer. */
-enum { SM_ACTIVITY_EXTRA_MAX = 214, SM_ACTIVITY_PROFILE = 2 };
+enum { SM_ACTIVITY_EXTRA_MAX = 214, SM_ACTIVITY_PROFILE = 3 };
 unsigned SmActivityExtra(void);
 /* Player-owned native slots and linked missile indices survive a continuous
  * room handoff; only their room-relative positions and emitted trails move. */
