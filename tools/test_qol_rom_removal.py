@@ -79,13 +79,18 @@ def read_rows(path):
 
 
 def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=None, env_overrides=None,
-             seed_state=None, seed_slot=0, shared_resources=None):
+             seed_state=None, seed_slot=0, shared_resources=None, video_settings=None):
     exe_name = "SuperMetroidSNESRecomp" + (".exe" if os.name == "nt" else "")
     config = (SOURCE / "config.ini").read_text(encoding="utf8")
     config = config.replace("DisableFrameDelay = 0", "DisableFrameDelay = 1")
     config = config.replace("Volume = 100", "Volume = 0").replace("Fullscreen = 1", "Fullscreen = 0")
+    config = config.replace("EnableGamepad1 = true", "EnableGamepad1 = false")
+    config = config.replace("EnableGamepad2 = true", "EnableGamepad2 = false")
     tag, features, script, fields = case
     profile = out / tag; profile.mkdir()
+    if video_settings is not None:
+        (profile / 'sm-video.ini').write_text('[SuperMetroidVideo]\n' + ''.join(
+            f'{key}={value}\n' for key,value in video_settings.items()), encoding='utf8')
     (profile / "config.ini").write_text(config, encoding="utf8")
     shutil.copytree(SOURCE / "mods/preloaded/packages", profile / "mods/preloaded/packages")
     (profile / "mods/preloaded/state.toml").write_text(state(features,shared_resources), encoding="utf8")
