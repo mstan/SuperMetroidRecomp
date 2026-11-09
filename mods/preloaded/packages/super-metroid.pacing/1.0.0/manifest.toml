@@ -213,3 +213,30 @@ default_enabled = false
 [[plugin]]
 feature = "quit-to-file-select"
 id = "super-metroid.pacing.quit-to-file-select"
+
+[[feature]]
+id = "low-health-alarm"
+name = "Low-health alarm"
+author = "SuperMetroidRecomp contributors"
+source_name = "Native low-health audio policy"
+source_url = "https://github.com/mstan/SuperMetroidRecomp"
+description = "Shorten the low-health warning to a brief burst, or mute it. Health indicators, other sounds and music remain enabled."
+group = "Pacing"
+default_enabled = false
+
+[[option]]
+feature = "low-health-alarm"
+id = "mode"
+label = "Warning sound"
+type = "choice"
+default = "short"
+[[option.choice]]
+value = "short"
+label = "Shortened"
+[[option.choice]]
+value = "muted"
+label = "Muted"
+
+[[plugin]]
+feature = "low-health-alarm"
+id = "super-metroid.pacing.low-health-alarm"

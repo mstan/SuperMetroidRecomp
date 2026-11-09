@@ -17,7 +17,7 @@ SmVideoSettings g_sm_video;
 
 void SmVideoDefaults(SmVideoSettings *s) {
   *s = (SmVideoSettings){.enhanced = true, .aspect = SM_ASPECT_FIT, .hud_anchored = true,
-      .neighboring_logic = true, .seamless = true, .connected_rooms = true};
+      .neighboring_logic = true, .seamless = true, .connected_rooms = false};
 }
 
 const char *SmAspectName(SmAspect aspect) {
@@ -78,6 +78,7 @@ bool SmVideoLoad(SmVideoSettings *s, const char *path) {
   if (!f) return errno == ENOENT;
   char line[256], key[64], value[64], tail;
   bool valid = true;
+  bool continuous_present = false, legacy_connected = false;
   while (fgets(line, sizeof(line), f)) {
     if (sscanf(line, " %63[^= \t] = %63s", key, value) != 2) continue;
     if (!strcmp(key, "EnhancedRenderer")) {
@@ -96,6 +97,10 @@ bool SmVideoLoad(SmVideoSettings *s, const char *path) {
       if (!strcmp(value,"0") || !strcmp(value,"1")) s->seamless=value[0]=='1';
       else valid=false;
     } else if (!strcmp(key, "ConnectedRooms")) {
+      if (!strcmp(value,"0") || !strcmp(value,"1")) legacy_connected=value[0]=='1';
+      else valid=false;
+    } else if (!strcmp(key, "ContinuousRoomsEnabled")) {
+      continuous_present = true;
       if (!strcmp(value,"0") || !strcmp(value,"1")) s->connected_rooms=value[0]=='1';
       else valid=false;
     } else if (!strcmp(key, "Aspect")) {
@@ -109,6 +114,9 @@ bool SmVideoLoad(SmVideoSettings *s, const char *path) {
   }
   if (ferror(f)) valid = false;
   fclose(f);
+  /* The old master only took effect with Widescreen enabled. Preserve that
+   * effective choice once, then save the independent setting under its own key. */
+  if (!continuous_present) s->connected_rooms = s->enhanced && legacy_connected;
   return valid;
 }
 
@@ -117,7 +125,7 @@ bool SmVideoSave(const SmVideoSettings *s, const char *path) {
   if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return false;
   FILE *f = fopen(temporary, "w");
   if (!f) return false;
-  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\nConnectedRooms=%d\n",
+  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\nContinuousRoomsEnabled=%d\n",
                     s->enhanced, SmAspectName(s->aspect), s->fps_enabled, s->fps, s->hud_anchored,
                     s->neighboring_logic,s->seamless,s->connected_rooms) > 0;
   if (fclose(f)) ok = false;

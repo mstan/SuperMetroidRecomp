@@ -210,7 +210,9 @@ int main(int argc,char **argv) {
   Put(0x998,15); memcpy(ram_copy,test_ram,sizeof(test_ram));
   Fill(0xff102030); draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
   Guards(0xff102030);
-  assert(frame[GUARD+(TEST_HEIGHT-42)*TEST_STRIDE+8]!=0xff102030);
+  /* Capacity ends at the lower right; the native map/control area stays free. */
+  assert(frame[GUARD+(TEST_HEIGHT-12)*TEST_STRIDE+247]!=0xff102030);
+  assert(frame[GUARD+(TEST_HEIGHT-42)*TEST_STRIDE+8]==0xff102030);
   memcpy(full,frame+GUARD,sizeof(full));
   assert(!memcmp(ram_copy,test_ram,sizeof(test_ram)));
   Put(0x9c8,100); /* Only maximum capacity changes; the pause readout must react. */

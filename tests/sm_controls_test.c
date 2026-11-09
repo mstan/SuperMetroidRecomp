@@ -89,7 +89,32 @@ int main(void) {
   SetWord(kHudItem, 0);
   assert(Step(0, 0, 0) == 0);
 
+  /* Morph and Spring Ball forms select real PBs even if missiles were armed. */
+  memset(g_options,0,sizeof(g_options));
+  const unsigned balls[]={4,8,0x11,0x12,0x13};
+  SetWord(kMaxPowerBombs,5);SetWord(kPowerBombs,5);
+  for (unsigned i=0;i<sizeof(balls)/sizeof(*balls);++i) {
+    g_wram[kMovementType]=(uint8_t)balls[i];SetWord(kHudItem,1);SmZeroMissionActivate();
+    assert(Step(SNES_PAD_L,0,0)==SNES_PAD_SELECT);
+    SetWord(kHudItem,2);assert(!Step(SNES_PAD_L,0,0));
+    assert(Step(SNES_PAD_L,0,0)==SNES_PAD_SELECT);
+    SetWord(kHudItem,3);assert(!Step(SNES_PAD_L,0,0));assert(!Step(SNES_PAD_L,0,0));
+    assert(Step(0,0,0)==SNES_PAD_Y);SetWord(kHudItem,0);assert(!Step(0,0,0));
+  }
+  SetWord(kPowerBombs,0);SmZeroMissionActivate();assert(!Step(SNES_PAD_L,0,0));
+  assert(!Step(0,0,0));SetWord(kPowerBombs,5);
+  g_options[0][0]="aim-shoulder";g_options[0][1]="L";
+  g_options[1][0]="missile";g_options[1][1]="toggle";
+  SetWord(kCfgItemSwitch,0x0040);SetWord(kCfgItemCancel,0x8000); /* X/B remaps */
+  SmZeroMissionActivate();SetWord(kHudItem,1);
+  assert(Step(SNES_PAD_R,0,0)==SNES_PAD_X);
+  SetWord(kHudItem,3);assert(!Step(0,0,0));
+  assert(Step(SNES_PAD_R,0,0)==SNES_PAD_B);
+  assert(!Step(0,0,0));SetWord(kHudItem,0);g_wram[kMovementType]=0;
+  SetWord(kCfgItemSwitch,0x2000);SetWord(kCfgItemCancel,0x4000);
+
   /* radial-menu: stick down picks power bombs only once owned. */
+  SetWord(kMaxPowerBombs,0);
   SmRadialMenuActivate();
   assert(g_overlay_registered);
   assert(Step(0, 0, 30000) == 0);                                        /* none owned */

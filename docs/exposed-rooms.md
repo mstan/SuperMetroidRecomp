@@ -13,12 +13,17 @@ encounter locks and progression helpers start through actual room entry.
 Continuous traversal is the default. Native transitions retain their scrolling
 and body animation while complete room images remain available to presentation.
 
-Connected rooms defaults On. Turn it Off in the launcher's Widescreen options
-or the native pause Options tab to use current-room widescreen with original
-room gameplay and door transitions. Aspect ratio and the saved neighboring-logic
-and transition choices remain intact; those room choices take effect again when
-Connected rooms is On. Netplay fixes this choice to the host's initial profile
+Continuous Rooms is a separate launcher mod, disabled on fresh installs. It
+works at 4:3 as well as wider aspects. Leave it Off for current-room widescreen
+with original room gameplay and door transitions. The native pause Options tab
+also offers its master switch. Aspect ratio and the saved neighboring-logic
+and transition choices remain intact. Netplay fixes this choice to the host's initial profile
 for the match, and replay format 5 records live changes.
+
+The independent master is saved as `ContinuousRoomsEnabled`. Legacy
+`ConnectedRooms` values migrate with their former effective Widescreen state,
+so an inactive room preference cannot silently activate for a 4:3 player.
+Only a published resident scene authorizes rendering adjoining scenery.
 
 Current-room preview margins follow the native door palette fade and scanline
 brightness. The fade uses the palette producer captured with the displayed

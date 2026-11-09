@@ -10,7 +10,7 @@ static void geometry(void) {
   SmVideoSettings s;
   SmVideoDefaults(&s);
   assert(s.enhanced && !s.fps_enabled && s.hud_anchored && s.aspect == SM_ASPECT_FIT);
-  assert(s.neighboring_logic && s.seamless && s.connected_rooms);
+  assert(s.neighboring_logic && s.seamless && !s.connected_rooms);
   assert(SmCalculateViewport(&s, 5120, 1440).width == 682);
   s.enhanced = false;
   assert(SmCalculateViewport(&s, 5120, 1440).width == 256);
@@ -81,13 +81,13 @@ static void mods_and_persistence(const char *path) {
   SmVideoSettings s, loaded;
   SmVideoDefaults(&s);
   const RecompLauncherCModProvider *p=SmModsProvider(&s,path);
-  assert(p->feature_count(p->ctx) == 2);
-  assert(p->package_count(p->ctx) == 2);
+  assert(p->feature_count(p->ctx) == 3);
+  assert(p->package_count(p->ctx) == 3);
   RecompLauncherCModFeature initial;
   assert(p->feature_get(p->ctx,0,&initial) && initial.enabled);
   assert(p->feature_enable(p->ctx,"sm-widescreen","widescreen",0));
   assert(!strcmp(p->archive_extension, ".snesmod"));
-  for (int index = 0; index < 2; ++index) {
+  for (int index = 0; index < 3; ++index) {
     RecompLauncherCModPackage package;
     RecompLauncherCModFeature feature;
     assert(p->package_get(p->ctx, index, &package));
@@ -97,7 +97,7 @@ static void mods_and_persistence(const char *path) {
     assert(!strcmp(feature.source_url, "https://github.com/mstan/SuperMetroidRecomp"));
     assert(!strcmp(package.source_url, feature.source_url));
     assert(!package.enabled && !feature.enabled);
-    assert(feature.option_count == (index ? 1 : 5));
+    assert(feature.option_count == (index == 1 ? 1 : 2));
     for (int option_index = 0; option_index < feature.option_count; ++option_index) {
       RecompLauncherCModOption option;
       assert(p->feature_option_get(p->ctx, package.id, feature.id, option_index, &option));
@@ -129,9 +129,9 @@ static void mods_and_persistence(const char *path) {
   assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","hud","Center"));
   assert(p->feature_enable(p->ctx,"sm-presentation-fps","presentation-fps",1));
   assert(p->feature_set_option(p->ctx,"sm-presentation-fps","presentation-fps","fps","165"));
-  assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","neighbor-logic","Off"));
-  assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","transitions","Native"));
-  assert(p->feature_set_option(p->ctx,"sm-widescreen","widescreen","connected-rooms","Off"));
+  assert(p->feature_set_option(p->ctx,"sm-continuous-rooms","continuous-rooms","neighbor-logic","Off"));
+  assert(p->feature_set_option(p->ctx,"sm-continuous-rooms","continuous-rooms","transitions","Native"));
+  assert(p->feature_enable(p->ctx,"sm-continuous-rooms","continuous-rooms",0));
   /* Room gameplay can be disabled without losing the chosen wider viewport. */
   assert(s.enhanced && !s.connected_rooms && SmCalculateViewport(&s,5120,1440).width==682);
   g_sm_video=s;
@@ -139,7 +139,7 @@ static void mods_and_persistence(const char *path) {
   g_sm_video.connected_rooms=true;
   assert(SmConnectedRoomsEnabled());
   g_sm_video.enhanced=false;
-  assert(!SmConnectedRoomsEnabled());
+  assert(SmConnectedRoomsEnabled()); /* Continuous Rooms also works at4:3. */
   assert(!p->feature_set_option(p->ctx,"sm-presentation-fps","presentation-fps","fps","165junk"));
   assert(!p->feature_set_option(p->ctx,"sm-presentation-fps","presentation-fps","fps","100"));
   assert(p->commit(p->ctx,NULL));
@@ -169,7 +169,32 @@ static void mods_and_persistence(const char *path) {
   FILE *legacy=fopen(path,"w"); assert(legacy);
   fputs("[SuperMetroidVideo]\nEnhancedRenderer=0\nAspect=21:9\n",legacy); assert(!fclose(legacy));
   assert(SmVideoLoad(&loaded,path));
-  assert(!loaded.enhanced && loaded.aspect==SM_ASPECT_21_9 && loaded.neighboring_logic && loaded.seamless && loaded.connected_rooms);
+  assert(!loaded.enhanced && loaded.aspect==SM_ASPECT_21_9 && loaded.neighboring_logic && loaded.seamless && !loaded.connected_rooms);
+  assert(!remove(path));
+  /* Migrate the effective legacy choice without enabling latent 4:3 settings. */
+  legacy=fopen(path,"w");assert(legacy);
+  fputs("[SuperMetroidVideo]\nEnhancedRenderer=0\nConnectedRooms=1\n",legacy);assert(!fclose(legacy));
+  assert(SmVideoLoad(&loaded,path) && !loaded.enhanced && !loaded.connected_rooms);
+  assert(!remove(path));
+  legacy=fopen(path,"w");assert(legacy);
+  fputs("[SuperMetroidVideo]\nConnectedRooms=1\nEnhancedRenderer=1\n",legacy);assert(!fclose(legacy));
+  assert(SmVideoLoad(&loaded,path) && loaded.enhanced && loaded.connected_rooms);
+  assert(!remove(path));
+  /* The independent setting takes precedence over the legacy key in any order. */
+  legacy=fopen(path,"w");assert(legacy);
+  fputs("[SuperMetroidVideo]\nContinuousRoomsEnabled=1\nEnhancedRenderer=0\nConnectedRooms=0\n",legacy);assert(!fclose(legacy));
+  assert(SmVideoLoad(&loaded,path) && !loaded.enhanced && loaded.connected_rooms);
+  assert(!remove(path));
+  SmVideoDefaults(&s);p=SmModsProvider(&s,path);
+  for (int wide=0;wide<2;++wide) for(int rooms=0;rooms<2;++rooms) {
+    assert(p->feature_enable(p->ctx,"sm-widescreen","widescreen",wide));
+    assert(p->feature_enable(p->ctx,"sm-continuous-rooms","continuous-rooms",rooms));
+    assert(s.enhanced==!!wide && s.connected_rooms==!!rooms);
+    assert((SmCalculateViewport(&s,1920,1080).width>256)==!!wide);
+    g_sm_video=s;assert(SmConnectedRoomsEnabled()==!!rooms);
+    assert(p->commit(p->ctx,NULL) && SmVideoLoad(&loaded,path));
+    assert(loaded.enhanced==!!wide && loaded.connected_rooms==!!rooms);
+  }
   assert(!remove(path));
 }
 int main(int argc,char **argv) {

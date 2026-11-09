@@ -146,15 +146,23 @@ toolchain download is needed. No ROM or saved progress is included.
 Open **Mods** in the launcher to configure **Widescreen** (Fit, 16:9, 21:9 or 32:9)
 and choose edge-anchored or centered HUD placement. **Presentation FPS** is a
 separate mod with Auto and fixed frame-rate targets. Fresh installs enable
-Widescreen with adaptive Fit; Presentation FPS starts off. Saved choices are preserved;
-turning both off uses stock rendering. Game logic retains its native timing.
-Widescreen exposes connected rooms and secret passages, including their animated
-scenery. **Neighboring room logic** defaults On; choose Off to suspend neighboring
+Widescreen with adaptive Fit; Presentation FPS and **Continuous Rooms** start off.
+Saved choices are preserved. Turning all three off uses stock rendering.
+Game logic retains its native timing. Widescreen expands the current room;
+Continuous Rooms independently exposes adjoining rooms and secret passages,
+including their animated scenery, at any aspect ratio. Within Continuous Rooms,
+**Neighboring room logic** defaults On; choose Off to suspend neighboring
 enemies while keeping scenery, environmental effects and door bubbles. The choice
 applies when a room loads. **Room transitions** defaults to Continuous, with Native
 available for the original door animation. Boss encounters still begin on entry.
 These features are experimental: full-game visual fidelity is not certified,
 and achievable FPS depends on hardware and the scene.
+
+The optional **Low-health alarm** mod offers Shortened and Muted modes; leave
+it disabled for the original warning. Zero Mission shoulder controls can select
+power bombs while in Morph Ball, using the selected hold or toggle behavior.
+Optional pause time/item percentage and maximum ammo readouts occupy the lower
+left and right corners of the pause screen.
 
 Settings and saves live beside the executable. Keep that directory
 writable, and preserve your settings and `saves/` when updating. The detailed

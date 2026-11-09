@@ -28,9 +28,9 @@ typedef struct SmVideoSettings {
 
 extern SmVideoSettings g_sm_video;
 
-/* Widescreen remains available without resident-room simulation or hooks. */
+/* Room simulation/traversal is independent of presentation width. */
 static inline bool SmConnectedRoomsEnabled(void) {
-  return g_sm_video.enhanced && g_sm_video.connected_rooms;
+  return g_sm_video.connected_rooms;
 }
 
 /* Where g_sm_video lives beside the executable. The launcher's Mods page and

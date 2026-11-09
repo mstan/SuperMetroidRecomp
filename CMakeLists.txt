@@ -247,6 +247,11 @@ if(BUILD_TESTING AND NOT ANDROID)
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_controls COMMAND sm_controls_test)
 
+    add_executable(sm_low_health_alarm_test tests/sm_low_health_alarm_test.c)
+    target_include_directories(sm_low_health_alarm_test PRIVATE src/mods
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_low_health_alarm COMMAND sm_low_health_alarm_test)
+
     add_executable(sm_single_missile_doors_test tests/sm_single_missile_doors_test.c)
     target_include_directories(sm_single_missile_doors_test PRIVATE src/mods
         ${SNESRECOMP_ROOT}/runner/src)
@@ -319,7 +324,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
             sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test
-            sm_controls_test sm_single_missile_doors_test sm_laser_test sm_balance_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test sm_movement_test)
+            sm_controls_test sm_low_health_alarm_test sm_single_missile_doors_test sm_laser_test sm_balance_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test sm_movement_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()
@@ -398,6 +403,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_station_plugins.c
     src/mods/sm_controls_plugin.c
     src/mods/sm_hud_plugins.c
+    src/mods/sm_low_health_alarm_plugin.c
     src/mods/sm_laser_sight_plugin.c
     src/mods/sm_reveal_map_plugin.c
     src/mods/sm_cinematic_skip_plugin.c

@@ -20,7 +20,7 @@ name = "Zero Mission shoulders"
 author = "SuperMetroidRecomp contributors; design references: Zero Mission/Fusion (Nintendo)"
 source_name = "Native zero-mission implementation"
 source_url = "https://github.com/mstan/SuperMetroidRecomp/blob/feat/super-metroid-enhancements/src/mods/sm_controls_plugin.c"
-description = "One shoulder aims diagonally: Up or Down selects an angle, retained when released and next time you aim. The other shoulder arms missiles, as in Metroid: Zero Mission and Fusion. Uses your in-game button setup for aiming and item select/cancel."
+description = "One shoulder aims diagonally: Up or Down selects an angle, retained for next time. The other arms missiles, or power bombs in Morph Ball, using native item switching and ammunition. Uses your in-game button setup for aiming and item select/cancel."
 group = "Controls"
 default_enabled = false
 

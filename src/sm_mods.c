@@ -8,28 +8,30 @@
 static SmVideoSettings *video;
 static const char *path;
 static char error[128];
-static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps"};
-static const char *const features[] = {"widescreen", "presentation-fps"};
-static const char *const names[] = {"Widescreen", "Higher FPS"};
-static const char *const versions[] = {"1", "2"};
+static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps", "sm-continuous-rooms"};
+static const char *const features[] = {"widescreen", "presentation-fps", "continuous-rooms"};
+static const char *const names[] = {"Widescreen", "Higher FPS", "Continuous Rooms"};
+static const char *const versions[] = {"2", "2", "1"};
+static const int option_counts[] = {2, 1, 2};
 static const char *const descriptions[] = {
-  "Render a wider view with optional connected rooms and HUD anchoring.",
-  "Smooth object and camera motion at your display rate while keeping game timing unchanged."
+  "Render a wider view of the current room with optional HUD anchoring.",
+  "Smooth object and camera motion at your display rate while keeping game timing unchanged.",
+  "Show adjoining rooms, their scenery and optional gameplay across doors. Works at any aspect ratio."
 };
 static const char *const aspects[] = {"Fit", "16:9", "21:9", "32:9"};
 static const char *const rates[] = {"Auto", "60", "90", "120", "144", "165", "240", "360"};
 #define COPY(field, text) snprintf(field, sizeof(field), "%s", text)
 
 static int identity(const char *package, const char *feature) {
-  if (package && feature) for (int i = 0; i < 2; ++i)
+  if (package && feature) for (int i = 0; i < 3; ++i)
     if (!strcmp(package, packages[i]) && !strcmp(feature, features[i])) return i;
   return -1;
 }
-static int count(void *ctx) { (void)ctx; return 2; }
-static int enabled(int index) { return index ? video->fps_enabled : video->enhanced; }
+static int count(void *ctx) { (void)ctx; return 3; }
+static int enabled(int index) { return index == 2 ? video->connected_rooms : index == 1 ? video->fps_enabled : video->enhanced; }
 static int package_get(void *ctx, int i, RecompLauncherCModPackage *out) {
   (void)ctx;
-  if (!out || i < 0 || i >= 2) return 0;
+  if (!out || i < 0 || i >= 3) return 0;
   memset(out, 0, sizeof(*out));
   COPY(out->id, packages[i]); COPY(out->name, names[i]); COPY(out->version, versions[i]);
   COPY(out->author, "SuperMetroidRecomp contributors");
@@ -40,16 +42,16 @@ static int package_get(void *ctx, int i, RecompLauncherCModPackage *out) {
 }
 static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out) {
   (void)ctx;
-  if (!out || i < 0 || i >= 2) return 0;
+  if (!out || i < 0 || i >= 3) return 0;
   memset(out, 0, sizeof(*out));
   COPY(out->id, features[i]); COPY(out->package_id, packages[i]);
   COPY(out->package_name, names[i]); COPY(out->package_version, versions[i]);
-  COPY(out->name, names[i]); COPY(out->group, "Presentation");
+  COPY(out->name, names[i]); COPY(out->group, i == 2 ? "Gameplay" : "Presentation");
   COPY(out->author, "SuperMetroidRecomp contributors");
   COPY(out->source_name, "SuperMetroidRecomp presentation features");
   COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]);
-  out->enabled = enabled(i); out->option_count = i ? 1 : 5;
+  out->enabled = enabled(i); out->option_count = option_counts[i];
   COPY(out->status, out->enabled ? "Enabled" : "Disabled");
   return 1;
 }
@@ -57,7 +59,7 @@ static int option_get(void *ctx, const char *package, const char *feature,
                       int index, RecompLauncherCModOption *out) {
   (void)ctx;
   int kind = identity(package, feature);
-  if (!out || kind < 0 || index < 0 || index >= (kind ? 1 : 5)) return 0;
+  if (!out || kind < 0 || index < 0 || index >= option_counts[kind]) return 0;
   memset(out, 0, sizeof(*out)); out->type = RECOMP_MOD_OPTION_CHOICE; out->step = 1;
   if (kind == 1) {
     COPY(out->id, "fps"); COPY(out->label, "Presentation FPS");
@@ -65,31 +67,26 @@ static int option_get(void *ctx, const char *package, const char *feature,
     if (video->fps) snprintf(out->value, sizeof(out->value), "%u", video->fps);
     else COPY(out->value, "Auto");
     COPY(out->default_value, "Auto"); out->choice_count = 8;
-  } else if (index == 0) {
+  } else if (kind == 0 && index == 0) {
     COPY(out->id, "aspect"); COPY(out->label, "Aspect ratio");
     COPY(out->description, "Fit adapts to the window between 4:3 and 32:9.");
     COPY(out->value, SmAspectName(video->aspect));
     COPY(out->default_value, "Fit"); out->choice_count = 4;
-  } else if (index==1) {
+  } else if (kind == 0) {
     COPY(out->id, "hud"); COPY(out->label, "HUD anchoring");
     COPY(out->description, "Energy at the left edge, minimap at the right, weapons centered.");
     COPY(out->value, video->hud_anchored ? "Edges" : "Center");
     COPY(out->default_value, "Edges"); out->choice_count = 2;
-  } else if (index==2) {
+  } else if (index == 0) {
     COPY(out->id,"neighbor-logic"); COPY(out->label,"Neighboring room logic");
     COPY(out->description,"Run enemies and gameplay actors in neighboring rooms. Off keeps animated scenery and doors. Applies when a room loads.");
     COPY(out->value,video->neighboring_logic ? "On" : "Off");
     COPY(out->default_value,"On"); out->choice_count=2;
-  } else if (index==3) {
+  } else {
     COPY(out->id,"transitions"); COPY(out->label,"Room transitions");
     COPY(out->description,"Continuous keeps the world and camera connected across doors. Native uses the original transition animation.");
     COPY(out->value,video->seamless ? "Continuous" : "Native");
     COPY(out->default_value,"Continuous"); out->choice_count=2;
-  } else {
-    COPY(out->id,"connected-rooms"); COPY(out->label,"Connected rooms");
-    COPY(out->description,"Off keeps widescreen within the current room with native room gameplay. On shows connected rooms and enables their room options.");
-    COPY(out->value,video->connected_rooms ? "On" : "Off");
-    COPY(out->default_value,"On"); out->choice_count=2;
   }
   return 1;
 }
@@ -97,9 +94,8 @@ static const char *choice(int kind, const char *option, int index) {
   if (!option || index < 0) return NULL;
   if (kind == 0 && !strcmp(option, "aspect") && index < 4) return aspects[index];
   if (kind == 0 && !strcmp(option, "hud") && index < 2) return index ? "Center" : "Edges";
-  if (kind == 0 && !strcmp(option,"neighbor-logic") && index<2) return index ? "Off" : "On";
-  if (kind == 0 && !strcmp(option,"connected-rooms") && index<2) return index ? "Off" : "On";
-  if (kind == 0 && !strcmp(option,"transitions") && index<2) return index ? "Native" : "Continuous";
+  if (kind == 2 && !strcmp(option,"neighbor-logic") && index<2) return index ? "Off" : "On";
+  if (kind == 2 && !strcmp(option,"transitions") && index<2) return index ? "Native" : "Continuous";
   if (kind == 1 && !strcmp(option, "fps") && index < 8) return rates[index];
   return NULL;
 }
@@ -116,10 +112,11 @@ static int enable(void *ctx, const char *package, const char *feature, int on) {
   (void)ctx;
   int kind = identity(package, feature);
   if (kind < 0) return 0;
-  if (!kind && !SmActivityGeometryMutable()) {
+  if (kind != 1 && !SmActivityGeometryMutable()) {
     COPY(error, "The initial host view stays fixed during this netplay match."); return 0;
   }
-  if (kind) video->fps_enabled = on != 0;
+  if (kind == 2) video->connected_rooms = on != 0;
+  else if (kind == 1) video->fps_enabled = on != 0;
   else video->enhanced = on != 0;
   return 1;
 }
@@ -128,17 +125,16 @@ static int set_option(void *ctx, const char *package, const char *feature,
   (void)ctx;
   int kind = identity(package, feature);
   if (kind < 0 || !value) return 0;
-  if (!kind && option && strcmp(option,"hud") && !SmActivityGeometryMutable()) {
+  if (kind != 1 && option && strcmp(option,"hud") && !SmActivityGeometryMutable()) {
     COPY(error, "The initial host view stays fixed during this netplay match."); return 0;
   }
   for (int i = 0; i < 8; ++i) {
     const char *candidate = choice(kind, option, i);
     if (!candidate || strcmp(candidate, value)) continue;
-    if (kind) video->fps = i ? (unsigned)atoi(value) : 0;
+    if (kind == 1) video->fps = i ? (unsigned)atoi(value) : 0;
     else if (!strcmp(option, "hud")) video->hud_anchored = i == 0;
     else if (!strcmp(option,"neighbor-logic")) video->neighboring_logic=i==0;
     else if (!strcmp(option,"transitions")) video->seamless=i==0;
-    else if (!strcmp(option,"connected-rooms")) video->connected_rooms=i==0;
     else return SmParseAspect(value, &video->aspect);
     return 1;
   }
