@@ -23,7 +23,7 @@ static bool SmFrameBegin(uint32_t *inputs) {
       !SmRendererLatchRooms(SmRoomsScene())) return false;
   /* Playback may restore a checkpoint and change presentation at this exact
    * boundary, so latch objects after those changes. */
-  if (g_sm_video.enhanced || g_sm_video.fps_enabled || SmActivityNetworkWide() || SmModOverlayActive())
+  if (g_sm_video.enhanced || g_sm_video.fps_enabled || rooms || SmActivityNetworkWide() || SmModOverlayActive())
     SmRendererLatchObjectState(g_ram);
   return true;
 }

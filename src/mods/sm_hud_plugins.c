@@ -79,7 +79,7 @@ static void SmPauseStatsDraw(uint32_t *pixels, int stride, int width, int height
   (void)width;
   if (!Paused(wram) || SmMapFullScreen(wram)) return;
   char text[48];
-  snprintf(text, sizeof(text), "TIME %02u:%02u:%02u ITEMS %d%%",
+  snprintf(text, sizeof(text), "%02u:%02u:%02u %d%%",
            (unsigned)Word(wram, kTimeHours), (unsigned)Word(wram, kTimeMinutes),
            (unsigned)Word(wram, kTimeSeconds), SmModItemPercent(wram));
   /* The bottom rows, below the pause screens' L/R button bar. */
@@ -98,11 +98,12 @@ static void SmAmmoTotalsDraw(uint32_t *pixels, int stride, int width, int height
   (void)width;
   if (!Paused(wram) || SmMapFullScreen(wram)) return;
   char text[64];
-  snprintf(text, sizeof(text), "MAX M %u S %u P %u",
+  snprintf(text, sizeof(text), "MAX %u/%u/%u",
            (unsigned)Word(wram, kMissilesMax), (unsigned)Word(wram, kSupersMax),
            (unsigned)Word(wram, kPowerBombsMax));
-  /* Above the pause screen's L/R button bar. The native gameplay HUD is kept. */
-  Panel(pixels, stride, height, stage_x + 8, height - 42, text);
+  /* Same lower row as time/items, anchored to the opposite corner. Keep the
+   * native map and L/R control bar free. Ammo order is missiles/supers/PBs. */
+  Panel(pixels, stride, height, stage_x + 248 - ((int)strlen(text)*8+6), height - 12, text);
 }
 
 static void SmAmmoTotalsActivate(void) {

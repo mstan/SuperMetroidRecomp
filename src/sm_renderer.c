@@ -2280,8 +2280,10 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
                                 const uint16_t *active_objects, const uint16_t *active_palette,
                                 const uint8_t *object_owners,
                                 const SmRoomScene *rooms, const SmRoomScene *old_rooms, double alpha) {
-  (void)old_rooms;(void)alpha;
-  if (y<32) return;
+  (void)old_rooms;(void)alpha;(void)preview_brightness;
+  /* Only a published room scene authorizes foreign scenery. Widescreen
+   * alone must not fall back to rendering immutable neighboring ROM rooms. */
+  if (!rooms || y<32) return;
   if (rooms) for (unsigned i=rooms->count; i-- >0;) {
     const SmRoomImage *image=&rooms->rooms[i];
     const uint8_t *r=image->ram;
@@ -2329,17 +2331,6 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
       row[sx]=object_colour(&p,private_palettes[i],active_palette,brightness,
           screens[0],screens[1],false,object,object_owners[sx]);
     }
-  }
-  if (rooms) return;
-  for (int sx = 0; sx < view.width; ++sx) {
-    int x = sx - view.extra, wx = camera_x + x, wy = camera_y + y + 1;
-    if (x >= 0 && x < 256) continue;
-    if (wx >= 0 && wx < room_width && wy >= 0 && wy < room_height &&
-        !padding[(wy/256)*16+wx/256]) continue;
-    uint16_t color;
-    if (SmRoomPreviewPixelAt(wx, wy, camera_x, camera_y, &color))
-      row[sx] = (uint32_t)preview_brightness[color & 31] << 16 |
-                (uint32_t)preview_brightness[(color >> 5) & 31] << 8 | preview_brightness[(color >> 10) & 31];
   }
 }
 
@@ -2575,7 +2566,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
    * RAM can already contain the following fade step. */
   const uint8_t *preview_state=f->object_state_valid ? f->object_ram : f->ram;
   uint8_t preview_colors[32];native_preview_fade(preview_state,rooms,preview_colors);
-  if (room && viewport.extra)
+  if (room && viewport.extra && rooms)
     SmRoomPreviewPrepare(f->ram, (int16_t)read16(f->ram, 0x911)-viewport.extra-32,
         (int16_t)read16(f->ram, 0x915)-32,
         (int16_t)read16(f->ram, 0x911)+256+viewport.extra+32,

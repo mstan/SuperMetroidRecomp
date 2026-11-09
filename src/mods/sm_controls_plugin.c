@@ -37,11 +37,11 @@
 #define PACKAGE "super-metroid.controls"
 
 enum {
-  kGameState = 0x0998, kEquipped = 0x09A2,
+  kGameState = 0x0998, kEquipped = 0x09A2, kMovementType = 0x0A1F,
   kCfgRun = 0x09B6,
   kCfgItemCancel = 0x09B8, kCfgItemSwitch = 0x09BA,
   kCfgAimDown = 0x09BC, kCfgAimUp = 0x09BE,
-  kMaxMissiles = 0x09C8, kMaxSupers = 0x09CC, kMaxPowerBombs = 0x09D0,
+  kMaxMissiles = 0x09C8, kMaxSupers = 0x09CC, kMaxPowerBombs = 0x09D0, kPowerBombs = 0x09CE,
   kHudItem = 0x09D2,
   kStickDeadzone = 16000,
 };
@@ -80,6 +80,7 @@ typedef struct Seat {
   int pulse_phase;      /* 0 idle, 2 = press this frame, 1 = release this frame */
   bool missile_held;
   bool aim_down;        /* local input preference, independent for each seat */
+  bool power_bomb_selecting;
 } Seat;
 /* Each feature pulses independently: both may be enabled. */
 static Seat g_zm_seats[2], g_radial_seats[2];
@@ -100,8 +101,16 @@ static uint16_t PulseOutput(Seat *seat) {
 static uint16_t g_aim_shoulder = SNES_PAD_R, g_missile_shoulder = SNES_PAD_L;
 static bool g_missile_toggle, g_missile_enabled = true;
 
+static bool MorphBall(const uint8_t *wram) {
+  unsigned movement=wram[kMovementType];
+  return movement==4 || movement==8 || movement==0x11 || movement==0x12 || movement==0x13;
+}
+
 static uint16_t SmZeroMissionControls(uint16_t buttons, const SnesModInputContext *ctx) {
-  if (!ctx->wram || !InGameplay(ctx->wram)) return buttons;
+  if (!ctx->wram || !InGameplay(ctx->wram)) {
+    g_zm_seats[ctx->player&1].power_bomb_selecting=false;
+    return buttons;
+  }
   if (SmQuickMorphAirInput(&buttons,ctx)) return buttons;
   const uint8_t *wram = ctx->wram;
   Seat *seat = &g_zm_seats[ctx->player & 1];
@@ -115,14 +124,26 @@ static uint16_t SmZeroMissionControls(uint16_t buttons, const SnesModInputContex
     out |= HostButtons(Word(wram, seat->aim_down ? kCfgAimDown : kCfgAimUp));
   }
   if (g_missile_enabled) {
-    bool armed = Word(wram, kHudItem) != 0;
+    unsigned item=Word(wram,kHudItem);
+    bool armed = item != 0;
+    bool morph=MorphBall(wram);
+    bool power_bombs=morph && Word(wram,kMaxPowerBombs) && Word(wram,kPowerBombs);
     bool pressed = missile && !seat->missile_held;
     bool released = !missile && seat->missile_held;
     if (g_missile_toggle) {
-      if (pressed)
-        Pulse(seat, HostButtons(Word(wram, armed ? kCfgItemCancel : kCfgItemSwitch)));
+      if (pressed) {
+        seat->power_bomb_selecting=power_bombs && item!=3;
+        if (!seat->power_bomb_selecting && (!morph || item==3))
+          Pulse(seat,HostButtons(Word(wram,armed ? kCfgItemCancel : kCfgItemSwitch)));
+      }
+      if (!power_bombs || item==3) seat->power_bomb_selecting=false;
+      if (seat->power_bomb_selecting)
+        Pulse(seat,HostButtons(Word(wram,kCfgItemSwitch)));
     } else {
-      if (pressed && !armed) Pulse(seat, HostButtons(Word(wram, kCfgItemSwitch)));
+      /* Native item-switch pulses select the real PB slot; they never create
+       * a bomb or alter inventory. Keep cycling if another weapon was armed. */
+      if ((missile && power_bombs && item!=3) || (pressed && !armed && !morph))
+        Pulse(seat, HostButtons(Word(wram, kCfgItemSwitch)));
       if (released && armed) Pulse(seat, HostButtons(Word(wram, kCfgItemCancel)));
     }
     seat->missile_held = missile;
