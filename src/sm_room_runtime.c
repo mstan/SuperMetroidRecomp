@@ -9,6 +9,8 @@
 #include <string.h>
 
 enum { PLAYER_VIEW=0x9a2,PLAYER_VIEW_BYTES=0xb64-PLAYER_VIEW };
+static SmRoomInstructionHook instruction_hook;
+void SmRoomRuntimeSetInstructionHook(SmRoomInstructionHook hook) { instruction_hook=hook; }
 typedef struct PlayerLoan {
   uint8_t player[PLAYER_VIEW_BYTES],input[24],timers[4];
   uint8_t blast[10];
@@ -142,7 +144,7 @@ static void write_bus(void *context, uint32_t a, uint8_t v) {
   fail(r,"unsupported room write",a);
 }
 /* Bounded native routine call, with an actual cartridge JSR/JSL return frame.
- * No host dispatch, mod hooks, IRQs, NMI or active-machine bus is involved. */
+ * No host dispatch, IRQs, NMI or active-machine bus is involved. */
 static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
   Interp816 *c=r->cpu;
   if (r->error[0]) return false;
@@ -202,6 +204,7 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
     if (r->shot_air && (c->k&127)==0x14 && (c->pc==0xa1cd || c->pc==0xa1ee) &&
         c->x==18 && r->shot_air(r->shot_context,r->ram,word(r->ram+0xdc4)))
       c->x=0; /* this registered connection's trigger is ordinary shot air */
+    if (instruction_hook) instruction_hook(c,r->ram);
     interp816_runOpcode(c);
     if (r->error[0]) {
       size_t n=strlen(r->error);
@@ -869,6 +872,23 @@ static bool has_item_slots(const SmRoomRuntime *r,const uint8_t ram[0x20000]) {
   for (unsigned i=0,j; i<40; ++i) if (item_slot(r,ram,i,&j)) return true;
   return false;
 }
+static void promote_enemy_graphics(const SmRoomRuntime *r,uint16_t vram[0x8000]) {
+  unsigned list=word(r->ram+0x7d1);
+  /* ProcessEnemyTilesets leaves one seven-byte DMA descriptor per native
+   * tileset entry. Only those ranges belong to the resident enemy pool.
+   * The rest can contain shared graphics uploaded after this room was
+   * cached, including the escape timer. Never restore the whole OBJ bank. */
+  for (unsigned i=0;list && i<4;++i) {
+    unsigned id=r->tileset==list ? word(r->tileset_data+4*i) :
+        (unsigned)rom_long(r,0xb40000u+list+4*i)&65535;
+    if (id==65535) break;
+    unsigned descriptor=0xe5a+7*i,size=word(r->ram+descriptor),offset=word(r->ram+descriptor+5);
+    unsigned expected=(unsigned)rom_long(r,0xa00000u+id)&0x7fff;
+    unsigned target=0x6c00+offset/2;
+    if (size!=expected || ((size|offset)&1) || target>0x8000 || size/2>0x8000-target) continue;
+    for (unsigned j=0;j<size/2;++j) vram[target+j]=(uint16_t)word(r->vram+2*(target+j));
+  }
+}
 void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t vram[0x8000]) {
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return;
   /* Entry-only encounters are initialized by the active cartridge loader.
@@ -887,7 +907,7 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
     memcpy(ram+0xf78,r->ram+0xf78,0x18aa-0xf78);
     memcpy(ram+0x7000,r->ram+0x7000,0x2800);
     memcpy(ram+0x198d,r->ram+0x198d,0x1c23-0x198d);
-    for (unsigned i=0x6c00; i<0x8000; ++i) vram[i]=(uint16_t)word(r->vram+2*i);
+    promote_enemy_graphics(r,vram);
   }
   if (!entry) {
     if (has_item_slots(r,ram)) for (unsigned i=0; i<4; ++i) if (word(r->ram+0x1c2f+2*i)) {

@@ -307,6 +307,12 @@ static bool room_state(unsigned state) {
   return (state >= 7 && state <= 13) || (state >= 18 && state <= 25) ||
          state == 27 || (state >= 32 && state <= 38) || state == 42;
 }
+/* Cinematics reuse gameplay actor RAM for their own objects and scripts.
+ * Their captured OAM is valid; interpreting those words as gameplay maps
+ * invents sprites in the wider margins. */
+static bool gameplay_actor_state(unsigned state) {
+  return room_state(state) && state != 34 && state != 37;
+}
 bool SmRendererPowerBombWidths(const uint8_t profile[160], unsigned radius,
                               int16_t widths[192]) {
   if (!profile || !widths || radius > 255) return false;
@@ -949,6 +955,13 @@ bool SmRendererXrayBlocks(const uint8_t ram[0x20000], uint16_t blocks[0x3200]) {
 }
 
 typedef struct SmBg2Object { bool valid; int x, y; bool crocomire, parked; } SmBg2Object;
+static bool escape_text_canvas(const uint8_t *ram) {
+  if (read16(ram, 0xf78) != 0xec7f || ram[0xfa6] != 0xa9) return false;
+  switch (read16(ram, 0xfa8)) {
+  case 0xb2d1: case 0xb2e3: case 0xb2f9: case 0xb32a: case 0xb33c: return true;
+  default: return false;
+  }
+}
 /* Extended spritemaps explicitly tag BG2 tilemap children with $FFFE
  * ($A0:944A/$96CA). Their tilemap is one moving object, not repeating room
  * scenery. Derive ownership from that ROM format rather than boss IDs. */
@@ -1030,11 +1043,20 @@ static SmBackgroundLine background_line(const SnesRenderRegisters *p, const uint
    * Its first row (surface bubbles) still belongs to the first $5A page. */
   b.fx_surface = b.screen_space && (b.sc & 2) && read16(room, 0x1964) != 0;
   unsigned fx_type=read16(room,0x196e);
-  if (b.fx_surface && (fx_type==2 || fx_type==4 || fx_type==6)) {
+  /* Power Bombs reuse the FX row as a black subscreen canvas outside their
+   * window. Cutting holes in that canvas exposes the bright fixed color. */
+  if (b.fx_surface && !(read16(room,0x592)&0x8000) &&
+      (fx_type==2 || fx_type==4 || fx_type==6)) {
     b.liquid_surface=(int16_t)read16(room,fx_type==6 ? 0x195e : 0x1962);
     if (b.liquid_surface>=0) b.fx_room=room;
   }
-  if (layer == 1 && object.valid && (room[0x91b] & 1)) {
+  /* $A6:C23F hands BG2 to the escape typewriter at screen origin. Its
+   * single UI canvas must not repeat into the wider room. */
+  if (layer == 1 && escape_text_canvas(room)) {
+    b.object_canvas = true;
+    b.canvas_width = b.canvas_height = 256;
+    b.canvas_scroll_x = b.scroll_x;
+  } else if (layer == 1 && object.valid && (room[0x91b] & 1)) {
     b.object_canvas = true;
     b.canvas_width = b.size * (b.sc & 1 ? 64 : 32);
     b.canvas_height = b.size * (b.sc & 2 ? 64 : 32);
@@ -1819,6 +1841,38 @@ static void enemy_map(const SmRasterLine *line, const SnesRenderRegisters *p,
   enemy_map_pixels(line,p,bank,map,origin_x,origin_y,palette,base_tile,y,viewport,pixels,include_center,clip);
 }
 
+/* The tank head uses $A9:9357's private draw hook, even though the ordinary
+ * enemy has its invisible bit set. Its animation script is separate from
+ * Enemy.spritemap. Recover that authored map only in the extra columns. */
+static void mother_brain_tank_head(const SmSourceFrame *f,const SmRasterLine *line,
+    const SnesRenderRegisters *p,int y,SmViewport viewport,uint16_t *pixels,
+    const SmSourceFrame *previous,double alpha) {
+  const uint8_t *ram=f->object_ram;
+  if (!f->object_state_valid || !viewport.extra || read16(ram,0xf78)!=0xec7f ||
+      read16(ram,0xfb8)!=0xec3f || ram[0xfa6]!=0xa9 || read16(ram,0xfa8)!=0x87e1) return;
+  unsigned script=read16(ram,0x8002);
+  const uint8_t *entry=script>=0x8000 ? rom_bytes(0xa9,script,4) : NULL;
+  if (!entry || (read16(entry,0)&0x8000)) return;
+  unsigned map=read16(entry,2),flash=read16(ram,0xfdc),shake=read16(ram,0x7840);
+  if (shake) ++shake;
+  else shake=flash ? flash : read16(ram,0xfe2);
+  const uint8_t *dx=rom_bytes(0xa9,0x93bb+(shake&6),2);
+  const uint8_t *dy=rom_bytes(0xa9,0x93c3+(shake&6),2);
+  if (!dx || !dy) return;
+  int camera_x=(int16_t)read16(ram,0x911),camera_y=(int16_t)read16(ram,0x915);
+  if (previous && alpha<1 && previous->object_state_valid &&
+      read16(previous->object_ram,0xfa8)==0x87e1) {
+    int old_x=(int16_t)read16(previous->object_ram,0x911);
+    int old_y=(int16_t)read16(previous->object_ram,0x915);
+    if (abs(old_x-camera_x)<=32 && abs(old_y-camera_y)<=32) {
+      camera_x=lerp_pixel(old_x,camera_x,alpha);camera_y=lerp_pixel(old_y,camera_y,alpha);
+    }
+  }
+  enemy_map(line,p,0xa9,map,(int16_t)read16(ram,0xfba)+(int16_t)read16(dx,0)-camera_x,
+      (int16_t)read16(ram,0xfbe)+(int16_t)read16(dy,0)-camera_y,
+      flash&1 ? 0 : read16(ram,0x781a),0,y,viewport,pixels,NULL);
+}
+
 static void enemies(const SmSourceFrame *f, const SmRasterLine *line,
                     const SnesRenderRegisters *p, int y, SmViewport viewport, uint16_t *pixels,
                     unsigned phase, const SmSourceFrame *previous, double alpha) {
@@ -2074,7 +2128,7 @@ static bool hud_tail_line(const SmSourceFrame *f, unsigned y, const SnesRenderRe
   memcpy(&hud, f->lines[y - 1].registers, PPU_SAVESTATE_REGS_SIZE);
   return hud.screenEnabled[0] == 4 && !hud.cgadsub && !hud.cgwsel &&
       !((hud.mosaic & 4) && (hud.mosaic >> 4)) &&
-      hud.bgmode == p->bgmode && hud.bgXsc[2] == p->bgXsc[2] &&
+      hud.bgmode == p->bgmode && (hud.bgXsc[2] & 0xfc) == (p->bgXsc[2] & 0xfc) &&
       (hud.bgTileAdr & 0xf00) == (p->bgTileAdr & 0xf00) &&
       hud.hScroll[2] == 0 && hud.vScroll[2] == p->vScroll[2];
 }
@@ -2849,7 +2903,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     int object_y=y;
     if ((mode==1 || mode==7) && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y+=camera_dy; }
     sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha, reuse_center);
-    if ((viewport.extra || (rooms && rooms->ownership)) && renderer_rom) {
+    if (gameplay_actor_state(state) && (viewport.extra || (rooms && rooms->ownership)) && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
        * The native center continues to use captured OAM exclusively. */
       for (int phase = 7; phase >= 0; --phase) {
@@ -2857,6 +2911,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
         if (phase == 6) enemy_projectiles(f, l, &scanout, object_y, object_view, objects, false, previous, alpha);
         if (phase == 3) player_projectiles(f, l, &scanout, object_y, object_view, objects, false, previous, alpha);
       }
+      mother_brain_tank_head(f,l,&scanout,object_y,object_view,objects,previous,alpha);
       enemy_projectiles(f, l, &scanout, object_y, object_view, objects, true, previous, alpha);
       player_projectiles(f, l, &scanout, object_y, object_view, objects, true, previous, alpha);
       sprite_objects(f, l, &scanout, object_y, object_view, objects, previous, alpha);

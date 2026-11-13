@@ -243,3 +243,13 @@ default_enabled = false
 [[plugin]]
 feature = "heavy-physics"
 id = "super-metroid.movement.heavy-physics"
+[[feature]]
+id = "spin-jump-animation"
+name = "Space Jump spin animation"
+description = "Use the native Space Jump animation for ordinary spin jumps. Additional jumps still require the equipped Space Jump ability."
+group = "Movement"
+default_enabled = false
+
+[[plugin]]
+feature = "spin-jump-animation"
+id = "super-metroid.movement.spin-jump-animation"

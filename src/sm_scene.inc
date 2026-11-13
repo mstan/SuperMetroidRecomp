@@ -36,7 +36,7 @@ static void scene_reset(void) {
 
 static void scene_actors(const SmSourceFrame *f, SmScene *scene) {
   memset(scene, 0, sizeof(*scene));
-  if (!f->object_state_valid) return;
+  if (!f->object_state_valid || !gameplay_actor_state(read16(f->ram,0x998))) return;
   const uint8_t *ram = f->object_ram;
   SmSceneActor *samus = &scene->actors[SM_SCENE_SAMUS];
   samus->valid = true;

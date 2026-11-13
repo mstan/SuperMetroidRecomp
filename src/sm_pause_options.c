@@ -177,7 +177,7 @@ static const RecompRuntimeUiItem kItems[] = {
   { "aspect", kSection, "Aspect ratio", NULL,
     RECOMP_RUNTIME_UI_CHOICE, 0, SM_ASPECT_COUNT - 1, 1,
     g_aspect_choices, SM_ASPECT_COUNT, NULL },
-  { "connected_rooms", kSection, "Continuous Rooms", NULL,
+  { "connected_rooms", kSection, "Rooms (experimental)", NULL,
     RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
   /* The framework's own display settings (host_api.h, snesrecomp PR #186).
    * Each change applies live to the running window; the host marks its
@@ -199,6 +199,8 @@ static const RecompRuntimeUiItem kItems[] = {
    * normal shutdown path, so any config the panel dirtied is written to
    * config.ini first. */
   { "exit", kSection, "Exit", NULL,
+    RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
+  { "quit_launcher", kSection, "Quit to launcher", NULL,
     RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
   { "back", kSection, "Back to map", NULL,
     RECOMP_RUNTIME_UI_ACTION, 0, 0, 0, NULL, 0, NULL },
@@ -264,6 +266,7 @@ static int SetValue(void *ctx, const RecompRuntimeUiItem *item, int value) {
 static int RunAction(void *ctx, const RecompRuntimeUiItem *item) {
   (void)ctx;
   if (!strcmp(item->key, "quit_file")) return SmQuitFileSelectRequest();
+  if (!strcmp(item->key, "quit_launcher")) return snesrecomp_request_launcher();
   if (!strcmp(item->key, "back")) {
     g_leave = true;
     return 1;
@@ -308,10 +311,10 @@ static RecompRuntimeUi *Ui(void) {
   config.items = kItems;
   config.item_count = sizeof(kItems) / sizeof(kItems[0]);
   if (quit) {
-    size_t before = config.item_count - 2; /* before Exit and Back */
+    size_t before = config.item_count - 3; /* before Exit, Launcher and Back */
     memcpy(g_items_with_quit, kItems, before * sizeof(kItems[0]));
     g_items_with_quit[before] = kQuitItem;
-    memcpy(g_items_with_quit + before + 1, kItems + before, 2 * sizeof(kItems[0]));
+    memcpy(g_items_with_quit + before + 1, kItems + before, 3 * sizeof(kItems[0]));
     config.items = g_items_with_quit; ++config.item_count;
   }
   config.callbacks.get_value = GetValue;
@@ -738,15 +741,17 @@ static void DrawPanel(uint32_t *dst, int stride, int width, int height) {
   SmRomGlyphDraw(dst, stride, width, height,
                  extra + 10 * 8, 40, "GAME OPTIONS", COL_TITLE, 1);
 
-  /* Rows, as the model reports them. The 8x8 font is upper-case only, so
-   * "On" and "Fit" draw as ON and FIT. Eleven rows at 13px pitch from y=50
-   * reach 187, inside the frame's y=48..191 interior. */
+  /* Derive the viewport from the selected row. It follows navigation and
+   * snapshot cursor restoration without another piece of mutable state.
+   * Eleven rows at 13px pitch fit inside the frame's y=48..191 interior. */
   {
     const size_t count = recomp_runtime_ui_view_row_count(g_ui);
     const size_t selected = recomp_runtime_ui_view_selected_row(g_ui);
+    const size_t visible = 11;
+    const size_t first = selected >= visible ? selected - visible + 1 : 0;
     int row_y = 50;
     const int row_h = 13;
-    for (size_t i = 0; i < count; ++i, row_y += row_h) {
+    for (size_t i = first; i < count && i < first + visible; ++i, row_y += row_h) {
       RecompRuntimeUiRowView row;
       if (!recomp_runtime_ui_view_row(g_ui, i, &row) || !row.item) continue;
       const bool sel = i == selected;

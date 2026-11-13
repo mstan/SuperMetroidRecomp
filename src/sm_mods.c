@@ -10,13 +10,13 @@ static const char *path;
 static char error[128];
 static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps", "sm-continuous-rooms"};
 static const char *const features[] = {"widescreen", "presentation-fps", "continuous-rooms"};
-static const char *const names[] = {"Widescreen", "Higher FPS", "Continuous Rooms"};
+static const char *const names[] = {"Widescreen", "Higher FPS", "Continuous Rooms (Experimental)"};
 static const char *const versions[] = {"2", "2", "1"};
 static const int option_counts[] = {2, 1, 2};
 static const char *const descriptions[] = {
   "Render a wider view of the current room with optional HUD anchoring.",
   "Smooth object and camera motion at your display rate while keeping game timing unchanged.",
-  "Show adjoining rooms, their scenery and optional gameplay across doors. Works at any aspect ratio."
+  "Experimental: show adjoining rooms, scenery and optional gameplay across doors. Some scripted encounters and effects may have issues. Works at any aspect ratio."
 };
 static const char *const aspects[] = {"Fit", "16:9", "21:9", "32:9"};
 static const char *const rates[] = {"Auto", "60", "90", "120", "144", "165", "240", "360"};
