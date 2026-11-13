@@ -1400,6 +1400,20 @@ static void continued_solid_foreground(void) {
   for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
   assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
   assert(output[200*view.width+view.extra+48]==0xff0000);
+  /* Elevator setup precedes the actual room fade. Its side continuation
+   * remains present, then follows the departing room's native palette. */
+  const unsigned states[]={9,10,11,11};
+  const unsigned phases[]={0xe17d,0xe19f,0xe29e,0xe2db};
+  for (unsigned i=0;i<4;++i) {
+    word(0x998,states[i]);word(0x99c,phases[i]);
+    ppu.cgram[1]=i==3 ? 15 : 31;
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,5+i);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    if (output[50*view.width+view.extra+270]!=(i==3 ? 0x7b0000u : 0xff0000u))
+      fprintf(stderr,"departing state %u phase %x pixel %x\n",states[i],phases[i],output[50*view.width+view.extra+270]);
+    assert(output[50*view.width+view.extra+270]==(i==3 ? 0x7b0000u : 0xff0000u));
+  }
   free(scene);ResetFixtureRenderer();
 }
 

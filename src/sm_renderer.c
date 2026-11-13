@@ -2392,7 +2392,12 @@ static void continue_foreground(SmViewport view,int y,int cx,int cy,const uint8_
     const uint16_t *root_vram,const uint16_t *root_palette,const SnesRenderRegisters *root_registers,
     const uint16_t *objects,const uint8_t *owners,const uint8_t brightness[32],uint32_t *row,
     const SmRoomScene *rooms,const SmWideWindow *wide) {
-  if (!rooms || y<32 || (!rooms->native && read16(root_ram,0x998)!=8)) return;
+  unsigned state=read16(root_ram,0x998),phase=read16(root_ram,0x99c);
+  /* Elevators enter the native loader before its palette fade starts. The
+   * departing layout and graphics still own these frames, including their
+   * continued side walls. Stop only when the loader replaces those resources. */
+  bool departing=state==9 || state==10 || (state==11 && phase<=0xe2db);
+  if (!rooms || y<32 || (!rooms->native && state!=8 && !departing)) return;
   const SmWideWindow no_window={0};
   if (!wide) wide=&no_window;
   unsigned rw=read16(root_ram,0x7a5),rh=read16(root_ram,0x7a7);
