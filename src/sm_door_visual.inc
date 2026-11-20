@@ -36,7 +36,8 @@ static bool door_gameplay_field(const SmSourceFrame *f) {
     return false;
   SnesRenderRegisters p;
   memcpy(&p, f->lines[100].registers, PPU_SAVESTATE_REGS_SIZE);
-  return (p.bgmode & 7) == 1 && p.inidisp == 15;
+  /* Bits 4–6 can be set without affecting brightness or force blank. */
+  return (p.bgmode & 7) == 1 && (p.inidisp & 0x8f) == 15;
 }
 
 static void update_door_visual(const SmSourceFrame *before, const SmSourceFrame *now) {
