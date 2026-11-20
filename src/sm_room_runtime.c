@@ -939,17 +939,23 @@ static bool promote_grapple_tiles(const SmRoomRuntime *r,uint8_t *ram,bool *redr
   }
   return true;
 }
-static bool native_eye_door(const SmRoomRuntime *r, const uint8_t *ram,
+static bool promote_eye_cap(const SmRoomRuntime *r, uint8_t *ram,
     unsigned block, unsigned step) {
   for (unsigned i=0; i<40; ++i) {
     unsigned header=word(ram+0x1c37+2*i);
     unsigned address=word(ram+0x1c87+2*i);
     if (header<0x8000 || (address&1)) continue;
     unsigned eye=address/2;
-    if (eye>=block && eye<=block+3*step && !((eye-block)%step) &&
-        (rom_long(r,0x840000u+header)&0xffff)==0xda8c) return true;
+    if (eye<block || eye>block+3*step || (eye-block)%step ||
+        (rom_long(r,0x840000u+header)&0xffff)!=0xda8c) continue;
+    /* An undefeated eye owns the cap and its extension blocks. The setup
+     * for a defeated eye skips that lock but still registers a PLM. Remove
+     * it so its first tick cannot repaint the regular cap we promote. */
+    unsigned argument=word(ram+0x1dc7+2*i);
+    if (argument>=512 || !(ram[0xd8b0+argument/8] & (1u<<(argument%8)))) return false;
+    ram[0x1c37+2*i]=ram[0x1c38+2*i]=0;
   }
-  return false;
+  return true;
 }
 bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool *redraw) {
   if (redraw) *redraw=false;
@@ -961,10 +967,7 @@ bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool 
     unsigned block=r->door_blocks[door],orientation=r->door_orientations[door];
     unsigned step=orientation<2 ? w : 1;
     if (block+3*step>=w*h) return false;
-    /* The resident only loaded the regular cap from the level data. An
-     * eye-door script owns the same cells after actual entry, including
-     * the eye's shot reaction and the adjoining extension blocks. */
-    if (native_eye_door(r,ram,block,step)) continue;
+    if (!promote_eye_cap(r,ram,block,step)) continue;
     for (unsigned k=0; k<4; ++k) {
       unsigned at=block+k*step;
       /* The loader uploaded its own cap before promotion. Once an opening
