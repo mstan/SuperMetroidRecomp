@@ -2653,8 +2653,8 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   bool room = room_state(state);
   bool ceres=read16(f->ram,0x79f)==6;
   unsigned fx_type=read16(f->ram,0x196e);
-  bool ceres_haze=ceres && read16(f->ram,0x1986)==0x2c &&
-      (fx_type==0x28 || fx_type==0x2a || fx_type==0x2c);
+  /* Connecting Ceres rooms can install the same haze with no FX header. */
+  bool ceres_haze=ceres && state==8 && read16(f->ram,0x1986)==0x2c;
   const SmRoomScene *rooms=f->rooms && (f->rooms->native || f->rooms->root==read16(f->ram,0x79b)) ? f->rooms : NULL;
   const SmRoomScene *old_rooms=previous && previous->rooms && rooms && previous->rooms->root==rooms->root ? previous->rooms : NULL;
   int camera_dx=rooms && rooms->seamless ? rooms->camera_dx : 0;

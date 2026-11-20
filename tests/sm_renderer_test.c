@@ -87,8 +87,7 @@ static void ceres_backdrop(void) {
   word(0x79f,6);
   word(0x7a5,16);
   word(0x7a7,16);
-  word(0x196e,0x28);
-  word(0x1986,0x2c);
+  word(0x1986,0x2c); /* scripted haze without a room FX header */
   ppu.inidisp=15;
   ppu.bgmode=1;
   ppu.screenEnabled[0]=1;
