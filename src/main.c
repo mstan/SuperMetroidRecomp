@@ -127,13 +127,6 @@ static void SmAfterConfig(void) {
     if (aspect && !SmParseAspect(aspect, &g_sm_video.aspect))
       fprintf(stderr, "[video] Ignoring invalid SM_VIDEO_ASPECT\n");
   }
-#if SNESRECOMP_TRACE
-  const char *door_style = getenv("SM_DOOR_PRESENTATION");
-  if (door_style && !strcmp(door_style, "shadow"))
-    SmRendererSetDoorPresentation(SM_DOOR_PRESENT_SHADOW);
-  if (door_style && !strcmp(door_style, "lighting"))
-    SmRendererSetDoorPresentation(SM_DOOR_PRESENT_LIGHTING);
-#endif
   g_sm_viewport = SmCalculateViewport(&g_sm_video, 16, 9);
   host_report_breadcrumb("custom renderer: %d aspect=%s fps=%u hud=%d",
                          SmCustomRendererEnabled(), SmAspectName(g_sm_video.aspect),
@@ -180,6 +173,7 @@ static void SmBeginSimFrame(unsigned number) {
   SmDisplay_SyncCaptureGeneration();
   SmPauseOptions_SyncToGuest();
   SmRendererSetInterpolationEnabled(g_sm_video.fps_enabled);
+  SmRendererSetDoorPresentation(g_sm_video.door_presentation);
   if (SmCustomRendererEnabled()) SmRendererBeginFrame(g_ram, number);
 }
 

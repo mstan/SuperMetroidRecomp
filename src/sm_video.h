@@ -15,6 +15,14 @@ typedef enum SmAspect {
   SM_ASPECT_COUNT
 } SmAspect;
 
+typedef enum SmDoorPresentation {
+  SM_DOOR_PRESENT_REFERENCE,
+  SM_DOOR_PRESENT_SHADOW,
+  SM_DOOR_PRESENT_LIGHTING,
+  SM_DOOR_PRESENT_COUNT,
+  SM_DOOR_PRESENT_DEFAULT = SM_DOOR_PRESENT_LIGHTING
+} SmDoorPresentation;
+
 typedef struct SmVideoSettings {
   bool enhanced;
   SmAspect aspect;
@@ -23,6 +31,7 @@ typedef struct SmVideoSettings {
   bool hud_anchored; /* Anchor energy left and minimap right. */
   bool neighboring_logic;
   bool seamless;
+  SmDoorPresentation door_presentation;
   bool connected_rooms;
   bool replay_recording;
 } SmVideoSettings;
@@ -49,6 +58,9 @@ typedef struct SmRect { int x, y, w, h; } SmRect;
 void SmVideoDefaults(SmVideoSettings *settings);
 const char *SmAspectName(SmAspect aspect);
 bool SmParseAspect(const char *text, SmAspect *aspect);
+const char *SmDoorPresentationKey(SmDoorPresentation style);
+const char *SmDoorPresentationLabel(SmDoorPresentation style);
+bool SmParseDoorPresentation(const char *text, SmDoorPresentation *style);
 bool SmValidFps(unsigned fps);
 double SmPresentationHz(unsigned fps, double refresh);
 SmViewport SmCalculateViewport(const SmVideoSettings *settings,

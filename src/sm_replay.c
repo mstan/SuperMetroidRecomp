@@ -318,6 +318,7 @@ static bool playback_begin(uint32_t *inputs) {
   g_sm_video=(SmVideoSettings){.enhanced=(flags&1)!=0,.aspect=(SmAspect)aspect,.fps=fps,
       .fps_enabled=(flags&2)!=0,.hud_anchored=(flags&4)!=0,.neighboring_logic=(flags&64)!=0,
       .seamless=(flags&128)!=0,.connected_rooms=!playback_connected || (flags&256)!=0,
+      .door_presentation=g_sm_video.door_presentation,
       .replay_recording=g_sm_video.replay_recording};
   SmActivityRestore(extra);
   snesrecomp_desktop_set_new_renderer((flags&8)!=0); g_config.no_sprite_limits=(flags&16)!=0;

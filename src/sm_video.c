@@ -12,13 +12,20 @@
 #endif
 
 static const char *const aspect_names[] = {"4:3", "16:9", "21:9", "32:9", "Fit"};
+static const struct {
+  const char *key, *label;
+} door_presentations[SM_DOOR_PRESENT_COUNT] = {
+    [SM_DOOR_PRESENT_REFERENCE] = {"reference", "No fade"},
+    [SM_DOOR_PRESENT_SHADOW] = {"shadow", "Doorway shadow"},
+    [SM_DOOR_PRESENT_LIGHTING] = {"lighting", "Room lighting blend"},
+};
 
 SmVideoSettings g_sm_video;
 
 void SmVideoDefaults(SmVideoSettings *s) {
   *s = (SmVideoSettings){.enhanced = true, .aspect = SM_ASPECT_FIT, .hud_anchored = true,
       .neighboring_logic = true, .seamless = true, .connected_rooms = false,
-      .replay_recording = true};
+      .door_presentation = SM_DOOR_PRESENT_DEFAULT, .replay_recording = true};
 }
 
 const char *SmAspectName(SmAspect aspect) {
@@ -29,6 +36,24 @@ bool SmParseAspect(const char *text, SmAspect *aspect) {
   for (int i = 0; i < SM_ASPECT_COUNT; ++i) {
     if (strcmp(text, aspect_names[i]) == 0) {
       *aspect = (SmAspect)i;
+      return true;
+    }
+  }
+  return false;
+}
+
+const char *SmDoorPresentationKey(SmDoorPresentation style) {
+  return door_presentations[style].key;
+}
+
+const char *SmDoorPresentationLabel(SmDoorPresentation style) {
+  return door_presentations[style].label;
+}
+
+bool SmParseDoorPresentation(const char *text, SmDoorPresentation *style) {
+  for (int i = 0; i < SM_DOOR_PRESENT_COUNT; ++i) {
+    if (!strcmp(text, door_presentations[i].key)) {
+      *style = (SmDoorPresentation)i;
       return true;
     }
   }
@@ -97,6 +122,8 @@ bool SmVideoLoad(SmVideoSettings *s, const char *path) {
     } else if (!strcmp(key, "SeamlessRooms")) {
       if (!strcmp(value,"0") || !strcmp(value,"1")) s->seamless=value[0]=='1';
       else valid=false;
+    } else if (!strcmp(key, "DoorwayFade")) {
+      if (!SmParseDoorPresentation(value, &s->door_presentation)) valid = false;
     } else if (!strcmp(key, "ConnectedRooms")) {
       if (!strcmp(value,"0") || !strcmp(value,"1")) legacy_connected=value[0]=='1';
       else valid=false;
@@ -129,9 +156,10 @@ bool SmVideoSave(const SmVideoSettings *s, const char *path) {
   if (snprintf(temporary, sizeof(temporary), "%s.tmp", path) >= (int)sizeof(temporary)) return false;
   FILE *f = fopen(temporary, "w");
   if (!f) return false;
-  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\nContinuousRoomsEnabled=%d\nReplayRecording=%d\n",
+  bool ok = fprintf(f, "[SuperMetroidVideo]\nEnhancedRenderer=%d\nAspect=%s\nPresentationEnabled=%d\nPresentationFPS=%u\nHudAnchored=%d\nNeighboringRoomLogic=%d\nSeamlessRooms=%d\nContinuousRoomsEnabled=%d\nDoorwayFade=%s\nReplayRecording=%d\n",
                     s->enhanced, SmAspectName(s->aspect), s->fps_enabled, s->fps, s->hud_anchored,
-                    s->neighboring_logic,s->seamless,s->connected_rooms,s->replay_recording) > 0;
+                    s->neighboring_logic,s->seamless,s->connected_rooms,
+                    SmDoorPresentationKey(s->door_presentation),s->replay_recording) > 0;
   if (fclose(f)) ok = false;
   if (ok) {
 #ifdef _WIN32

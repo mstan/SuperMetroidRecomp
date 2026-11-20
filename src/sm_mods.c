@@ -13,7 +13,7 @@ static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps", "
 static const char *const features[] = {"widescreen", "presentation-fps", "continuous-rooms", "replay-recording"};
 static const char *const names[] = {"Widescreen", "Higher FPS", "Continuous Rooms (Experimental)", "Gameplay Diagnostics"};
 static const char *const versions[] = {"2", "2", "1", "1"};
-static const int option_counts[] = {2, 1, 2, 0};
+static const int option_counts[] = {2, 1, 3, 0};
 static const char *const descriptions[] = {
   "Render a wider view of the current room with optional HUD anchoring.",
   "Smooth object and camera motion at your display rate while keeping game timing unchanged.",
@@ -22,6 +22,9 @@ static const char *const descriptions[] = {
 };
 static const char *const aspects[] = {"Fit", "16:9", "21:9", "32:9"};
 static const char *const rates[] = {"Auto", "60", "90", "120", "144", "165", "240", "360"};
+static const SmDoorPresentation door_choices[] = {
+  SM_DOOR_PRESENT_LIGHTING, SM_DOOR_PRESENT_SHADOW, SM_DOOR_PRESENT_REFERENCE,
+};
 #define COPY(field, text) snprintf(field, sizeof(field), "%s", text)
 
 static int identity(const char *package, const char *feature) {
@@ -92,11 +95,17 @@ static int option_get(void *ctx, const char *package, const char *feature,
     COPY(out->description,"Run enemies and gameplay actors in neighboring rooms. Off keeps animated scenery and doors. Applies when a room loads.");
     COPY(out->value,video->neighboring_logic ? "On" : "Off");
     COPY(out->default_value,"On"); out->choice_count=2;
-  } else {
+  } else if (index == 1) {
     COPY(out->id,"transitions"); COPY(out->label,"Room transitions");
     COPY(out->description,"Continuous keeps the world and camera connected across doors. Native uses the original transition animation.");
     COPY(out->value,video->seamless ? "Continuous" : "Native");
     COPY(out->default_value,"Continuous"); out->choice_count=2;
+  } else {
+    COPY(out->id, "door-fade"); COPY(out->label, "Doorway fade");
+    COPY(out->description, "Choose the visual effect for seamless doorway crossings.");
+    COPY(out->value, SmDoorPresentationKey(video->door_presentation));
+    COPY(out->default_value, SmDoorPresentationKey(SM_DOOR_PRESENT_DEFAULT));
+    out->choice_count = SM_DOOR_PRESENT_COUNT;
   }
   return 1;
 }
@@ -106,16 +115,22 @@ static const char *choice(int kind, const char *option, int index) {
   if (kind == 0 && !strcmp(option, "hud") && index < 2) return index ? "Center" : "Edges";
   if (kind == 2 && !strcmp(option,"neighbor-logic") && index<2) return index ? "Off" : "On";
   if (kind == 2 && !strcmp(option,"transitions") && index<2) return index ? "Native" : "Continuous";
+  if (kind == CONTINUOUS_ROOMS && !strcmp(option, "door-fade") && index < SM_DOOR_PRESENT_COUNT)
+    return SmDoorPresentationKey(door_choices[index]);
   if (kind == 1 && !strcmp(option, "fps") && index < 8) return rates[index];
   return NULL;
 }
 static int choice_get(void *ctx, const char *package, const char *feature,
                       const char *option, int index, RecompLauncherCModChoice *out) {
   (void)ctx;
-  const char *value = choice(identity(package, feature), option, index);
+  const int kind = identity(package, feature);
+  const char *value = choice(kind, option, index);
   if (!out || !value) return 0;
   memset(out, 0, sizeof(*out)); COPY(out->value, value);
-  COPY(out->label, !strcmp(value, "Fit") ? "Fit to window" : value);
+  const char *label = !strcmp(value, "Fit") ? "Fit to window" : value;
+  if (kind == CONTINUOUS_ROOMS && !strcmp(option, "door-fade"))
+    label = SmDoorPresentationLabel(door_choices[index]);
+  COPY(out->label, label);
   return 1;
 }
 static int enable(void *ctx, const char *package, const char *feature, int on) {
@@ -136,6 +151,8 @@ static int set_option(void *ctx, const char *package, const char *feature,
   (void)ctx;
   int kind = identity(package, feature);
   if (kind < 0 || !value) return 0;
+  if (kind == CONTINUOUS_ROOMS && option && !strcmp(option, "door-fade"))
+    return SmParseDoorPresentation(value, &video->door_presentation);
   if (kind != 1 && option && strcmp(option,"hud") && !SmActivityGeometryMutable()) {
     COPY(error, "The initial host view stays fixed during this netplay match."); return 0;
   }

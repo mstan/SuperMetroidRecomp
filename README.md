@@ -155,6 +155,8 @@ including their animated scenery, at any aspect ratio. Within Continuous Rooms,
 enemies while keeping scenery, environmental effects and door bubbles. The choice
 applies when a room loads. **Room transitions** defaults to Continuous, with Native
 available for the original door animation. Boss encounters still begin on entry.
+**Doorway fade** offers Room lighting blend (the default), Doorway shadow, and
+No fade for seamless crossings.
 These features are experimental: full-game visual fidelity is not certified,
 and achievable FPS depends on hardware and the scene.
 
