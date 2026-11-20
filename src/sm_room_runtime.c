@@ -939,6 +939,18 @@ static bool promote_grapple_tiles(const SmRoomRuntime *r,uint8_t *ram,bool *redr
   }
   return true;
 }
+static bool native_eye_door(const SmRoomRuntime *r, const uint8_t *ram,
+    unsigned block, unsigned step) {
+  for (unsigned i=0; i<40; ++i) {
+    unsigned header=word(ram+0x1c37+2*i);
+    unsigned address=word(ram+0x1c87+2*i);
+    if (header<0x8000 || (address&1)) continue;
+    unsigned eye=address/2;
+    if (eye>=block && eye<=block+3*step && !((eye-block)%step) &&
+        (rom_long(r,0x840000u+header)&0xffff)==0xda8c) return true;
+  }
+  return false;
+}
 bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool *redraw) {
   if (redraw) *redraw=false;
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return false;
@@ -949,6 +961,10 @@ bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool 
     unsigned block=r->door_blocks[door],orientation=r->door_orientations[door];
     unsigned step=orientation<2 ? w : 1;
     if (block+3*step>=w*h) return false;
+    /* The resident only loaded the regular cap from the level data. An
+     * eye-door script owns the same cells after actual entry, including
+     * the eye's shot reaction and the adjoining extension blocks. */
+    if (native_eye_door(r,ram,block,step)) continue;
     for (unsigned k=0; k<4; ++k) {
       unsigned at=block+k*step;
       /* The loader uploaded its own cap before promotion. Once an opening

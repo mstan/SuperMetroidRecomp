@@ -46,6 +46,66 @@ static void BeginFixtureFrame(const uint8_t *state, unsigned number) {
 static void unexpected_capture_callback(Ppu *p,uint y,bool sub,void *context) {
   (void)p;(void)y;(void)sub;(void)context;assert(false);
 }
+
+static void standalone_widescreen_foreground(void) {
+  ResetFixtureRenderer();
+  SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));
+  memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);
+  word(0x7a5,16);
+  word(0x7a7,16);
+  /* A solid tile meets the room boundary on the left. The corresponding
+   * right edge is air, and the row above has no continuation either. */
+  word(0x10002+2*64,0x8001);
+  word(0xa000+1023*8,3);
+  ppu.inidisp=15;
+  ppu.bgmode=1;
+  ppu.bgTileAdr=2;
+  ppu.screenEnabled[0]=1;
+  ppu.cgram[1]=31;
+  for (unsigned y=0;y<8;++y) ppu.vram[0x2000+y]=255;
+  BeginFixtureFrame(ram,99);
+  for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock));
+  assert(SmRendererDraw(output,(SmViewport){.width=342,.extra=43},false,1));
+  assert((output[64*342]&0xffffff)==0xff0000);
+  assert((output[64*342+341]&0xffffff)==0);
+  assert((output[48*342]&0xffffff)==0);
+  uint32_t center[256];
+  memcpy(center,output+64*342+43,sizeof(center));
+  assert(SmRendererDraw(output,(SmViewport){.width=256,.extra=0},false,1));
+  assert(!memcmp(center,output+64*256,sizeof(center)));
+}
+
+static void ceres_backdrop(void) {
+  ResetFixtureRenderer();
+  SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));
+  memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);
+  word(0x79f,6);
+  word(0x7a5,16);
+  word(0x7a7,16);
+  word(0x196e,0x28);
+  word(0x1986,0x2c);
+  ppu.inidisp=15;
+  ppu.bgmode=1;
+  ppu.screenEnabled[0]=1;
+  ppu.cgadsub=0x20;
+  BeginFixtureFrame(ram,100);
+  for (unsigned y=1;y<=224;++y) {
+    ppu.fixedColor=y<100 ? 0 : 0x7c00;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  assert(SmRendererEndFrame(stock));
+  assert(SmRendererDraw(output,(SmViewport){.width=342,.extra=43},false,1));
+  assert((output[80*342]&0xffffff)==0);
+  assert((output[120*342]&0xffffff)==0xff);
+  assert((output[120*342+43]&0xffffff)==0xff);
+  assert((output[120*342+341]&0xffffff)==0xff);
+}
+
 static void raster_storage(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
@@ -1450,6 +1510,8 @@ int main(int argc, char **argv) {
   room_effect_matte();
   nonrectangular_room_padding();
   cannon_motion();
+  standalone_widescreen_foreground();
+  ceres_backdrop();
   raster_storage();
   /* Reveal substitutions, row-major multi-block writes, linked BTS blocks,
    * item collection and room-state overrides, all without guest execution. */
@@ -2021,6 +2083,42 @@ int main(int argc, char **argv) {
     assert(SmRendererDraw(output, view, true, 1));
     assert(output[60 * view.width + view.extra + 54] == 0);
     assert(output[60 * view.width + view.extra + 58] == 0x0000ff);
+  }
+  /* A new shutter segment changes the center by six pixels while the
+   * moving edge advances by two. Both growth directions use that edge. */
+  for (int direction=-1; direction<=1; direction+=2) {
+    ResetFixtureRenderer();
+    memset(ram,0,sizeof(ram));
+    memset(&ppu,0,sizeof(ppu));
+    memset(rom+0x110000,0,8);
+    romword(0x110000,1);
+    word(0x998,8);
+    word(0xf78,0xd4ff);
+    word(0xf7a,50);
+    word(0xf8e,0x8000);
+    word(0xfaa,100);
+    word(0xfac,100+8*direction);
+    ram[0xfa6]=0xa2;
+    ppu.inidisp=15;
+    ppu.bgmode=1;
+    ppu.screenEnabled[0]=16;
+    ppu.cgram[129]=31<<10;
+    for (unsigned y=0;y<8;++y) ppu.vram[y]=255;
+    for (unsigned frame=0;frame<2;++frame) {
+      int center=60-(int)frame*6*direction;
+      word(0xf7e,(unsigned)center);
+      word(0xf84,8+8*frame);
+      ppu.oam[0]=(uint16_t)(center*256+50);
+      BeginFixtureFrame(ram,frame+1);
+      for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+      assert(SmRendererEndFrame(stock));
+    }
+    int mid=60-7*direction;
+    assert(SmRendererDraw(output,view,false,0.5));
+    assert((output[mid*view.width+view.extra+50]&0xffffff)==0xff);
+    assert((output[(mid-1)*view.width+view.extra+50]&0xffffff)==0);
+    assert(SmRendererDraw(output,view,false,1));
+    assert((output[(60-6*direction)*view.width+view.extra+50]&0xffffff)==0xff);
   }
   /* Native and reconstructed halves of a sprite straddling X=256 must use
    * the same intermediate origin. Also exercise an entirely offscreen owner. */

@@ -58,6 +58,26 @@ int main(int argc,char **argv) {
   f=fopen(argv[2],"rb"); assert(f); assert(fread(active,1,sizeof(active),f)==sizeof(active)); fclose(f);
   memcpy(unchanged,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world && SmWorldLoad(world,Read,NULL));
+  const SmWorldRoom *basement=SmWorldFindRoom(world,0xcc6f);
+  assert(basement);
+  SmRoomRuntime *eye_room=Create(basement,basement->default_state);
+  uint8_t *entered=malloc(sizeof(active));assert(entered);
+  memcpy(entered,SmRoomRuntimeRam(eye_room),sizeof(active));
+  unsigned width=word(entered+0x7a5),anchor=6*width+78,eye=anchor+width;
+  assert(entered[0x16402+anchor]==0x40 && entered[0x16402+eye]==0xff);
+  /* Model the actual entry loader's eye PLM and the blocks it initializes. */
+  SmShotPut(entered,0x1c37,0xdb56);
+  SmShotPut(entered,0x1c87,(int)(2*eye));
+  SmShotPut(entered,0x10002+2*anchor,0xa4ac);
+  SmShotPut(entered,0x10002+2*eye,0xc4ca);
+  entered[0x16402+anchor]=0;
+  entered[0x16402+eye]=0x44;
+  entered[0x16402+eye+width]=0xff;
+  assert(SmRoomRuntimePromoteDoors(eye_room,entered,NULL));
+  assert(entered[0x16402+anchor]==0 && entered[0x16402+eye]==0x44);
+  assert(entered[0x16402+eye+width]==0xff);
+  assert(word(entered+0x10002+2*anchor)==0xa4ac && word(entered+0x1c37)==0xdb56);
+  SmRoomRuntimeDestroy(eye_room);free(entered);
   unsigned blue=0,colored=0;
   for (unsigned n=0; n<world->room_count && blue!=15; ++n) {
     const SmWorldRoom *room=&world->rooms[n];
