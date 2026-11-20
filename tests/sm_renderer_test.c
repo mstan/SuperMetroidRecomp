@@ -105,6 +105,41 @@ static void ceres_backdrop(void) {
   assert((output[120*342+341]&0xffffff)==0xff);
 }
 
+static void ceres_connected_haze(void) {
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+  word(0x998,8); word(0x79f,6); word(0x79b,0xe06b);
+  word(0x7a5,16); word(0x7a7,16); word(0x1986,0x2c);
+  ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=1;
+  ppu.bgTileAdr=1; ppu.cgram[1]=31<<5; ppu.cgadsub=0x21;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0xe06b};
+  SmRoomImage *image=&scene->rooms[0];
+  image->placement=(SmRoomPlacement){.room=0xe0b5,.state=0xe571,.x=256,
+      .width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  image->ram[0x79f]=6; image->ram[0x7a5]=image->ram[0x7a7]=16;
+  image->ram[0x69]=1; image->ram[0xc002]=0xe0; image->ram[0xc003]=3;
+  for (unsigned y=0; y<8; ++y) {
+    ppu.vram[4096+y]=255;
+    image->vram[2*y]=0x0f;
+  }
+  assert(SmRendererLatchRooms(scene)); free(scene);
+  BeginFixtureFrame(ram,100);
+  for (unsigned y=1; y<=224; ++y) {
+    ppu.fixedColor=y<100 ? 31<<10 : 31;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  SmViewport view={342,43,16.0/9,true};
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  assert(output[60*view.width+view.extra+128]==0x00ffff);
+  assert(output[60*view.width+view.extra+260]==0x00ffff);
+  assert(output[60*view.width+view.extra+256]==0x0000ff);
+  assert(output[120*view.width+view.extra+128]==0xffff00);
+  assert(output[120*view.width+view.extra+260]==0xffff00);
+  assert(output[120*view.width+view.extra+256]==0xff0000);
+  assert(output[15*view.width+view.extra+260]==0);
+}
+
 static void raster_storage(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
@@ -1511,6 +1546,7 @@ int main(int argc, char **argv) {
   cannon_motion();
   standalone_widescreen_foreground();
   ceres_backdrop();
+  ceres_connected_haze();
   raster_storage();
   /* Reveal substitutions, row-major multi-block writes, linked BTS blocks,
    * item collection and room-state overrides, all without guest execution. */
