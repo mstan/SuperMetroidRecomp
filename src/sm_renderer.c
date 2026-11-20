@@ -475,7 +475,10 @@ static bool bg2_owner_motion(const SmSourceFrame *f, const SmSourceFrame *old,
       (int16_t)read16(f->object_ram, 0x7012 + slot * 64);
   return abs(world_dx) <= 32 && abs(world_dy) <= 32 && abs(*dx) <= 32 && abs(*dy) <= 32;
 }
+#include "sm_door_visual.inc"
+
 void SmRendererReset(void) {
+  door_visual.active = false;
   foreground_key=NULL;
   free(pending_rooms); pending_rooms=NULL;
   free(frames[0].rooms); free(frames[1].rooms);
@@ -635,6 +638,7 @@ bool SmRendererEndFrame(const uint32_t stock[256 * 224]) {
   const char *motion_after = getenv("SM_CAPTURE_MOTION_AFTER");
   const char *motion_pose_change = getenv("SM_CAPTURE_MOTION_POSE_CHANGE");
   const SmSourceFrame *previous = &frames[current ^ 1];
+  update_door_visual(previous, f);
   const char *rotation_prefix = getenv("SM_CAPTURE_ROTATION_PREFIX");
   if (rotation_prefix && !captured_rotation && continuous_frames(previous, f) &&
       room_state(read16(f->ram, 0x998)) && (read16(f->ram, 0x93f) & 0x8000)) {

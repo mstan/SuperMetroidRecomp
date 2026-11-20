@@ -74,6 +74,7 @@ static const char *kSmVideoConfig = SM_VIDEO_CONFIG_FILE;
 static SmViewport g_sm_viewport;
 static uint32_t g_sm_output[SM_MAX_WIDTH * SM_HEIGHT];
 static double g_sm_present_alpha = 1;
+static bool g_sm_door_visual_drawn;
 static uint64_t g_sm_capture_generation;
 #if SM_NATIVE_RASTER
 static bool g_sm_composed_ready, g_sm_render_valid;
@@ -126,6 +127,13 @@ static void SmAfterConfig(void) {
     if (aspect && !SmParseAspect(aspect, &g_sm_video.aspect))
       fprintf(stderr, "[video] Ignoring invalid SM_VIDEO_ASPECT\n");
   }
+#if SNESRECOMP_TRACE
+  const char *door_style = getenv("SM_DOOR_PRESENTATION");
+  if (door_style && !strcmp(door_style, "shadow"))
+    SmRendererSetDoorPresentation(SM_DOOR_PRESENT_SHADOW);
+  if (door_style && !strcmp(door_style, "lighting"))
+    SmRendererSetDoorPresentation(SM_DOOR_PRESENT_LIGHTING);
+#endif
   g_sm_viewport = SmCalculateViewport(&g_sm_video, 16, 9);
   host_report_breadcrumb("custom renderer: %d aspect=%s fps=%u hud=%d",
                          SmCustomRendererEnabled(), SmAspectName(g_sm_video.aspect),
@@ -245,6 +253,7 @@ static void SmPublishNativeField(uint8_t *field, unsigned number) {
 static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
                        int frame_w, int frame_h, double alpha) {
   g_sm_present_alpha = alpha;
+  g_sm_door_visual_drawn = false;
   const bool overlay = SmPauseOptions_Visible();
   const bool mod_overlay = SmModOverlayActive();
   SmRendererSetHdEnabled(g_config.mode7.enabled && !g_config.frame_blend && !overlay && SmCustomRendererEnabled());
@@ -267,6 +276,8 @@ static int SmDrawFrame(uint8_t *dst, size_t pitch, const uint8_t *field,
       memcpy(g_sm_output + y * frame_w + g_sm_viewport.extra,
              field + y * 256 * 4, 256 * 4);
   }
+  if (drew)
+    g_sm_door_visual_drawn = SmRendererApplyDoorPresentation(g_sm_output, g_sm_viewport, alpha);
   if (mod_overlay)
     SmModOverlayRender(g_sm_output, frame_w, frame_w, frame_h, g_sm_viewport.extra);
   if (overlay)
@@ -290,6 +301,7 @@ static double SmPresentationHzHook(double display_refresh) {
  * Unchanged frames retain HD, including cinematics with registered but idle
  * overlays. No RGB transparency guess or guest state is involved. */
 static const SnesHdFrame *SmHdFrame(void) {
+  if (g_sm_door_visual_drawn) return NULL;
   const SnesHdFrame *frame = SmRendererHdFrame();
   if (frame && SmModOverlayActive()) {
     SnesHdView view;

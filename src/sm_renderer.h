@@ -25,6 +25,14 @@ void SmRendererEndHardwareRaster(void);
 void SmRendererHardwareVramChanged(void);
 bool SmRendererEndFrame(const uint32_t stock[256 * 224]);
 bool SmRendererDraw(uint32_t *output, SmViewport viewport, bool hud_anchored, double alpha);
+typedef enum SmDoorPresentation {
+  SM_DOOR_PRESENT_REFERENCE,
+  SM_DOOR_PRESENT_SHADOW,
+  SM_DOOR_PRESENT_LIGHTING,
+} SmDoorPresentation;
+/* These draw on the captured room transition before screen-space mod overlays. */
+void SmRendererSetDoorPresentation(SmDoorPresentation style);
+bool SmRendererApplyDoorPresentation(uint32_t *output, SmViewport viewport, double alpha);
 /* The same immutable publication/physical interpolation used by Samus' OBJ.
  * The RAM pointer is read-only and valid until the next capture/reset. */
 typedef struct SmPlayerView {
