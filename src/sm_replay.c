@@ -317,7 +317,8 @@ static bool playback_begin(uint32_t *inputs) {
   }
   g_sm_video=(SmVideoSettings){.enhanced=(flags&1)!=0,.aspect=(SmAspect)aspect,.fps=fps,
       .fps_enabled=(flags&2)!=0,.hud_anchored=(flags&4)!=0,.neighboring_logic=(flags&64)!=0,
-      .seamless=(flags&128)!=0,.connected_rooms=!playback_connected || (flags&256)!=0};
+      .seamless=(flags&128)!=0,.connected_rooms=!playback_connected || (flags&256)!=0,
+      .replay_recording=g_sm_video.replay_recording};
   SmActivityRestore(extra);
   snesrecomp_desktop_set_new_renderer((flags&8)!=0); g_config.no_sprite_limits=(flags&16)!=0;
   if(flags&32)RtlEnableExtendedFrameTiming();
@@ -330,6 +331,10 @@ bool SmReplayBegin(uint32_t *inputs) {
   static int capture=-1;
   if(capture<0) {const char *v=getenv("SM_REPLAY_RECORD");capture=!v || *v!='0';}
   if(!capture || failed)return true;
+  if (!g_sm_video.replay_recording) {
+    if (recording) close_segment();
+    return true;
+  }
   const char *why=SnesReplayWriterError(writer);
   if(why) {error(why);return true;}
   if(snes_runahead_active() || RtlSpeculativeFrame() ||

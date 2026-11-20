@@ -81,13 +81,13 @@ static void mods_and_persistence(const char *path) {
   SmVideoSettings s, loaded;
   SmVideoDefaults(&s);
   const RecompLauncherCModProvider *p=SmModsProvider(&s,path);
-  assert(p->feature_count(p->ctx) == 3);
-  assert(p->package_count(p->ctx) == 3);
+  assert(p->feature_count(p->ctx) == 4);
+  assert(p->package_count(p->ctx) == 4);
   RecompLauncherCModFeature initial;
   assert(p->feature_get(p->ctx,0,&initial) && initial.enabled);
   assert(p->feature_enable(p->ctx,"sm-widescreen","widescreen",0));
   assert(!strcmp(p->archive_extension, ".snesmod"));
-  for (int index = 0; index < 3; ++index) {
+  for (int index = 0; index < 4; ++index) {
     RecompLauncherCModPackage package;
     RecompLauncherCModFeature feature;
     assert(p->package_get(p->ctx, index, &package));
@@ -96,8 +96,8 @@ static void mods_and_persistence(const char *path) {
     assert(feature.author[0] && feature.source_name[0]);
     assert(!strcmp(feature.source_url, "https://github.com/mstan/SuperMetroidRecomp"));
     assert(!strcmp(package.source_url, feature.source_url));
-    assert(!package.enabled && !feature.enabled);
-    assert(feature.option_count == (index == 1 ? 1 : 2));
+    assert(package.enabled == (index == 3) && feature.enabled == (index == 3));
+    assert(feature.option_count == (index == 3 ? 0 : index == 1 ? 1 : 2));
     for (int option_index = 0; option_index < feature.option_count; ++option_index) {
       RecompLauncherCModOption option;
       assert(p->feature_option_get(p->ctx, package.id, feature.id, option_index, &option));
@@ -147,6 +147,7 @@ static void mods_and_persistence(const char *path) {
   assert(loaded.enhanced && loaded.fps_enabled && loaded.fps==165);
   assert(loaded.aspect==SM_ASPECT_32_9 && !loaded.hud_anchored);
   assert(!loaded.neighboring_logic && !loaded.seamless && !loaded.connected_rooms);
+  assert(loaded.replay_recording);
   assert(p->feature_enable(p->ctx,"sm-widescreen","widescreen",0));
   assert(s.fps_enabled && s.aspect==SM_ASPECT_32_9);
   assert(p->feature_enable(p->ctx,"sm-presentation-fps","presentation-fps",0));
@@ -161,15 +162,18 @@ static void mods_and_persistence(const char *path) {
   assert(SmVideoLoad(&loaded,path));
   assert(loaded.enhanced && loaded.fps_enabled && loaded.fps==165);
   p=SmModsProvider(&s,path);
+  assert(p->feature_enable(p->ctx,"sm-diagnostics","replay-recording",0));
+  assert(!s.replay_recording && !s.enhanced && !s.fps_enabled);
   assert(p->commit(p->ctx,NULL));
   assert(!p->last_error(p->ctx)[0]);
   assert(SmVideoLoad(&loaded,path));
-  assert(!loaded.enhanced && !loaded.fps_enabled);
+  assert(!loaded.enhanced && !loaded.fps_enabled && !loaded.replay_recording);
   assert(remove(path)==0);
   FILE *legacy=fopen(path,"w"); assert(legacy);
   fputs("[SuperMetroidVideo]\nEnhancedRenderer=0\nAspect=21:9\n",legacy); assert(!fclose(legacy));
   assert(SmVideoLoad(&loaded,path));
   assert(!loaded.enhanced && loaded.aspect==SM_ASPECT_21_9 && loaded.neighboring_logic && loaded.seamless && !loaded.connected_rooms);
+  assert(loaded.replay_recording);
   assert(!remove(path));
   /* Migrate the effective legacy choice without enabling latent 4:3 settings. */
   legacy=fopen(path,"w");assert(legacy);

@@ -24,6 +24,7 @@ typedef struct SmVideoSettings {
   bool neighboring_logic;
   bool seamless;
   bool connected_rooms;
+  bool replay_recording;
 } SmVideoSettings;
 
 extern SmVideoSettings g_sm_video;
