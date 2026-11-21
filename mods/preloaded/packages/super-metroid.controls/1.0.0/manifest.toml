@@ -72,3 +72,224 @@ default_enabled = false
 [[plugin]]
 feature = "radial-menu"
 id = "super-metroid.controls.radial-menu"
+
+[[feature]]
+id = "global-game-controls"
+name = "Global in-game controls"
+description = "Use one persistent native button layout, Moonwalk and Auto Cancel setting across all save files. Configure these options here; while enabled they take precedence over the in-game controller menu."
+group = "Controls"
+default_enabled = false
+
+[[plugin]]
+feature = "global-game-controls"
+id = "super-metroid.controls.global-game-controls"
+
+[[option]]
+feature = "global-game-controls"
+id = "shoot"
+label = "Shoot"
+type = "choice"
+default = "X"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "jump"
+label = "Jump"
+type = "choice"
+default = "A"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "run"
+label = "Run"
+type = "choice"
+default = "B"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "cancel"
+label = "Item cancel"
+type = "choice"
+default = "Y"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "select"
+label = "Item select"
+type = "choice"
+default = "Select"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "aim-down"
+label = "Aim down"
+type = "choice"
+default = "L"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "aim-up"
+label = "Aim up"
+type = "choice"
+default = "R"
+[[option.choice]]
+value = "A"
+label = "A"
+[[option.choice]]
+value = "B"
+label = "B"
+[[option.choice]]
+value = "X"
+label = "X"
+[[option.choice]]
+value = "Y"
+label = "Y"
+[[option.choice]]
+value = "L"
+label = "L"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "Select"
+label = "Select"
+
+[[option]]
+feature = "global-game-controls"
+id = "moonwalk"
+label = "Moonwalk"
+type = "boolean"
+default = false
+
+[[option]]
+feature = "global-game-controls"
+id = "auto-cancel"
+label = "Auto Cancel"
+type = "boolean"
+default = false

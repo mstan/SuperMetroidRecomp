@@ -89,6 +89,15 @@ list(APPEND SNESRECOMP_RUNNER_INCLUDE_DIRS ${SNESRECOMP_ROOT}/runner/src/desktop
 # roots through the owning helper, or directly for focused tests/tools that
 # compile only that layer.
 if(BUILD_TESTING AND NOT ANDROID)
+    add_executable(sm_global_controls_test tests/sm_global_controls_test.c)
+    target_include_directories(sm_global_controls_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_global_controls COMMAND sm_global_controls_test)
+    add_executable(sm_spin_animation_test tests/sm_spin_animation_test.c)
+    target_include_directories(sm_spin_animation_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_spin_animation COMMAND sm_spin_animation_test)
+    add_executable(sm_difficulty_test tests/sm_difficulty_test.c)
+    target_include_directories(sm_difficulty_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_difficulty COMMAND sm_difficulty_test)
     add_executable(sm_activity_test tests/sm_activity_test.c src/sm_activity.c)
     target_include_directories(sm_activity_test PRIVATE src)
     add_test(NAME sm_visible_enemy_activity COMMAND sm_activity_test)
@@ -324,7 +333,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
             sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test
-            sm_controls_test sm_low_health_alarm_test sm_single_missile_doors_test sm_laser_test sm_balance_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test sm_movement_test)
+              sm_controls_test sm_global_controls_test sm_spin_animation_test sm_difficulty_test sm_low_health_alarm_test sm_single_missile_doors_test sm_laser_test sm_balance_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test sm_movement_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()
@@ -402,6 +411,9 @@ set(SM_HOST_SOURCES
     src/mods/sm_xray_plugin.c
     src/mods/sm_station_plugins.c
     src/mods/sm_controls_plugin.c
+    src/mods/sm_global_controls_plugin.c
+    src/mods/sm_spin_animation_plugin.c
+    src/mods/sm_difficulty_plugins.c
     src/mods/sm_hud_plugins.c
     src/mods/sm_low_health_alarm_plugin.c
     src/mods/sm_laser_sight_plugin.c

@@ -35,14 +35,17 @@ uint32 SmLowHealthAlarmHook(CpuState *cpu,uint32 pc) {
     case 0xea92:
       if (alarm_muted) return AlarmAt(pc,0xeaaa); /* no alarm was started */
       break;
+    case 0xf339: /* Native resume after a station, message or pause. */
+      if (alarm_muted || Warning(cpu)==1) return AlarmAt(pc,0xf340);
+      break;
   }
   return 0;
 }
 static void SmLowHealthAlarmActivate(void) {
   SmModValue value;
   alarm_muted=!strcmp(SmModOption(&value,"super-metroid.pacing","low-health-alarm","mode","short"),"muted");
-  static const uint32_t hooks[]={0x90ea98,0x90ea9d,0x90ea92};
-  SmModArmHooks("low-health-alarm",hooks,3);
+  static const uint32_t hooks[]={0x90ea98,0x90ea9d,0x90ea92,0x90f339};
+  SmModArmHooks("low-health-alarm",hooks,4);
 }
 SNES_MOD_CONSTRUCTOR(sm_register_low_health_alarm) {
   snes_mod_register_activation_plugin("super-metroid.pacing.low-health-alarm",SmLowHealthAlarmActivate);

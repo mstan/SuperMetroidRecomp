@@ -95,7 +95,7 @@ static int sm_rtl_diag_enabled(void) {
  * pointer-free execution residue, never a serialized host fiber or C stack.
  * No host stack or pointer is part of a file snapshot. */
 #define SM_FILE_STATE_MAGIC 0x534D4653u  /* SMFS */
-#define SM_FILE_STATE_VERSION 6u
+#define SM_FILE_STATE_VERSION 7u
 static uint32_t g_loaded_file_state[9];
 static uint32_t g_loaded_pause_options;
 static uint32_t g_loaded_quit_state;
@@ -122,6 +122,11 @@ const char *SmSnapshotIdentity(void) {
 #endif
 }
 
+static bool pause_options_state_valid(uint32_t state) {
+  return !(state&0xffff00feu) && SmPauseOptions_CursorValid(state>>8) &&
+      ((state&1u) || !state);
+}
+
 /* The framework verifies build identity and CRC first. Validate the title
  * extension before the common loader writes any guest bytes as well. The
  * canonical SM cartridge has no Cx4 execution-clock suffix. */
@@ -136,7 +141,7 @@ bool SmSnapshotPreflight(const void *data, size_t size) {
       header[2] > 0xFFFFFFu || header[3] > 1 || header[4] > 1 ||
       header[6] != SmSpcPlayer_StateSize() || !SmActivityExtraValid(header[7]) || header[8]>SmRoomsStateBound()) return false;
   memcpy(&pause_options, (const uint8_t *)data + guest + sizeof(header), 4);
-  if (pause_options > 1) return false;
+  if (!pause_options_state_valid(pause_options)) return false;
   memcpy(&quit_state, (const uint8_t *)data + guest + sizeof(header) + 4, 4);
   if (!SmQuitFileSelectStateValid(quit_state)) return false;
   memcpy(&execution_size, (const uint8_t *)data + guest + sizeof(header) + 8, 4);
@@ -157,7 +162,7 @@ void SmStateSaveExtra(struct SaveLoadInfo *sli) {
     counter_global_frames, (uint32_t)SmSpcPlayer_StateSize(), SmActivityExtra(), (uint32_t)rooms_bytes
   };
   sli->func(sli, header, sizeof(header));
-  uint32_t pause_options = SmPauseOptions_IsActive() ? 1u : 0u;
+  uint32_t pause_options = SmPauseOptions_IsActive() ? 1u|(SmPauseOptions_Cursor()<<8) : 0u;
   sli->func(sli, &pause_options, sizeof(pause_options));
   uint32_t quit_state=SmQuitFileSelectState();
   sli->func(sli, &quit_state, sizeof(quit_state));
@@ -186,7 +191,7 @@ void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
     return;
   }
   sli->func(sli, &g_loaded_pause_options, sizeof(g_loaded_pause_options));
-  if (g_loaded_pause_options > 1) { RtlStateStreamFail(sli); return; }
+  if (!pause_options_state_valid(g_loaded_pause_options)) { RtlStateStreamFail(sli); return; }
   sli->func(sli, &g_loaded_quit_state, sizeof(g_loaded_quit_state));
   if (!SmQuitFileSelectStateValid(g_loaded_quit_state)) { RtlStateStreamFail(sli); return; }
   if (!RtlLoadExecutionState(sli)) {
@@ -226,6 +231,7 @@ void SmOnStateLoaded(uint32_t version) {
   SmActivityRestore(g_loaded_file_state[7]);
   SmPauseOptions_SetActive(false);
   SmPauseOptions_SetActive(g_loaded_pause_options != 0);
+  SmPauseOptions_RestoreCursor(g_loaded_pause_options>>8);
   SmQuitFileSelectRestore(g_loaded_quit_state);
   g_loaded_file_state_valid = false;
 }

@@ -38,6 +38,7 @@ bool SmRoomsFilterActiveQueues(uint8_t active[0x20000]);
 bool SmRoomsGrapple(uint8_t active[0x20000],uint16_t *response,uint16_t *definition,uint8_t *flags);
 /* -1 keeps the native Root reaction; -2 reports cartridge execution failure. */
 int SmRoomsGrappleBlock(uint8_t active[0x20000],SmGrappleResult *result);
+/* Captures/finishes one native upward transit; its phase is snapshot-owned. */
 bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]);
 bool SmRoomsCrossing(const uint8_t active[0x20000], uint16_t *definition, SmRoomPlacement *destination);
 bool SmRoomsHandoff(const uint8_t previous[0x20000], const uint16_t previous_vram[0x8000],

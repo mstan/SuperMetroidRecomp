@@ -8,47 +8,60 @@
 static SmVideoSettings *video;
 static const char *path;
 static char error[128];
-static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps", "sm-continuous-rooms"};
-static const char *const features[] = {"widescreen", "presentation-fps", "continuous-rooms"};
-static const char *const names[] = {"Widescreen", "Higher FPS", "Continuous Rooms"};
-static const char *const versions[] = {"2", "2", "1"};
-static const int option_counts[] = {2, 1, 2};
+enum { WIDESCREEN, PRESENTATION_FPS, CONTINUOUS_ROOMS, REPLAY_RECORDING, BUILTIN_COUNT };
+static const char *const packages[] = {"sm-widescreen", "sm-presentation-fps", "sm-continuous-rooms", "sm-diagnostics"};
+static const char *const features[] = {"widescreen", "presentation-fps", "continuous-rooms", "replay-recording"};
+static const char *const names[] = {"Widescreen", "Higher FPS", "Continuous Rooms (Experimental)", "Gameplay Diagnostics"};
+static const char *const versions[] = {"2", "2", "1", "1"};
+static const int option_counts[] = {2, 1, 3, 0};
 static const char *const descriptions[] = {
   "Render a wider view of the current room with optional HUD anchoring.",
   "Smooth object and camera motion at your display rate while keeping game timing unchanged.",
-  "Show adjoining rooms, their scenery and optional gameplay across doors. Works at any aspect ratio."
+  "Experimental: show adjoining rooms, scenery and optional gameplay across doors. Some scripted encounters and effects may have issues. Works at any aspect ratio.",
+  "Record gameplay inputs and replay checkpoints locally so you can reproduce a gameplay issue."
 };
 static const char *const aspects[] = {"Fit", "16:9", "21:9", "32:9"};
 static const char *const rates[] = {"Auto", "60", "90", "120", "144", "165", "240", "360"};
+static const SmDoorPresentation door_choices[] = {
+  SM_DOOR_PRESENT_LIGHTING, SM_DOOR_PRESENT_SHADOW, SM_DOOR_PRESENT_REFERENCE,
+};
 #define COPY(field, text) snprintf(field, sizeof(field), "%s", text)
 
 static int identity(const char *package, const char *feature) {
-  if (package && feature) for (int i = 0; i < 3; ++i)
+  if (package && feature) for (int i = 0; i < BUILTIN_COUNT; ++i)
     if (!strcmp(package, packages[i]) && !strcmp(feature, features[i])) return i;
   return -1;
 }
-static int count(void *ctx) { (void)ctx; return 3; }
-static int enabled(int index) { return index == 2 ? video->connected_rooms : index == 1 ? video->fps_enabled : video->enhanced; }
+static int count(void *ctx) { (void)ctx; return BUILTIN_COUNT; }
+static int enabled(int index) {
+  switch (index) {
+    case CONTINUOUS_ROOMS: return video->connected_rooms;
+    case PRESENTATION_FPS: return video->fps_enabled;
+    case REPLAY_RECORDING: return video->replay_recording;
+    default: return video->enhanced;
+  }
+}
 static int package_get(void *ctx, int i, RecompLauncherCModPackage *out) {
   (void)ctx;
-  if (!out || i < 0 || i >= 3) return 0;
+  if (!out || i < 0 || i >= BUILTIN_COUNT) return 0;
   memset(out, 0, sizeof(*out));
   COPY(out->id, packages[i]); COPY(out->name, names[i]); COPY(out->version, versions[i]);
   COPY(out->author, "SuperMetroidRecomp contributors");
-  COPY(out->source_name, "SuperMetroidRecomp presentation features");
+  COPY(out->source_name, "SuperMetroidRecomp built-in mods");
   COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]); out->enabled = enabled(i);
   return 1;
 }
 static int feature_get(void *ctx, int i, RecompLauncherCModFeature *out) {
   (void)ctx;
-  if (!out || i < 0 || i >= 3) return 0;
+  if (!out || i < 0 || i >= BUILTIN_COUNT) return 0;
   memset(out, 0, sizeof(*out));
   COPY(out->id, features[i]); COPY(out->package_id, packages[i]);
   COPY(out->package_name, names[i]); COPY(out->package_version, versions[i]);
-  COPY(out->name, names[i]); COPY(out->group, i == 2 ? "Gameplay" : "Presentation");
+  COPY(out->name, names[i]);
+  COPY(out->group, i == REPLAY_RECORDING ? "Diagnostics" : i == CONTINUOUS_ROOMS ? "Gameplay" : "Presentation");
   COPY(out->author, "SuperMetroidRecomp contributors");
-  COPY(out->source_name, "SuperMetroidRecomp presentation features");
+  COPY(out->source_name, "SuperMetroidRecomp built-in mods");
   COPY(out->source_url, "https://github.com/mstan/SuperMetroidRecomp");
   COPY(out->description, descriptions[i]);
   out->enabled = enabled(i); out->option_count = option_counts[i];
@@ -82,11 +95,17 @@ static int option_get(void *ctx, const char *package, const char *feature,
     COPY(out->description,"Run enemies and gameplay actors in neighboring rooms. Off keeps animated scenery and doors. Applies when a room loads.");
     COPY(out->value,video->neighboring_logic ? "On" : "Off");
     COPY(out->default_value,"On"); out->choice_count=2;
-  } else {
+  } else if (index == 1) {
     COPY(out->id,"transitions"); COPY(out->label,"Room transitions");
     COPY(out->description,"Continuous keeps the world and camera connected across doors. Native uses the original transition animation.");
     COPY(out->value,video->seamless ? "Continuous" : "Native");
     COPY(out->default_value,"Continuous"); out->choice_count=2;
+  } else {
+    COPY(out->id, "door-fade"); COPY(out->label, "Doorway fade");
+    COPY(out->description, "Choose the visual effect for seamless doorway crossings.");
+    COPY(out->value, SmDoorPresentationKey(video->door_presentation));
+    COPY(out->default_value, SmDoorPresentationKey(SM_DOOR_PRESENT_DEFAULT));
+    out->choice_count = SM_DOOR_PRESENT_COUNT;
   }
   return 1;
 }
@@ -96,27 +115,34 @@ static const char *choice(int kind, const char *option, int index) {
   if (kind == 0 && !strcmp(option, "hud") && index < 2) return index ? "Center" : "Edges";
   if (kind == 2 && !strcmp(option,"neighbor-logic") && index<2) return index ? "Off" : "On";
   if (kind == 2 && !strcmp(option,"transitions") && index<2) return index ? "Native" : "Continuous";
+  if (kind == CONTINUOUS_ROOMS && !strcmp(option, "door-fade") && index < SM_DOOR_PRESENT_COUNT)
+    return SmDoorPresentationKey(door_choices[index]);
   if (kind == 1 && !strcmp(option, "fps") && index < 8) return rates[index];
   return NULL;
 }
 static int choice_get(void *ctx, const char *package, const char *feature,
                       const char *option, int index, RecompLauncherCModChoice *out) {
   (void)ctx;
-  const char *value = choice(identity(package, feature), option, index);
+  const int kind = identity(package, feature);
+  const char *value = choice(kind, option, index);
   if (!out || !value) return 0;
   memset(out, 0, sizeof(*out)); COPY(out->value, value);
-  COPY(out->label, !strcmp(value, "Fit") ? "Fit to window" : value);
+  const char *label = !strcmp(value, "Fit") ? "Fit to window" : value;
+  if (kind == CONTINUOUS_ROOMS && !strcmp(option, "door-fade"))
+    label = SmDoorPresentationLabel(door_choices[index]);
+  COPY(out->label, label);
   return 1;
 }
 static int enable(void *ctx, const char *package, const char *feature, int on) {
   (void)ctx;
   int kind = identity(package, feature);
   if (kind < 0) return 0;
-  if (kind != 1 && !SmActivityGeometryMutable()) {
+  if ((kind == WIDESCREEN || kind == CONTINUOUS_ROOMS) && !SmActivityGeometryMutable()) {
     COPY(error, "The initial host view stays fixed during this netplay match."); return 0;
   }
-  if (kind == 2) video->connected_rooms = on != 0;
-  else if (kind == 1) video->fps_enabled = on != 0;
+  if (kind == CONTINUOUS_ROOMS) video->connected_rooms = on != 0;
+  else if (kind == PRESENTATION_FPS) video->fps_enabled = on != 0;
+  else if (kind == REPLAY_RECORDING) video->replay_recording = on != 0;
   else video->enhanced = on != 0;
   return 1;
 }
@@ -125,6 +151,8 @@ static int set_option(void *ctx, const char *package, const char *feature,
   (void)ctx;
   int kind = identity(package, feature);
   if (kind < 0 || !value) return 0;
+  if (kind == CONTINUOUS_ROOMS && option && !strcmp(option, "door-fade"))
+    return SmParseDoorPresentation(value, &video->door_presentation);
   if (kind != 1 && option && strcmp(option,"hud") && !SmActivityGeometryMutable()) {
     COPY(error, "The initial host view stays fixed during this netplay match."); return 0;
   }

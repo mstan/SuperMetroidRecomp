@@ -3,6 +3,11 @@
 #include "sm_eproj_view.h"
 #include "sm_enemy_view.h"
 typedef struct SmRoomRuntime SmRoomRuntime;
+struct Interp816;
+/* Optional game settings operate on this private machine, never the active
+ * CPU/bus. The fixed mod plan owns the callback, not serialized room state. */
+typedef void (*SmRoomInstructionHook)(struct Interp816 *cpu,uint8_t ram[0x20000]);
+void SmRoomRuntimeSetInstructionHook(SmRoomInstructionHook hook);
 /* Ceres steam is cartridge environment animation stored in an NPC slot. */
 static inline bool SmRoomEnvironmentEnemy(unsigned id) { return id==0xe1ff; }
 /* Independent cartridge execution for resident rooms. The active machine's

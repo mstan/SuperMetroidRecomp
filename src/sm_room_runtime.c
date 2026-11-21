@@ -9,6 +9,8 @@
 #include <string.h>
 
 enum { PLAYER_VIEW=0x9a2,PLAYER_VIEW_BYTES=0xb64-PLAYER_VIEW };
+static SmRoomInstructionHook instruction_hook;
+void SmRoomRuntimeSetInstructionHook(SmRoomInstructionHook hook) { instruction_hook=hook; }
 typedef struct PlayerLoan {
   uint8_t player[PLAYER_VIEW_BYTES],input[24],timers[4];
   uint8_t blast[10];
@@ -142,7 +144,7 @@ static void write_bus(void *context, uint32_t a, uint8_t v) {
   fail(r,"unsupported room write",a);
 }
 /* Bounded native routine call, with an actual cartridge JSR/JSL return frame.
- * No host dispatch, mod hooks, IRQs, NMI or active-machine bus is involved. */
+ * No host dispatch, IRQs, NMI or active-machine bus is involved. */
 static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
   Interp816 *c=r->cpu;
   if (r->error[0]) return false;
@@ -202,6 +204,7 @@ static bool call(SmRoomRuntime *r, uint32_t entry, unsigned frame) {
     if (r->shot_air && (c->k&127)==0x14 && (c->pc==0xa1cd || c->pc==0xa1ee) &&
         c->x==18 && r->shot_air(r->shot_context,r->ram,word(r->ram+0xdc4)))
       c->x=0; /* this registered connection's trigger is ordinary shot air */
+    if (instruction_hook) instruction_hook(c,r->ram);
     interp816_runOpcode(c);
     if (r->error[0]) {
       size_t n=strlen(r->error);
@@ -371,8 +374,12 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   return r;
 }
 static bool entry_only(const SmRoomRuntime *r,unsigned id,unsigned parameter) {
+  /* Kraid's native boss flag belongs only to the body. Its seven dependent
+   * parts use fixed body/peer slots and must enter with that same encounter;
+   * compacting them into a preview without the body executes invalid AI. */
+  bool kraid_part=id>=0xe2ff && id<=0xe47f && !((id-0xe2ff)%0x40);
   return id && ((r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id)) ||
-      (id==0xe23f && (parameter==2 || parameter==3)));
+      kraid_part || (id==0xe23f && (parameter==2 || parameter==3)));
 }
 bool SmRoomRuntimeEntryOnly(const SmRoomRuntime *r,const uint8_t ram[0x20000]) {
   if (!r || !ram) return false;
@@ -410,7 +417,7 @@ static void prepare_population(SmRoomRuntime *r) {
     uint32_t a=0xb40000u+r->tileset+4*i;
     unsigned id=read(context,a) | read(context,a+1)<<8;
     if (id==65535) break;
-    if (read(context,0xa00010u+id) || read(context,0xa00011u+id)) continue;
+    if (entry_only(r,id,0)) continue;
     for (unsigned j=0; j<4; ++j) r->tileset_data[tiles*4+j]=read(context,a+j);
     ++tiles;
   }
@@ -869,6 +876,23 @@ static bool has_item_slots(const SmRoomRuntime *r,const uint8_t ram[0x20000]) {
   for (unsigned i=0,j; i<40; ++i) if (item_slot(r,ram,i,&j)) return true;
   return false;
 }
+static void promote_enemy_graphics(const SmRoomRuntime *r,uint16_t vram[0x8000]) {
+  unsigned list=word(r->ram+0x7d1);
+  /* ProcessEnemyTilesets leaves one seven-byte DMA descriptor per native
+   * tileset entry. Only those ranges belong to the resident enemy pool.
+   * The rest can contain shared graphics uploaded after this room was
+   * cached, including the escape timer. Never restore the whole OBJ bank. */
+  for (unsigned i=0;list && i<4;++i) {
+    unsigned id=r->tileset==list ? word(r->tileset_data+4*i) :
+        (unsigned)rom_long(r,0xb40000u+list+4*i)&65535;
+    if (id==65535) break;
+    unsigned descriptor=0xe5a+7*i,size=word(r->ram+descriptor),offset=word(r->ram+descriptor+5);
+    unsigned expected=(unsigned)rom_long(r,0xa00000u+id)&0x7fff;
+    unsigned target=0x6c00+offset/2;
+    if (size!=expected || ((size|offset)&1) || target>0x8000 || size/2>0x8000-target) continue;
+    for (unsigned j=0;j<size/2;++j) vram[target+j]=(uint16_t)word(r->vram+2*(target+j));
+  }
+}
 void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t vram[0x8000]) {
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return;
   /* Entry-only encounters are initialized by the active cartridge loader.
@@ -887,7 +911,7 @@ void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t v
     memcpy(ram+0xf78,r->ram+0xf78,0x18aa-0xf78);
     memcpy(ram+0x7000,r->ram+0x7000,0x2800);
     memcpy(ram+0x198d,r->ram+0x198d,0x1c23-0x198d);
-    for (unsigned i=0x6c00; i<0x8000; ++i) vram[i]=(uint16_t)word(r->vram+2*i);
+    promote_enemy_graphics(r,vram);
   }
   if (!entry) {
     if (has_item_slots(r,ram)) for (unsigned i=0; i<4; ++i) if (word(r->ram+0x1c2f+2*i)) {
@@ -919,6 +943,24 @@ static bool promote_grapple_tiles(const SmRoomRuntime *r,uint8_t *ram,bool *redr
   }
   return true;
 }
+static bool promote_eye_cap(const SmRoomRuntime *r, uint8_t *ram,
+    unsigned block, unsigned step) {
+  for (unsigned i=0; i<40; ++i) {
+    unsigned header=word(ram+0x1c37+2*i);
+    unsigned address=word(ram+0x1c87+2*i);
+    if (header<0x8000 || (address&1)) continue;
+    unsigned eye=address/2;
+    if (eye<block || eye>block+3*step || (eye-block)%step ||
+        (rom_long(r,0x840000u+header)&0xffff)!=0xda8c) continue;
+    /* An undefeated eye owns the cap and its extension blocks. The setup
+     * for a defeated eye skips that lock but still registers a PLM. Remove
+     * it so its first tick cannot repaint the regular cap we promote. */
+    unsigned argument=word(ram+0x1dc7+2*i);
+    if (argument>=512 || !(ram[0xd8b0+argument/8] & (1u<<(argument%8)))) return false;
+    ram[0x1c37+2*i]=ram[0x1c38+2*i]=0;
+  }
+  return true;
+}
 bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool *redraw) {
   if (redraw) *redraw=false;
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return false;
@@ -929,6 +971,7 @@ bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool 
     unsigned block=r->door_blocks[door],orientation=r->door_orientations[door];
     unsigned step=orientation<2 ? w : 1;
     if (block+3*step>=w*h) return false;
+    if (!promote_eye_cap(r,ram,block,step)) continue;
     for (unsigned k=0; k<4; ++k) {
       unsigned at=block+k*step;
       /* The loader uploaded its own cap before promotion. Once an opening

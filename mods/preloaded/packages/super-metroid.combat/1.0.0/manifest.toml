@@ -188,3 +188,150 @@ default_enabled = false
 [[plugin]]
 feature = "auto-charge"
 id = "super-metroid.combat.auto-charge"
+
+[[feature]]
+id = "damage-multipliers"
+name = "Damage multipliers"
+description = "Adjust the damage Samus takes from combat hits and the environment, and the damage her weapons and contact attacks deal. Scripted energy transfers stay unchanged."
+group = "Challenge"
+default_enabled = false
+
+[[option]]
+feature = "damage-multipliers"
+id = "incoming"
+label = "Samus takes"
+type = "choice"
+default = "1.5"
+[[option.choice]]
+value = "0.5"
+label = "0.5x"
+[[option.choice]]
+value = "1"
+label = "1x"
+[[option.choice]]
+value = "1.5"
+label = "1.5x"
+[[option.choice]]
+value = "2"
+label = "2x"
+[[option.choice]]
+value = "3"
+label = "3x"
+
+[[option]]
+feature = "damage-multipliers"
+id = "outgoing"
+label = "Samus deals"
+type = "choice"
+default = "1"
+[[option.choice]]
+value = "0.5"
+label = "0.5x"
+[[option.choice]]
+value = "1"
+label = "1x"
+[[option.choice]]
+value = "1.5"
+label = "1.5x"
+[[option.choice]]
+value = "2"
+label = "2x"
+[[option.choice]]
+value = "3"
+label = "3x"
+
+[[plugin]]
+feature = "damage-multipliers"
+id = "super-metroid.combat.damage-multipliers"
+
+[[feature]]
+id = "health-multipliers"
+name = "Enemy and boss health"
+description = "Adjust enemy and boss health separately. Immunities and scripted invulnerable actors stay unchanged. Very large totals stop at the game's safe health limit."
+group = "Challenge"
+default_enabled = false
+
+[[option]]
+feature = "health-multipliers"
+id = "enemies"
+label = "Enemy health"
+type = "choice"
+default = "1.5"
+[[option.choice]]
+value = "0.5"
+label = "0.5x"
+[[option.choice]]
+value = "1"
+label = "1x"
+[[option.choice]]
+value = "1.5"
+label = "1.5x"
+[[option.choice]]
+value = "2"
+label = "2x"
+
+[[option]]
+feature = "health-multipliers"
+id = "bosses"
+label = "Boss health"
+type = "choice"
+default = "1.5"
+[[option.choice]]
+value = "0.5"
+label = "0.5x"
+[[option.choice]]
+value = "1"
+label = "1x"
+[[option.choice]]
+value = "1.5"
+label = "1.5x"
+[[option.choice]]
+value = "2"
+label = "2x"
+
+[[plugin]]
+feature = "health-multipliers"
+id = "super-metroid.combat.health-multipliers"
+
+[[feature]]
+id = "projectile-speed"
+name = "Faster beams and missiles"
+description = "Slightly increase beam and missile travel speed separately. Acceleration and wall reactions stay active, with a speed limit for reliable collision."
+group = "Challenge"
+default_enabled = false
+
+[[option]]
+feature = "projectile-speed"
+id = "beams"
+label = "Beam speed"
+type = "choice"
+default = "1.125"
+[[option.choice]]
+value = "1"
+label = "1x"
+[[option.choice]]
+value = "1.125"
+label = "1.125x"
+[[option.choice]]
+value = "1.25"
+label = "1.25x"
+
+[[option]]
+feature = "projectile-speed"
+id = "missiles"
+label = "Missile speed"
+type = "choice"
+default = "1.125"
+[[option.choice]]
+value = "1"
+label = "1x"
+[[option.choice]]
+value = "1.125"
+label = "1.125x"
+[[option.choice]]
+value = "1.25"
+label = "1.25x"
+
+[[plugin]]
+feature = "projectile-speed"
+id = "super-metroid.combat.projectile-speed"

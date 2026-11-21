@@ -46,6 +46,100 @@ static void BeginFixtureFrame(const uint8_t *state, unsigned number) {
 static void unexpected_capture_callback(Ppu *p,uint y,bool sub,void *context) {
   (void)p;(void)y;(void)sub;(void)context;assert(false);
 }
+
+static void standalone_widescreen_foreground(void) {
+  ResetFixtureRenderer();
+  SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));
+  memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);
+  word(0x7a5,16);
+  word(0x7a7,16);
+  /* A solid tile meets the room boundary on the left. The corresponding
+   * right edge is air, and the row above has no continuation either. */
+  word(0x10002+2*64,0x8001);
+  word(0xa000+1023*8,3);
+  ppu.inidisp=15;
+  ppu.bgmode=1;
+  ppu.bgTileAdr=2;
+  ppu.screenEnabled[0]=1;
+  ppu.cgram[1]=31;
+  for (unsigned y=0;y<8;++y) ppu.vram[0x2000+y]=255;
+  BeginFixtureFrame(ram,99);
+  for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+  assert(SmRendererEndFrame(stock));
+  assert(SmRendererDraw(output,(SmViewport){.width=342,.extra=43},false,1));
+  assert((output[64*342]&0xffffff)==0xff0000);
+  assert((output[64*342+341]&0xffffff)==0);
+  assert((output[48*342]&0xffffff)==0);
+  uint32_t center[256];
+  memcpy(center,output+64*342+43,sizeof(center));
+  assert(SmRendererDraw(output,(SmViewport){.width=256,.extra=0},false,1));
+  assert(!memcmp(center,output+64*256,sizeof(center)));
+}
+
+static void ceres_backdrop(void) {
+  ResetFixtureRenderer();
+  SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));
+  memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);
+  word(0x79f,6);
+  word(0x7a5,16);
+  word(0x7a7,16);
+  word(0x1986,0x2c); /* scripted haze without a room FX header */
+  ppu.inidisp=15;
+  ppu.bgmode=1;
+  ppu.screenEnabled[0]=1;
+  ppu.cgadsub=0x20;
+  BeginFixtureFrame(ram,100);
+  for (unsigned y=1;y<=224;++y) {
+    ppu.fixedColor=y<100 ? 0 : 0x7c00;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  assert(SmRendererEndFrame(stock));
+  assert(SmRendererDraw(output,(SmViewport){.width=342,.extra=43},false,1));
+  assert((output[80*342]&0xffffff)==0);
+  assert((output[120*342]&0xffffff)==0xff);
+  assert((output[120*342+43]&0xffffff)==0xff);
+  assert((output[120*342+341]&0xffffff)==0xff);
+}
+
+static void ceres_connected_haze(void) {
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram)); memset(&ppu,0,sizeof(ppu));
+  word(0x998,8); word(0x79f,6); word(0x79b,0xe06b);
+  word(0x7a5,16); word(0x7a7,16); word(0x1986,0x2c);
+  ppu.inidisp=15; ppu.bgmode=1; ppu.screenEnabled[0]=1;
+  ppu.bgTileAdr=1; ppu.cgram[1]=31<<5; ppu.cgadsub=0x21;
+  SmRoomScene *scene=calloc(1,SmRoomSceneBytes(1)); assert(scene);
+  *scene=(SmRoomScene){.version=4,.count=1,.root=0xe06b};
+  SmRoomImage *image=&scene->rooms[0];
+  image->placement=(SmRoomPlacement){.room=0xe0b5,.state=0xe571,.x=256,
+      .width=256,.height=256,.left=256,.top=0,.right=512,.bottom=256};
+  image->ram[0x79f]=6; image->ram[0x7a5]=image->ram[0x7a7]=16;
+  image->ram[0x69]=1; image->ram[0xc002]=0xe0; image->ram[0xc003]=3;
+  for (unsigned y=0; y<8; ++y) {
+    ppu.vram[4096+y]=255;
+    image->vram[2*y]=0x0f;
+  }
+  assert(SmRendererLatchRooms(scene)); free(scene);
+  BeginFixtureFrame(ram,100);
+  for (unsigned y=1; y<=224; ++y) {
+    ppu.fixedColor=y<100 ? 31<<10 : 31;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  SmViewport view={342,43,16.0/9,true};
+  assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+  assert(output[60*view.width+view.extra+128]==0x00ffff);
+  assert(output[60*view.width+view.extra+260]==0x00ffff);
+  assert(output[60*view.width+view.extra+256]==0x0000ff);
+  assert(output[120*view.width+view.extra+128]==0xffff00);
+  assert(output[120*view.width+view.extra+260]==0xffff00);
+  assert(output[120*view.width+view.extra+256]==0xff0000);
+  assert(output[15*view.width+view.extra+260]==0);
+}
+
 static void raster_storage(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
@@ -85,11 +179,10 @@ static void raster_storage(void) {
   assert(SmRendererEndFrame(stock));storage=SmRendererGetRasterStats();
   assert(storage.vram_images==(SM_RASTER_FULL_COPY?224u:4u));
   assert(storage.vram_capacity_bytes==(uint64_t)(SM_RASTER_FULL_COPY?448u:8u)*65536);
-  if(!SM_RASTER_FULL_COPY)assert(storage.vram_compared_bytes==
 #if SM_RASTER_TRACK_WRITES && !SNESRECOMP_TRACE
-      34u*65536);
+  if(!SM_RASTER_FULL_COPY)assert(storage.vram_compared_bytes==34u*65536);
 #else
-      223u*65536);
+  if(!SM_RASTER_FULL_COPY)assert(storage.vram_compared_bytes==223u*65536);
 #endif
   memset(ppu.vram,0,sizeof(ppu.vram));
   assert(SmRendererDraw(output,view,false,1));
@@ -145,7 +238,7 @@ static void hud_bottom_anchor(void) {
   const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
       {448,96,21.0/9,true},{682,213,32.0/9,true}};
   for (unsigned provider=0;provider<2;++provider) for(unsigned edge=0;edge<2;++edge)
-    for(unsigned scroll=0;scroll<2;++scroll) {
+    for(unsigned scroll=0;scroll<2;++scroll) for(unsigned message=0;message<2;++message) {
     ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
     memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
     word(0x998,8);word(0x7a5,32);word(0x7a7,16);word(0x911,edge?256:0);
@@ -171,6 +264,9 @@ static void hud_bottom_anchor(void) {
       /* EndHud installs gameplay HOFS before the last minimap texel row.
        * It still addresses the HUD page; those dots must stay with the map. */
       ppu.hScroll[2]=line<=30?0:scroll?7:0;
+      /* Stations replace $5A with $58 at EndHud. Both address the same
+       * fourth HUD row; the removed second page only affects later lines. */
+      ppu.bgXsc[2]=line<=30?0x5a:message?0x58:0x5a;
       SmRendererCaptureLine(&ppu,line);
     }
     if(provider)SmRendererEndHardwareRaster();
@@ -385,6 +481,24 @@ static void shared_hud_liquid_map(void) {
   assert(SmRoomSceneSample(liquid,776,199,768,0,layers) && !layers[2]);
   assert(SmRoomSceneSample(liquid,864,199,768,0,layers) && layers[2]);
   free(liquid);
+  /* A Power Bomb replaces this surface row with its color-math canvas.
+   * A solid bank must not punch a bright fixed-color hole outside the blast. */
+  word(0x592,0x8000);ppu.screenEnabled[0]=0;ppu.screenEnabled[1]=4;
+  ppu.screenWindowed[1]=4;ppu.windowsel=0x800;
+  ppu.window2left=96;ppu.window2right=160;
+  ppu.cgram[0]=0;ppu.cgram[1]=0;
+  ppu.fixedColor=0x7fff;ppu.cgwsel=2;ppu.cgadsub=32;
+  BeginFixtureFrame(ram,4);
+  for (unsigned y=1;y<=224;++y) {
+    ppu.hScroll[2]=773;ppu.vScroll[2]=y<192 ? 0 : 55;
+    SmRendererCaptureLine(&ppu,y);
+  }
+  assert(SmRendererEndFrame(stock));
+  for (unsigned v=0;v<sizeof(views)/sizeof(views[0]);++v) {
+    SmViewport view=views[v];assert(SmRendererDraw(output,view,false,1));
+    assert(output[199*view.width+view.extra+8]==0);
+    assert(output[199*view.width+view.extra+110]==0xffffff);
+  }
   ResetFixtureRenderer(); memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu));
 }
 
@@ -1017,6 +1131,57 @@ static void bg2_object_canvas(void) {
   memset(ram, 0, sizeof(ram)); memset(&ppu, 0, sizeof(ppu)); memset(rom, 0, sizeof(rom));
 }
 
+static void mother_brain_tank_margin(void) {
+  const SmViewport views[]={{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  memset(rom,0,sizeof(rom));SmRendererSetRom(rom,sizeof(rom));
+  word(0x998,8);word(0xf78,0xec7f);ram[0xfa6]=0xa9;
+  word(0xfb8,0xec3f);word(0xfc6,0x100);word(0xfba,200);word(0xfbe,100);
+  word(0x8002,0x9000);word(0x911,256);
+  romword(0x149000,10);romword(0x149002,0xa000);
+  romword(0x14a000,1);romword(0x14a002,16);rom[0x14a004]=0;
+  ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=16;ppu.cgram[129]=31<<5;
+  for(unsigned y=0;y<8;++y)ppu.vram[y]=255;
+  for(unsigned phase=0;phase<2;++phase) {
+    word(0xfa8,phase?0x8829:0x87e1);BeginFixtureFrame(ram,phase+1);
+    for(unsigned y=1;y<=224;++y)SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock));
+    for(unsigned v=0;v<sizeof(views)/sizeof(views[0]);++v) {
+      SmViewport view=views[v];assert(SmRendererDraw(output,view,false,1));
+      for(int x=0;x<view.width;++x) {
+        int native_x=x-view.extra;
+        assert(output[100*view.width+x]==(!phase&&native_x>=-40&&native_x<-32?0x00ff00u:0));
+      }
+    }
+  }
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(rom,0,sizeof(rom));
+}
+
+static void escape_typewriter_canvas(void) {
+  const SmViewport views[]={{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {448,96,21.0/9,true},{682,213,32.0/9,true}};
+  const unsigned phases[]={0x87e1,0xb258,0xb2d1,0xb2e3,0xb2f9,0xb32a,0xb33c};
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+  word(0x998,8);word(0x91b,0x101);word(0xf78,0xec7f);ram[0xfa6]=0xa9;
+  ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=2;
+  ppu.bgXsc[1]=0x48;ppu.bgTileAdr=0x10;ppu.cgram[1]=31<<5;
+  for(unsigned row=0;row<8;++row)ppu.vram[4096+row]=255;
+  for(unsigned phase=0;phase<sizeof(phases)/sizeof(phases[0]);++phase) {
+    word(0xfa8,phases[phase]);BeginFixtureFrame(ram,phase+1);
+    for(unsigned y=1;y<=224;++y)SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock));
+    for(unsigned v=0;v<sizeof(views)/sizeof(views[0]);++v) {
+      SmViewport view=views[v];assert(SmRendererDraw(output,view,false,1));
+      for(int x=0;x<view.width;++x) {
+        bool native=x>=view.extra&&x<view.extra+256;
+        assert(output[100*view.width+x]==(native||phase<2?0x00ff00u:0));
+      }
+    }
+  }
+  ResetFixtureRenderer();memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));
+}
+
 static void crocomire_parked_bg2(void) {
   const SmViewport views[] = {{256, 0, 4.0 / 3, false}, {342, 43, 16.0 / 9, true},
       {448, 96, 21.0 / 9, true}, {682, 213, 32.0 / 9, true}};
@@ -1329,6 +1494,20 @@ static void continued_solid_foreground(void) {
   for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
   assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
   assert(output[200*view.width+view.extra+48]==0xff0000);
+  /* Elevator setup precedes the actual room fade. Its side continuation
+   * remains present, then follows the departing room's native palette. */
+  const unsigned states[]={9,10,11,11};
+  const unsigned phases[]={0xe17d,0xe19f,0xe29e,0xe2db};
+  for (unsigned i=0;i<4;++i) {
+    word(0x998,states[i]);word(0x99c,phases[i]);
+    ppu.cgram[1]=i==3 ? 15 : 31;
+    assert(SmRendererLatchRooms(scene));BeginFixtureFrame(ram,5+i);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,false,1));
+    if (output[50*view.width+view.extra+270]!=(i==3 ? 0x7b0000u : 0xff0000u))
+      fprintf(stderr,"departing state %u phase %x pixel %x\n",states[i],phases[i],output[50*view.width+view.extra+270]);
+    assert(output[50*view.width+view.extra+270]==(i==3 ? 0x7b0000u : 0xff0000u));
+  }
   free(scene);ResetFixtureRenderer();
 }
 
@@ -1359,10 +1538,15 @@ int main(int argc, char **argv) {
   parallax_register_aliases();
   door_layout_handover();
   bg2_object_canvas();
+  escape_typewriter_canvas();
+  mother_brain_tank_margin();
   crocomire_parked_bg2();
   room_effect_matte();
   nonrectangular_room_padding();
   cannon_motion();
+  standalone_widescreen_foreground();
+  ceres_backdrop();
+  ceres_connected_haze();
   raster_storage();
   /* Reveal substitutions, row-major multi-block writes, linked BTS blocks,
    * item collection and room-state overrides, all without guest execution. */
@@ -1781,6 +1965,19 @@ int main(int argc, char **argv) {
     assert(SmRendererDraw(output, view, true, 1));
     assert(output[60 * view.width + view.extra + 300] == (live ? 0x0000ff : 0));
   }
+  /* Cinematic scripts reuse these actor words. Their native OAM remains
+   * authoritative even when scratch RAM resembles a live gameplay shot. */
+  const unsigned cinematic_states[]={34,37};
+  for (unsigned sample=0;sample<2;++sample) {
+    unsigned state=cinematic_states[sample];
+    word(0x998,state);
+    BeginFixtureFrame(ram,30+state);
+    for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+    assert(SmRendererEndFrame(stock) && SmRendererDraw(output,view,true,1));
+    assert(output[60*view.width+view.extra+300]==0);
+    assert(output[70*view.width+view.extra+310]==0);
+  }
+  word(0x998,8);
   /* Pickup/effect instruction operands are read-only and emit before enemy
    * OAM. Clearing the instruction pointer must remove the visual immediately. */
   rom[0x1a0000] = 8;
@@ -1921,6 +2118,42 @@ int main(int argc, char **argv) {
     assert(SmRendererDraw(output, view, true, 1));
     assert(output[60 * view.width + view.extra + 54] == 0);
     assert(output[60 * view.width + view.extra + 58] == 0x0000ff);
+  }
+  /* A new shutter segment changes the center by six pixels while the
+   * moving edge advances by two. Both growth directions use that edge. */
+  for (int direction=-1; direction<=1; direction+=2) {
+    ResetFixtureRenderer();
+    memset(ram,0,sizeof(ram));
+    memset(&ppu,0,sizeof(ppu));
+    memset(rom+0x110000,0,8);
+    romword(0x110000,1);
+    word(0x998,8);
+    word(0xf78,0xd4ff);
+    word(0xf7a,50);
+    word(0xf8e,0x8000);
+    word(0xfaa,100);
+    word(0xfac,100+8*direction);
+    ram[0xfa6]=0xa2;
+    ppu.inidisp=15;
+    ppu.bgmode=1;
+    ppu.screenEnabled[0]=16;
+    ppu.cgram[129]=31<<10;
+    for (unsigned y=0;y<8;++y) ppu.vram[y]=255;
+    for (unsigned frame=0;frame<2;++frame) {
+      int center=60-(int)frame*6*direction;
+      word(0xf7e,(unsigned)center);
+      word(0xf84,8+8*frame);
+      ppu.oam[0]=(uint16_t)(center*256+50);
+      BeginFixtureFrame(ram,frame+1);
+      for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+      assert(SmRendererEndFrame(stock));
+    }
+    int mid=60-7*direction;
+    assert(SmRendererDraw(output,view,false,0.5));
+    assert((output[mid*view.width+view.extra+50]&0xffffff)==0xff);
+    assert((output[(mid-1)*view.width+view.extra+50]&0xffffff)==0);
+    assert(SmRendererDraw(output,view,false,1));
+    assert((output[(60-6*direction)*view.width+view.extra+50]&0xffffff)==0xff);
   }
   /* Native and reconstructed halves of a sprite straddling X=256 must use
    * the same intermediate origin. Also exercise an entirely offscreen owner. */

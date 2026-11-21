@@ -19,6 +19,7 @@ static size_t rom_bytes;
 static Resident residents[SM_ROOM_RESIDENTS];
 static unsigned count, root;
 static bool logic, seamless, pending_entry;
+static unsigned upward_door;
 static int camera_dx,camera_dy;
 static bool rebased;
 enum { MAX_LINKS=1024 };
@@ -38,7 +39,7 @@ void SmRoomsReset(void) {
   for (unsigned i=0; i<count; ++i) SmRoomRuntimeDestroy(residents[i].runtime);
   memset(residents,0,sizeof(residents)); count=root=0;
   memset(&active_world,0,sizeof(active_world));
-  pending_entry=false;
+  pending_entry=false; upward_door=0;
   camera_dx=camera_dy=0; rebased=false;
   memset(links,0,sizeof(links)); link_count=0;
   free(publication); publication=NULL;
@@ -727,14 +728,29 @@ bool SmRoomsCrossing(const uint8_t active[0x20000],uint16_t *definition,SmRoomPl
   return false;
 }
 bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]) {
-  if (!seamless || word(active+0x79b)!=root || word(active+0x998)!=8 || word(active+0xb36)!=1) return false;
+  if (!seamless || word(active+0x79b)!=root || word(active+0x998)!=8 || word(active+0xa78)) return false;
   int x=(int16_t)word(active+0xaf6),y=(int16_t)word(active+0xafa);
   int rx=(int)word(active+0xafe),ry=(int)word(active+0xb00);
+  if (upward_door && (read_rom(NULL,0x830000u+upward_door) |
+      read_rom(NULL,0x830001u+upward_door)<<8)==root) {
+    unsigned cx=read_rom(NULL,0x830004u+upward_door),cy=read_rom(NULL,0x830005u+upward_door);
+    unsigned phase=SmDoorPhase(read_rom,NULL,active,cx,cy);
+    /* The native loader carries the whole body through the arriving cap.
+     * Changing room ownership at its outer plane must not end that motion
+     * with Samus still below the inner frame (one block above the cap).
+     * Finish once, then allow an
+     * intentional fall back through the same open doorway. */
+    if (word(active+0x78d)==upward_door && x-rx>=(int)cx*16 && x+rx<((int)cx+4)*16 &&
+        cy && y+ry>=((int)cy-1)*16 && y<((int)cy+3)*16 &&
+        (phase==SM_DOOR_OPEN || phase==SM_DOOR_OPENING)) return true;
+    upward_door=0;
+    return false;
+  }
   unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
   for (unsigned i=0; i<n; ++i) {
     const SmWorldDoor *d=&doors[i]; SmRoomPlacement p;
     int plane=d->block_y*16;
-    if ((d->direction&3)!=3 || y<plane || y-ry>plane ||
+    if ((d->direction&3)!=3 || (!upward_door && word(active+0xb36)!=1) || y<plane || y-ry>plane ||
         x-rx<d->block_x*16 || x+rx>=(d->block_x+4)*16 ||
         !active_door(active,d) || !planar_portal(d,&p)) continue;
     unsigned phase=SmRoomsDoorPhase(d->definition);
@@ -745,8 +761,12 @@ bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]) {
      * introducing a coordinate jump or demanding a higher jump. */
     int by=d->block_y-1;
     if (SmRoomsCollisionBlock(active,(x-rx)/16,by)==0 &&
-        SmRoomsCollisionBlock(active,(x+rx-1)/16,by)==0) return true;
+        SmRoomsCollisionBlock(active,(x+rx-1)/16,by)==0) {
+      upward_door=d->definition;
+      return true;
+    }
   }
+  upward_door=0;
   return false;
 }
 static void follow_doorway(const uint8_t *active,unsigned extra) {
@@ -823,6 +843,8 @@ bool SmRoomsHandoff(const uint8_t previous[0x20000],const uint16_t previous_vram
   camera_dx+=(int16_t)word(previous+0x911)-p->x-(int16_t)word(active+0x911);
   camera_dy+=(int16_t)word(previous+0x915)-p->y-(int16_t)word(active+0x915);
   rebased=true;
+  upward_door=direction==3 && (int16_t)word(previous+0xafa)<p->bottom &&
+      word(previous+0xb36)==1 ? p->incoming : 0;
   return true;
 }
 static void update_connections(const uint8_t *active) {
@@ -881,11 +903,13 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
                     bool requested_logic, bool requested_seamless) {
   if (!enabled || !rom || rom_bytes!=0x300000) { SmRoomsReset(); return true; }
   unsigned game_state=word(active+0x998);
-  if (game_state>=9 && game_state<=13) pending_entry=true;
+  if (game_state>=9 && game_state<=13) { pending_entry=true; upward_door=0; }
+  if (!requested_seamless) upward_door=0;
   if (game_state!=8) return native_root ? publish() : true;
   unsigned current=word(active+0x79b);
   bool continuous_context=current==root || rebased;
   if ((current!=root || pending_entry) && !rebased) {
+    upward_door=0;
     camera_dx=camera_dy=0;memset(&active_world,0,sizeof(active_world));
   }
   if (current!=root || pending_entry) { root=current;logic=requested_logic;seamless=requested_seamless; }
@@ -1007,7 +1031,7 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
 typedef struct RoomsState {
   uint32_t magic,version,count,root,logic,seamless,unit,pending_entry;
   int32_t camera_dx,camera_dy;
-  uint32_t links;
+  uint32_t links,upward_door;
 } RoomsState;
 size_t SmRoomsStateBound(void) {
   return sizeof(RoomsState)+SM_ROOM_RESIDENTS*(sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities))+sizeof(links)+sizeof(WorldEntities)+sizeof(SmRoomImage);
@@ -1017,7 +1041,7 @@ size_t SmRoomsSave(void *out, size_t capacity) {
   size_t bytes=sizeof(RoomsState)+count*unit+link_count*sizeof(DoorLink)+sizeof(WorldEntities)+(native_root ? sizeof(SmRoomImage) : 0);
   if (!out || capacity<bytes) return 0;
   /* pending_entry bit1 owns the optional immutable native-transition root. */
-  RoomsState h={0x534d5257,6,count,root,logic,seamless,(uint32_t)unit,(pending_entry ? 1u : 0u)|(native_root ? 2u : 0u),camera_dx,camera_dy,link_count};
+  RoomsState h={0x534d5257,7,count,root,logic,seamless,(uint32_t)unit,(pending_entry ? 1u : 0u)|(native_root ? 2u : 0u),camera_dx,camera_dy,link_count,upward_door};
   memcpy(out,&h,sizeof(h)); uint8_t *p=(uint8_t *)out+sizeof(h);
   for (unsigned i=0; i<count; ++i,p+=unit) {
     memcpy(p,&residents[i].placement,sizeof(SmRoomPlacement));
@@ -1044,10 +1068,19 @@ bool SmRoomsValidate(const void *in, size_t size) {
   RoomsState h;
   if (!in || size<sizeof(h)) return false;
   memcpy(&h,in,sizeof(h));
-  if (h.magic!=0x534d5257 || h.version!=6 || h.count>SM_ROOM_RESIDENTS || h.root>65535 || h.links>MAX_LINKS ||
+  if (h.magic!=0x534d5257 || h.version!=7 || h.count>SM_ROOM_RESIDENTS || h.root>65535 || h.links>MAX_LINKS ||
       h.camera_dx < -4096 || h.camera_dx>4096 || h.camera_dy < -4096 || h.camera_dy>4096 ||
       h.logic>1 || h.seamless>1 || h.pending_entry>3 || h.unit!=sizeof(SmRoomPlacement)+SmRoomRuntimeStateSize()+sizeof(WorldEntities) ||
       size!=sizeof(h)+(size_t)h.count*h.unit+h.links*sizeof(DoorLink)+sizeof(WorldEntities)+((h.pending_entry&2) ? sizeof(SmRoomImage) : 0)) return false;
+  if (h.upward_door) {
+    if (h.upward_door<0x88fc || h.upward_door>=0xacf0 || !h.seamless ||
+        (read_rom(NULL,0x830003u+h.upward_door)&3)!=3) return false;
+    bool belongs=(read_rom(NULL,0x830000u+h.upward_door) |
+        read_rom(NULL,0x830001u+h.upward_door)<<8)==h.root;
+    unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)h.root,&n);
+    for (unsigned i=0;i<n;++i) if (doors[i].definition==h.upward_door) belongs=true;
+    if (!belongs) return false;
+  }
   const uint8_t *p=(const uint8_t *)in+sizeof(h);
   for (unsigned i=0; i<h.count; ++i,p+=h.unit) {
     SmRoomPlacement v; memcpy(&v,p,sizeof(v));
@@ -1103,7 +1136,7 @@ bool SmRoomsLoad(const void *in, size_t size) {
   }
   SmRoomsReset();native_root=next_native; memcpy(residents,next,sizeof(next)); count=h.count; root=h.root;
   logic=h.logic!=0; seamless=h.seamless!=0;
-  pending_entry=(h.pending_entry&1)!=0;
+  pending_entry=(h.pending_entry&1)!=0; upward_door=h.upward_door;
   camera_dx=h.camera_dx; camera_dy=h.camera_dy;
   link_count=h.links; memcpy(links,p,link_count*sizeof(DoorLink));
   memcpy(&active_world,p+link_count*sizeof(DoorLink),sizeof(active_world));

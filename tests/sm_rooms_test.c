@@ -549,8 +549,44 @@ static void retained_projectile(const uint8_t *rom) {
   SmRoomsSetDoorEvent(NULL);memcpy(active,original,sizeof(active));
   puts("retained native projectile crosses into Root and damages Samus; Off freezes neighbors but preserves already-crossed objects; exact midflight restore");
 }
+static void upward_arrival(const uint8_t *rom,const char *path) {
+  static uint8_t arrival[0x20000],previous[0x20000],after[0x20000];
+  static uint16_t vram[0x8000];
+  FILE *f=fopen(path,"rb");assert(f && fread(arrival,1,sizeof(arrival),f)==sizeof(arrival));fclose(f);
+  assert(SmShotWord(original,0x79b)==0xcefb && SmShotWord(arrival,0x79b)==0xcfc9);
+  for (unsigned logic=0;logic<2;++logic) {
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
+    put(0xaf6,128);put(0xafa,18);put(0xb36,1);put(0x911,0);put(0x915,0);
+    for (unsigned i=0;i<60;++i) assert(SmRoomsFrame(active,true,43,logic!=0,true));
+    assert(SmRoomsUpwardDoorCarry(active));
+    SmRoomPlacement destination;assert(SmRoomsDoor(0xa330,&destination));
+    put(0xafa,-4);memcpy(previous,active,sizeof(active));
+    memcpy(active,arrival,sizeof(active));put(0xaf6,384);put(0xafa,2044);put(0xb36,1);
+    assert(SmRoomsHandoff(previous,vram,active,vram,&destination,3,NULL));
+    assert(SmRoomsFrame(active,true,43,logic!=0,true));
+    assert(SmRoomsUpwardDoorCarry(active)); /* regression: carry survives center handoff */
+    size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*again=malloc(bound);assert(saved && again);
+    size_t bytes=SmRoomsSave(saved,bound);assert(bytes && SmRoomsValidate(saved,bytes));
+    memcpy(after,active,sizeof(active));
+    memcpy(again,saved,bytes);((uint32_t *)again)[11]=0xa324; /* valid horizontal header is no upward phase */
+    assert(!SmRoomsValidate(again,bytes) && !SmRoomsLoad(again,bytes));
+    assert(SmRoomsSave(again,bound)==bytes && !memcmp(saved,again,bytes));
+    put(0xb36,2);assert(SmRoomsUpwardDoorCarry(active)); /* released jump is automatic transit */
+    put(0x998,15);assert(!SmRoomsUpwardDoorCarry(active));put(0x998,8);assert(SmRoomsUpwardDoorCarry(active));
+    put(0xafa,1984-(int)SmShotWord(active,0xb00)-1);assert(!SmRoomsUpwardDoorCarry(active));
+    put(0xafa,2044);put(0xb36,1);assert(!SmRoomsUpwardDoorCarry(active)); /* one transit, no auto-bounce */
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,after,sizeof(active));assert(SmRoomsUpwardDoorCarry(active));
+    assert(SmRoomsSave(again,bound)==bytes && !memcmp(saved,again,bytes));
+    put(0xaf6,340);assert(!SmRoomsUpwardDoorCarry(active));
+    assert(SmRoomsLoad(saved,bytes));memcpy(active,after,sizeof(active));
+    assert(SmRoomsFrame(active,false,43,logic!=0,true) && !SmRoomsUpwardDoorCarry(active));
+    free(saved);free(again);
+  }
+  SmRoomsSetDoorEvent(NULL);
+  puts("Native Maridia cap: capture, full-body arrival, released jump, pause, exact phase restore and one-shot cancellation pass On/Off");
+}
 int main(int argc,char **argv) {
-  if (argc!=3 && argc!=4) return 2;
+  if (argc!=3 && argc!=4 && argc!=5) return 2;
   samples();
   uint8_t *rom=malloc(0x300000); assert(rom);
   FILE *f=fopen(argv[1],"rb"); assert(f); assert(fread(rom,1,0x300000,f)==0x300000); fclose(f);
@@ -558,6 +594,7 @@ int main(int argc,char **argv) {
   SmRoomsSetEnemyReaction(root_enemy);
   f=fopen(argv[2],"rb"); assert(f); assert(fread(active,1,sizeof(active),f)==sizeof(active)); fclose(f);
   memcpy(original,active,sizeof(active));
+  if (argc==5 && !strcmp(argv[4],"upward")) { upward_arrival(rom,argv[3]);SmRoomsSetRom(NULL,0);free(rom);return 0; }
   if (SmShotWord(original,0x79b)==0xdf45 && (original[0x56]&7)==7) {
     for (unsigned logic=0; logic<2; ++logic) {
       memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
@@ -671,11 +708,11 @@ int main(int argc,char **argv) {
       memcpy(active,original,sizeof(active)); SmRoomsSetRom(rom,0x300000);
       put(0xaf6,384); put(0xafa,18);
       for (unsigned frame=0; frame<60; ++frame) assert(SmRoomsFrame(active,true,213,logic!=0,true));
-      assert(SmRoomsUpwardDoorCarry(active));
       put(0xb36,2); assert(!SmRoomsUpwardDoorCarry(active));
       put(0xb36,0); assert(!SmRoomsUpwardDoorCarry(active)); put(0xb36,1);
       put(0xaf6,16); assert(!SmRoomsUpwardDoorCarry(active)); put(0xaf6,384);
       put(0x998,9); assert(!SmRoomsUpwardDoorCarry(active));
+      put(0x998,8);assert(SmRoomsUpwardDoorCarry(active));
     }
     puts("up-door native carry requires an open pair, upward movement, aligned body and gameplay, On and Off");
   }

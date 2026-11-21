@@ -1,10 +1,17 @@
 #include "sm_room_runtime.h"
 #include "sm_shot_view.h"
+#include "snes/interp816.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 static uint8_t *rom, active[0x20000], before[0x20000];
+static unsigned setting_calls;
+static void health_setting(Interp816 *cpu,uint8_t ram[0x20000]) {
+  if ((cpu->k&127)!=0x20 || cpu->pc!=0x8b93 || cpu->y>=2048 || (cpu->y&63)) return;
+  unsigned hp=SmShotWord(ram,0xf8c+cpu->y);
+  if (hp && hp<0x3fff) { SmShotPut(ram,0xf8c+cpu->y,hp*2);++setting_calls; }
+}
 static uint8_t Read(void *ctx,uint32_t a) {
   (void)ctx; unsigned at=((a>>16)&127)*32768u+(a&32767);
   return (a&0x8000) && at<0x300000 ? rom[at] : 255;
@@ -882,6 +889,31 @@ static void ceres_entry_promotion(const SmWorld *world) {
   free(entered);free(vram);
   puts("Actual native Ceres entry fixture: On/Off promotion preserves unflagged E23F2 initialization and door state exactly");
 }
+static bool kraid_encounter(const SmWorld *world) {
+  const SmWorldRoom *room=SmWorldFindRoom(world,0xa59f);assert(room);
+  uint16_t state=SmWorldRoomState(room,Read,NULL,active);
+  /* Native population: body plus seven slot-dependent arm/lint/foot/nails.
+   * None may run in isolation before the actual encounter's entry scripts. */
+  SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active);
+  assert(r && !*SmRoomRuntimeError(r));
+  const uint8_t *ram=SmRoomRuntimeRam(r);
+  for (unsigned tick=0;tick<60;++tick) {
+    if (!SmRoomRuntimeStep(r,32,384,0,256) || !SmRoomRuntimeStepEffects(r)) {
+      fprintf(stderr,"Kraid resident tick %u: %s\n",tick,SmRoomRuntimeError(r));
+      SmRoomRuntimeDestroy(r);return false;
+    }
+  }
+  for (unsigned i=0;i<32;++i) assert(!SmShotWord(ram,0xf78+64*i));
+  size_t size=SmRoomRuntimeStateSize();void *saved=malloc(size),*next=malloc(size),*again=malloc(size);
+  assert(saved && next && again && SmRoomRuntimeSave(r,saved,size));
+  assert(SmRoomRuntimeStep(r,32,384,0,256) && SmRoomRuntimeSave(r,next,size));
+  assert(SmRoomRuntimeLoad(r,saved,size) && SmRoomRuntimeStep(r,32,384,0,256));
+  assert(SmRoomRuntimeSave(r,again,size) && !memcmp(next,again,size));
+  assert(!memcmp(active,before,sizeof(active)));
+  free(saved);free(next);free(again);SmRoomRuntimeDestroy(r);
+  puts("Kraid body and all dependent parts remain entry-owned; resident ticks/state continuation preserve live progress");
+  return true;
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -892,7 +924,11 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  if (!strcmp(argv[3],"kraid")) {
+    bool ok=kraid_encounter(world);free(world);free(rom);return ok ? 0 : 1;
+  }
   liquid_initialization(world);
+  if (!kraid_encounter(world)) return 1;
   if (strtoul(argv[3],NULL,16)==0x9fe5) { item_scenery(world);ceres_scenery(world);ceres_environment(world);visible_candy(world);deleted_grapple_entry(world); }
   ceres_entry_promotion(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);
@@ -900,6 +936,22 @@ int main(int argc,char **argv) {
   SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(r);
   SmRoomRuntime *twin=SmRoomRuntimeCreate(Read,NULL,room,state,active); assert(twin);
   if (*SmRoomRuntimeError(r)) { fprintf(stderr,"init: %s\n",SmRoomRuntimeError(r)); return 1; }
+  if (room->header==0x9fe5 || room->header==0x93aa) {
+    SmRoomRuntimeSetInstructionHook(health_setting);
+    SmRoomRuntime *modified=SmRoomRuntimeCreate(Read,NULL,room,state,active);
+    SmRoomRuntimeSetInstructionHook(NULL);
+    assert(modified && !*SmRoomRuntimeError(modified) && setting_calls);
+    const uint8_t *base=SmRoomRuntimeRam(r),*candidate=SmRoomRuntimeRam(modified);
+    unsigned changed=0;
+    for(unsigned slot=0;slot<32;++slot) {
+      unsigned hp=SmShotWord(base,0xf8c+slot*64);
+      if (SmShotWord(base,0xf78+slot*64) && hp && hp<0x3fff) {
+        assert(SmShotWord(candidate,0xf8c+slot*64)==hp*2);++changed;
+      }
+    }
+    assert(changed && !memcmp(active,before,sizeof(active)));
+    SmRoomRuntimeDestroy(modified);puts("resident native initialization applies settings on its private machine");
+  }
   actor_blocks(r);
   if (room->header==0x9fe5) { actor_walk(r,twin);player_ai(r); }
   player_pickups(r);
@@ -952,10 +1004,20 @@ int main(int argc,char **argv) {
   entered[0xf8c]^=0x55; /* A fresh native load must not replace resident health. */
   entered[0x9c2]=0x34; entered[0x9c3]=0x12; entered[0xaf6]=0x78; entered[0xaf7]=0x56;
   uint8_t stack[32]; memcpy(stack,entered+0x1fe0,sizeof(stack));
+  if (room->header==0x9fe5) {
+    entered_vram[0x7e00]=0xa55a;entered_vram[0x7fff]=0x5aa5;
+  }
   SmRoomRuntimePromote(r,entered,entered_vram);
   assert(!memcmp(entered+0xf78,SmRoomRuntimeRam(r)+0xf78,2048));
   assert(entered[0x9c2]==0x34 && entered[0x9c3]==0x12 && entered[0xaf6]==0x78 && entered[0xaf7]==0x56);
   assert(!memcmp(stack,entered+0x1fe0,sizeof(stack)));
+  if (room->header==0x9fe5) {
+    assert(entered_vram[0x7e00]==0xa55a && entered_vram[0x7fff]==0x5aa5);
+    const uint8_t *resident=SmRoomRuntimeRam(r),*graphics=SmRoomRuntimeVram(r);
+    unsigned size=SmShotWord(resident,0xe5a),target=0x6c00+SmShotWord(resident,0xe5f)/2;
+    assert(size && target+size/2<=0x7e00);
+    for (unsigned i=0;i<size/2;++i) assert(entered_vram[target+i]==SmShotWord(graphics,2*(target+i)));
+  }
   puts("promotion retains resident enemies while preserving active player and continuation stack");
   free(entered); free(entered_vram);
   free(snapshot); free(continued); free(repeated);

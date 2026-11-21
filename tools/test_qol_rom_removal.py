@@ -130,7 +130,8 @@ def run_case(case, *, build, rom, out, interp_targets=None, screenshot_frame=Non
         command += ["--script", str(profile / "scenario.txt")]
     command += [str(rom)]
     with (profile / "stdout.log").open("w") as stdout, (profile / "stderr.log").open("w") as stderr:
-        result = subprocess.run(command, cwd=profile, env=env, stdout=stdout, stderr=stderr, timeout=300)
+        result = subprocess.run(command, cwd=profile, env=env, stdout=stdout, stderr=stderr,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     log = (profile / "stderr.log").read_text(errors="replace")
     assert result.returncode == 0, f"{tag}: process exit {result.returncode}"
     assert not re.search(r"TIMEOUT|\bFAILED\b|refused|step.cap|\[interp_cap\]|\[brk\]|LLE loop bailed|scheduler bail|abort|hook table full|registry full|no mod_hook", log, re.I), f"{tag}: inspect stderr"

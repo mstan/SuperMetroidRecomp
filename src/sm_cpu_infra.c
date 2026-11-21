@@ -10,13 +10,15 @@
 #include "sm_seamless.h"
 #include "sm_room_collision.h"
 #include "mods/sm_mod_overlay.h"
+#include "mods/sm_global_controls_plugin.h"
 
 static bool SmFrameBegin(uint32_t *inputs) {
   if (!SmActivityFrameBegin()) return false;
   if (!SmReplayBegin(inputs)) return false;
+  SmGlobalControlsApply(g_ram);
   if (!SmRoomCollisionFrameBegin()) return false;
   bool rooms=SmConnectedRoomsEnabled();
-  if (rooms && g_sm_video.seamless && !SmSeamlessDoor()) return false;
+  if (rooms && g_sm_video.seamless && !SmSeamlessDoor(inputs)) return false;
   SmDisplay_SyncCaptureGeneration();
   if (!SmRoomsNativeFrame(g_ram,g_ppu->vram,rooms)) return false;
   if (!SmRoomsFrame(g_ram,rooms,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||

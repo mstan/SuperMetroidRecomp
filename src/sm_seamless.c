@@ -169,11 +169,22 @@ static bool open_entrance(EntryBus *b,const uint8_t *definition) {
   put(0xdde,(int)index);
   return ok && entry_call(b,0x8485b4,3);
 }
-bool SmSeamlessDoor(void) {
+bool SmSeamlessDoor(uint32_t *inputs) {
   SmRoomPlacement p;
   uint16_t crossed_door=0;
-  if (SmRoomsUpwardDoorCarry(g_ram) && word(g_ram+0xb2e)<4) {
-    put(0xb2c,0); put(0xb2e,4);
+  if (SmRoomsUpwardDoorCarry(g_ram)) {
+    if (word(g_ram+0xb36)!=1 || word(g_ram+0xb2e)<4) { put(0xb2c,0); put(0xb2e,4); }
+    put(0xb36,1);
+    /* Native upward entry is automatic after the hatch captures Samus.
+     * Lend only the mapped jump hold during that bounded transport, so a
+     * released button cannot cancel it before the feet clear the cap.
+     * Replay retains the player's real input; the serialized door phase
+     * applies the same temporary hold again on playback and rollback. */
+    if (inputs) {
+      unsigned jump=word(g_ram+0x9b4);
+      /* Cartridge $4218 order is reversed in the host's 12-bit pad word. */
+      for (unsigned i=0;i<12;++i) if (jump&(0x8000u>>i)) *inputs|=1u<<i;
+    }
   }
   bool crossing=word(g_ram+0x998)==8 && SmRoomsCrossing(g_ram,&crossed_door,&p);
   if (crossing) { put(0x78d,crossed_door); put(0x998,9); }
@@ -260,6 +271,9 @@ bool SmSeamlessDoor(void) {
     memcpy(g_ram+0xc000,g_ram+0xc200,512);
     put(0x795,0); put(0x797,0); put(0x799,0); put(0xe16,0); put(0xe18,0);
     put(0x998,8); put(0x99c,0xe737); put(0x931,0);
+    /* Native GameState_10 resets this per-room guard on every door load.
+     * Continuous travel must also allow a station after leaving its room. */
+    put(0x1e75,0);
     g_ram[0x51]=15;
     /* NMI must receive a destination-owned OAM publication immediately.
      * Reusing the departing room's screen coordinates shifts Samus by an

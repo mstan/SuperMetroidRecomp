@@ -34,9 +34,17 @@ static void scene_reset(void) {
   for (unsigned i = 0; i < 2; ++i) SnesRasterSnapshotDestroy(&scene_pieces[i]);
 }
 
+static int enemy_motion_offset_y(const uint8_t *enemy) {
+  /* Timed shutters grow in either direction and re-center their sprite map
+   * when they add a segment. The two setup heights identify the moving end. */
+  if (read16(enemy, 0) != 0xd4ff) return 0;
+  int half_height = read16(enemy, 12);
+  return (int16_t)(read16(enemy, 52) - read16(enemy, 50)) < 0 ? -half_height : half_height;
+}
+
 static void scene_actors(const SmSourceFrame *f, SmScene *scene) {
   memset(scene, 0, sizeof(*scene));
-  if (!f->object_state_valid) return;
+  if (!f->object_state_valid || !gameplay_actor_state(read16(f->ram,0x998))) return;
   const uint8_t *ram = f->object_ram;
   SmSceneActor *samus = &scene->actors[SM_SCENE_SAMUS];
   samus->valid = true;
@@ -59,7 +67,8 @@ static void scene_actors(const SmSourceFrame *f, SmScene *scene) {
         !(read16(e, 14) & 0x300) && !read16(e, 42) && read16(e, 22) >= 0x8000;
     a->pose.identity = read16(e, 0) | ((unsigned)e[46] << 16);
     a->pose.world_x = (int16_t)read16(e, 2) + (int16_t)read16(ram, 0x7010 + slot * 64);
-    a->pose.world_y = (int16_t)read16(e, 6) + (int16_t)read16(ram, 0x7012 + slot * 64);
+    a->pose.world_y = (int16_t)read16(e, 6) + enemy_motion_offset_y(e) +
+        (int16_t)read16(ram, 0x7012 + slot * 64);
     a->pose.x = a->pose.world_x - (int16_t)read16(ram, 0x911);
     a->pose.y = a->pose.world_y - (int16_t)read16(ram, 0x915);
   }
