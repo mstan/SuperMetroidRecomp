@@ -180,7 +180,11 @@ bool SmSeamlessDoor(uint32_t *inputs) {
      * released button cannot cancel it before the feet clear the cap.
      * Replay retains the player's real input; the serialized door phase
      * applies the same temporary hold again on playback and rollback. */
-    if (inputs) *inputs|=word(g_ram+0x9b4);
+    if (inputs) {
+      unsigned jump=word(g_ram+0x9b4);
+      /* Cartridge $4218 order is reversed in the host's 12-bit pad word. */
+      for (unsigned i=0;i<12;++i) if (jump&(0x8000u>>i)) *inputs|=1u<<i;
+    }
   }
   bool crossing=word(g_ram+0x998)==8 && SmRoomsCrossing(g_ram,&crossed_door,&p);
   if (crossing) { put(0x78d,crossed_door); put(0x998,9); }
