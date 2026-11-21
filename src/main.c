@@ -420,6 +420,7 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
   .sram_path = "saves/save.srm",   /* battery SRAM: the launcher shows SAVES */
   .game_info = &kSuperMetroidGameInfo,
   .num_players = 1,
+  .editable_state_menu_controller = 1,
   /* Per-game debug server port: 4377 SMW, 4378 Zelda LttP, 4379 MMX, 4380 SM. */
   .debug_port = 4380,
   .widescreen_supported = 0,       /* widescreen is this title's Mods page */
