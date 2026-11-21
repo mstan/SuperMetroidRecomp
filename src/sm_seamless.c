@@ -260,6 +260,9 @@ bool SmSeamlessDoor(void) {
     memcpy(g_ram+0xc000,g_ram+0xc200,512);
     put(0x795,0); put(0x797,0); put(0x799,0); put(0xe16,0); put(0xe18,0);
     put(0x998,8); put(0x99c,0xe737); put(0x931,0);
+    /* Native GameState_10 resets this per-room guard on every door load.
+     * Continuous travel must also allow a station after leaving its room. */
+    put(0x1e75,0);
     g_ram[0x51]=15;
     /* NMI must receive a destination-owned OAM publication immediately.
      * Reusing the departing room's screen coordinates shifts Samus by an
