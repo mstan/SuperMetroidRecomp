@@ -125,6 +125,12 @@ def audit(archive_path):
         for required in ('VERSION', 'framework_pins.txt', 'release-profile.json', 'config.ini', 'README.md', 'replay_diagnostic.py'):
             if root + required not in names:
                 raise ValueError(f'Missing package file: {required}')
+        # Fonts and launcher code retain their original notices on every platform.
+        for source in sorted((ROOT / 'notices').rglob('*')):
+            if source.is_file():
+                name = root + source.relative_to(ROOT).as_posix()
+                if name not in names or archive.read(name).replace(b'\r\n', b'\n') != source.read_bytes().replace(b'\r\n', b'\n'):
+                    raise ValueError(f'Missing or changed runtime notice: {name}')
         if not any(n.startswith(root + 'assets/') for n in names):
             raise ValueError('Missing launcher assets')
         if not any(n in names for n in (root + 'SuperMetroidSNESRecomp', root + 'SuperMetroidSNESRecomp.exe')):

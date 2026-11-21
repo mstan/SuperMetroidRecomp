@@ -19,6 +19,7 @@ mkdir -p "$STAGE"
 cp "$BUILD/$EXE" "$STAGE/"
 cp -R "$BUILD/assets" "$STAGE/"
 cp VERSION framework_pins.txt README.md LICENSE PERMISSIONS.md "$STAGE/"
+cp -R notices "$STAGE/"
 cp tools/replay_diagnostic.py "$STAGE/replay_diagnostic.py"
 cp profiles/release.json "$STAGE/release-profile.json"
 # Ship the tracked, read-only feature catalog, never a developer's mod profile.
