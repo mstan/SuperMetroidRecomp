@@ -98,6 +98,19 @@ int main(void) {
               "the UNFILTERED word does reopen it (this is the bug the filter prevents)");
     }
 
+    snes_savestate_menu_close();
+    snes_savestate_menu_filter_guest_input(0);
+    check(snes_savestate_menu_open(SNES_PAD_B), "host shortcut opens with its actual held buttons");
+    snes_savestate_menu_poll_nav(SNES_PAD_B, 1000);
+    check(snes_savestate_menu_is_open(), "held opening B does not immediately close the menu");
+    snes_savestate_menu_poll_nav(0, 1001);
+    snes_savestate_menu_poll_nav(SNES_PAD_B, 1002);
+    check(!snes_savestate_menu_is_open(), "release and press B closes normally");
+    check(!snes_savestate_menu_filter_guest_input(SNES_PAD_B),
+          "closing B stays out of guest input until release");
+    snes_savestate_menu_filter_guest_input(0);
+    check(snes_savestate_menu_filter_guest_input(SNES_PAD_B) == SNES_PAD_B,
+          "released navigation button returns to gameplay");
     printf("%d/%d checks passed\n", checks - fails, checks);
     return fails ? 1 : 0;
 }
