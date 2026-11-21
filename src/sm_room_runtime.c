@@ -327,6 +327,11 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   if (fx_map) for (unsigned i=0; i<0x840; ++i) r->vram[0xb7c0+i]=read(context,0x8a0000u+fx_map+i);
   put(r,0x1ef1,0x8000);
   put(r,0x18b0,0x8000); put(r,0x1e79,0x8000);
+  /* The cartridge enables enemy-projectile instruction processing for a new
+   * room ($86:8000). Clearing its pool above also cleared this control bit.
+   * Initialize it once so preview shots advance and promotion cannot disable
+   * the active interpreter; later native suspension remains authoritative. */
+  if (!call(r,0x868000,3)) return r;
   uint8_t level[65536];
   size_t bytes=SmWorldUnpack(read,context,rom_long(r,0x8f0000u+state),level,sizeof(level));
   unsigned n=bytes>=2 ? word(level) : 0;

@@ -914,6 +914,77 @@ static bool kraid_encounter(const SmWorld *world) {
   puts("Kraid body and all dependent parts remain entry-owned; resident ticks/state continuation preserve live progress");
   return true;
 }
+/* A normal resident creation must run native projectile instructions without
+ * a test supplying the interpreter's enable flag. Pit pirates expose the
+ * difference after promotion: their native fire handler creates laser slots,
+ * but a disabled interpreter leaves every slot invisible and stationary. */
+static bool pirate_projectiles(SmWorld *world) {
+  static uint8_t seed[0x20000],entered[0x20000];
+  static uint16_t vram[0x8000];
+  const SmWorldRoom *room=SmWorldFindRoom(world,0x975c);assert(room);
+  memcpy(seed,active,sizeof(seed));
+  SmShotPut(seed,0x9a2,SmShotWord(seed,0x9a2)|4);
+  SmShotPut(seed,0x9c8,5); /* native post-Morph population prerequisite */
+  uint16_t state=SmWorldRoomState(room,Read,NULL,seed);
+  SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,seed);
+  assert(r && !*SmRoomRuntimeError(r));
+  const uint8_t *ram=SmRoomRuntimeRam(r),*graphics=SmRoomRuntimeVram(r);
+  assert(SmShotWord(ram,0xf78)==0xf653);
+  /* Let native spawn/AI setup settle, as it does before the real handoff. */
+  for (unsigned i=0;i<30;++i) {
+    assert(SmRoomRuntimeStepVisible(r,700,112,512,0,43));
+    assert(SmRoomRuntimeStepEffects(r));
+  }
+  memcpy(seed,ram,sizeof(seed));
+  for (unsigned i=0;i<0x8000;++i) vram[i]=(uint16_t)SmShotWord(graphics,2*i);
+  /* Enter the real native firing animation; its handler allocates, initializes
+   * and launches the laser. Do not pre-create a slot or set its execution gate. */
+  SmShotPut(seed,0xf92,0xfc0e);SmShotPut(seed,0xf94,1);
+  assert(SmRoomRuntimeCapture(r,seed,vram));
+  size_t bytes=SmRoomRuntimeStateSize();
+  void *start=malloc(bytes),*end=malloc(bytes),*again=malloc(bytes);
+  assert(start && end && again && SmRoomRuntimeSave(r,start,bytes));
+  unsigned selected=18;
+  for (unsigned pass=0;pass<2;++pass) {
+    assert(SmRoomRuntimeLoad(r,start,bytes));
+    unsigned moving=0,visible=0;
+    for (unsigned frame=0;frame<32;++frame) {
+      assert(SmRoomRuntimeStepVisible(r,700,112,512,0,43));
+      assert(SmRoomRuntimeStepEffects(r));
+      for (unsigned i=0;i<18;++i) if (SmShotWord(ram,0x1997+2*i)==0xa17b) {
+        unsigned pre=SmShotWord(ram,0x1a03+2*i),sprite=SmShotWord(ram,0x1b6b+2*i);
+        moving+=pre==0xa05c || pre==0xa07a;
+        visible+=sprite!=0x8000 && sprite>=0x8000;
+        selected=i;
+      }
+    }
+    if (!moving || !visible) {
+      fprintf(stderr,"pirate laser instructions stopped: moving=%u visible=%u gate=%04X\n",
+          moving,visible,SmShotWord(ram,0x198d));
+      return false;
+    }
+    assert(SmRoomRuntimeSave(r,pass ? again : end,bytes));
+  }
+  assert(!memcmp(end,again,bytes) && selected<18);
+  memcpy(entered,ram,sizeof(entered));
+  SmRoomRuntimePromote(r,entered,vram);
+  assert(!memcmp(entered+0x198d,ram+0x198d,0x1c23-0x198d));
+  /* Explicit native suspension remains effective; initialization is not an
+   * unconditional per-tick override. Current state restoration resumes it. */
+  memcpy(seed,ram,sizeof(seed));SmShotPut(seed,0x198d,0);
+  unsigned x=SmShotWord(seed,0x1a4b+2*selected);
+  assert(SmRoomRuntimeCapture(r,seed,vram));
+  SmRoomRuntimeSetMasks(r,0,(1u<<18)-1,0,0);
+  for (unsigned i=0;i<3;++i) assert(SmRoomRuntimeStepVisible(r,700,112,512,0,43));
+  assert(SmShotWord(ram,0x1a4b+2*selected)==x);
+  assert(SmRoomRuntimeLoad(r,end,bytes));
+  for (unsigned i=0;i<3;++i) assert(SmRoomRuntimeStepVisible(r,700,112,512,0,43));
+  assert(SmShotWord(ram,0x1a4b+2*selected)!=x);
+  assert(!memcmp(active,before,sizeof(active)));
+  free(start);free(end);free(again);SmRoomRuntimeDestroy(r);
+  puts("native resident pirate lasers animate/move, promote and resume exact current state; explicit suspension and live progress preserved");
+  return true;
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -924,6 +995,9 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  if (!strcmp(argv[3],"pirates")) {
+    bool ok=pirate_projectiles(world);free(world);free(rom);return ok ? 0 : 1;
+  }
   if (!strcmp(argv[3],"kraid")) {
     bool ok=kraid_encounter(world);free(world);free(rom);return ok ? 0 : 1;
   }
