@@ -374,8 +374,12 @@ SmRoomRuntime *SmRoomRuntimeCreateConfigured(SmWorldRead read, void *context,
   return r;
 }
 static bool entry_only(const SmRoomRuntime *r,unsigned id,unsigned parameter) {
+  /* Kraid's native boss flag belongs only to the body. Its seven dependent
+   * parts use fixed body/peer slots and must enter with that same encounter;
+   * compacting them into a preview without the body executes invalid AI. */
+  bool kraid_part=id>=0xe2ff && id<=0xe47f && !((id-0xe2ff)%0x40);
   return id && ((r->read(r->context,0xa00010u+id) || r->read(r->context,0xa00011u+id)) ||
-      (id==0xe23f && (parameter==2 || parameter==3)));
+      kraid_part || (id==0xe23f && (parameter==2 || parameter==3)));
 }
 bool SmRoomRuntimeEntryOnly(const SmRoomRuntime *r,const uint8_t ram[0x20000]) {
   if (!r || !ram) return false;
@@ -413,7 +417,7 @@ static void prepare_population(SmRoomRuntime *r) {
     uint32_t a=0xb40000u+r->tileset+4*i;
     unsigned id=read(context,a) | read(context,a+1)<<8;
     if (id==65535) break;
-    if (read(context,0xa00010u+id) || read(context,0xa00011u+id)) continue;
+    if (entry_only(r,id,0)) continue;
     for (unsigned j=0; j<4; ++j) r->tileset_data[tiles*4+j]=read(context,a+j);
     ++tiles;
   }

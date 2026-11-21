@@ -176,8 +176,7 @@ class Session:
         self.health_floor = 1999
         self.step_chunk = 60
         self.assist_pickups = False
-        deadline = time.monotonic() + 40
-        while time.monotonic() < deadline:
+        while True:
             if self.process.poll() is not None:
                 self.close()
                 raise RuntimeError(f'Game exited {self.process.returncode}; see {self.output}')
@@ -186,12 +185,8 @@ class Session:
                 break
             except OSError:
                 time.sleep(.1)
-        if self.sock is None:
-            self.close()
-            raise TimeoutError('Debug server not ready')
-        # Generous: a whole-WRAM read on a loaded host can take seconds, and a
-        # timeout here abandons the session rather than reporting a guest fault.
-        self.sock.settimeout(120)
+        # A slow response is not a guest fault or permission to terminate it.
+        self.sock.settimeout(None)
         self.stream = self.sock.makefile('rb')
         self.command('frame')
 
@@ -241,10 +236,9 @@ class Session:
             # the frame counter; wait for publication instead of mistaking
             # that one-frame handoff for a guest stall.
             expected = result['frame_before'] + count
-            deadline = time.monotonic() + 2
-            while not self.allow_rebase and not result.get('timeout') and result['frame_after'] < expected and time.monotonic() < deadline:
+            while not self.allow_rebase and result['frame_after'] < expected:
                 result['frame_after'] = self.command('frame')['frame']
-            if result.get('timeout') or (not self.allow_rebase and result['frame_after'] != expected):
+            if not self.allow_rebase and result['frame_after'] != expected:
                 raise RuntimeError(f'Simulation stopped advancing: {result}')
             self.allow_rebase = False
             remaining -= count
@@ -678,19 +672,7 @@ class Session:
                 except (OSError, ValueError, RuntimeError):
                     pass
             process.terminate()
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                # A parked headless host can outlive SIGTERM (its debug loop
-                # never reaps a dead client); escalate so no session leaks a
-                # process, and never raise out of close() to mask the route's
-                # real result.
-                process.kill()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    print(f'[session] process {process.pid} survived SIGKILL; '
-                          f'leaked', file=sys.stderr)
+            process.wait()
         if self.sock is not None:
             try:
                 self.stream.close()

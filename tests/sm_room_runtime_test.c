@@ -889,6 +889,31 @@ static void ceres_entry_promotion(const SmWorld *world) {
   free(entered);free(vram);
   puts("Actual native Ceres entry fixture: On/Off promotion preserves unflagged E23F2 initialization and door state exactly");
 }
+static bool kraid_encounter(const SmWorld *world) {
+  const SmWorldRoom *room=SmWorldFindRoom(world,0xa59f);assert(room);
+  uint16_t state=SmWorldRoomState(room,Read,NULL,active);
+  /* Native population: body plus seven slot-dependent arm/lint/foot/nails.
+   * None may run in isolation before the actual encounter's entry scripts. */
+  SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,active);
+  assert(r && !*SmRoomRuntimeError(r));
+  const uint8_t *ram=SmRoomRuntimeRam(r);
+  for (unsigned tick=0;tick<60;++tick) {
+    if (!SmRoomRuntimeStep(r,32,384,0,256) || !SmRoomRuntimeStepEffects(r)) {
+      fprintf(stderr,"Kraid resident tick %u: %s\n",tick,SmRoomRuntimeError(r));
+      SmRoomRuntimeDestroy(r);return false;
+    }
+  }
+  for (unsigned i=0;i<32;++i) assert(!SmShotWord(ram,0xf78+64*i));
+  size_t size=SmRoomRuntimeStateSize();void *saved=malloc(size),*next=malloc(size),*again=malloc(size);
+  assert(saved && next && again && SmRoomRuntimeSave(r,saved,size));
+  assert(SmRoomRuntimeStep(r,32,384,0,256) && SmRoomRuntimeSave(r,next,size));
+  assert(SmRoomRuntimeLoad(r,saved,size) && SmRoomRuntimeStep(r,32,384,0,256));
+  assert(SmRoomRuntimeSave(r,again,size) && !memcmp(next,again,size));
+  assert(!memcmp(active,before,sizeof(active)));
+  free(saved);free(next);free(again);SmRoomRuntimeDestroy(r);
+  puts("Kraid body and all dependent parts remain entry-owned; resident ticks/state continuation preserve live progress");
+  return true;
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -899,7 +924,11 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  if (!strcmp(argv[3],"kraid")) {
+    bool ok=kraid_encounter(world);free(world);free(rom);return ok ? 0 : 1;
+  }
   liquid_initialization(world);
+  if (!kraid_encounter(world)) return 1;
   if (strtoul(argv[3],NULL,16)==0x9fe5) { item_scenery(world);ceres_scenery(world);ceres_environment(world);visible_candy(world);deleted_grapple_entry(world); }
   ceres_entry_promotion(world);
   const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)strtoul(argv[3],NULL,16)); assert(room);
