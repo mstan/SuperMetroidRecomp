@@ -169,11 +169,18 @@ static bool open_entrance(EntryBus *b,const uint8_t *definition) {
   put(0xdde,(int)index);
   return ok && entry_call(b,0x8485b4,3);
 }
-bool SmSeamlessDoor(void) {
+bool SmSeamlessDoor(uint32_t *inputs) {
   SmRoomPlacement p;
   uint16_t crossed_door=0;
-  if (SmRoomsUpwardDoorCarry(g_ram) && word(g_ram+0xb2e)<4) {
-    put(0xb2c,0); put(0xb2e,4);
+  if (SmRoomsUpwardDoorCarry(g_ram)) {
+    if (word(g_ram+0xb36)!=1 || word(g_ram+0xb2e)<4) { put(0xb2c,0); put(0xb2e,4); }
+    put(0xb36,1);
+    /* Native upward entry is automatic after the hatch captures Samus.
+     * Lend only the mapped jump hold during that bounded transport, so a
+     * released button cannot cancel it before the feet clear the cap.
+     * Replay retains the player's real input; the serialized door phase
+     * applies the same temporary hold again on playback and rollback. */
+    if (inputs) *inputs|=word(g_ram+0x9b4);
   }
   bool crossing=word(g_ram+0x998)==8 && SmRoomsCrossing(g_ram,&crossed_door,&p);
   if (crossing) { put(0x78d,crossed_door); put(0x998,9); }

@@ -18,7 +18,7 @@ static bool SmFrameBegin(uint32_t *inputs) {
   SmGlobalControlsApply(g_ram);
   if (!SmRoomCollisionFrameBegin()) return false;
   bool rooms=SmConnectedRoomsEnabled();
-  if (rooms && g_sm_video.seamless && !SmSeamlessDoor()) return false;
+  if (rooms && g_sm_video.seamless && !SmSeamlessDoor(inputs)) return false;
   SmDisplay_SyncCaptureGeneration();
   if (!SmRoomsNativeFrame(g_ram,g_ppu->vram,rooms)) return false;
   if (!SmRoomsFrame(g_ram,rooms,SmActivityExtra(),g_sm_video.neighboring_logic,g_sm_video.seamless) ||
