@@ -166,6 +166,13 @@ power bombs while in Morph Ball, using the selected hold or toggle behavior.
 Optional pause time/item percentage and maximum ammo readouts occupy the lower
 left and right corners of the pause screen.
 
+In the launcher's controller settings, choose **Keyboard** for the player.
+Select a binding and press a key or click the left, middle, right or either
+side mouse button. **Mouse1** is left, **Mouse2** is middle and **Mouse3** is
+right. For example, bind the button you use for **Shoot** to left click and
+the button you use for **Item Select** to right click. Shoot fires the
+weapon currently selected in the game.
+
 Settings and saves live beside the executable. Keep that directory
 writable, and preserve your settings and `saves/` when updating. The detailed
 implementation and validation record is in `docs/custom-renderer.md`.
