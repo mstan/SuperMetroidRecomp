@@ -182,6 +182,10 @@ if(BUILD_TESTING AND NOT ANDROID)
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c
         ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c
         ${RECOMP_UI_ROOT}/src/common/recomp_runtime_ui.c)
+    if(EXISTS "${RECOMP_UI_ROOT}/src/common/launcher_theme_overrides.c")
+        target_sources(sm_pause_options_test PRIVATE
+            ${RECOMP_UI_ROOT}/src/common/launcher_theme_overrides.c)
+    endif()
     target_include_directories(sm_pause_options_test PRIVATE src ${RECOMP_UI_ROOT}/src
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS}
         ${SNESRECOMP_ROOT}/runner/src/desktop)
