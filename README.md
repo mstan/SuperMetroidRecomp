@@ -173,6 +173,13 @@ right. For example, bind the button you use for **Shoot** to left click and
 the button you use for **Item Select** to right click. Shoot fires the
 weapon currently selected in the game.
 
+**Fire missile** is a separate action in the launcher's controller settings.
+It starts unbound and accepts a key, mouse button or controller binding for
+Player 1's assigned device. Each press fires one standard missile when Samus
+can fire and has ammunition. It keeps the selected weapon and HUD selection;
+**Shoot** and **Item Select** continue to work normally. Missile input is part
+of diagnostic recordings and current-build save states.
+
 Settings and saves live beside the executable. Keep that directory
 writable, and preserve your settings and `saves/` when updating. The detailed
 implementation and validation record is in `docs/custom-renderer.md`.

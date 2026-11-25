@@ -253,6 +253,15 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_executable(sm_mode7_test tests/sm_mode7_test.c src/sm_mode7.c)
     target_include_directories(sm_mode7_test PRIVATE src)
     add_test(NAME sm_custom_mode7 COMMAND sm_mode7_test)
+    add_executable(sm_direct_missile_test tests/sm_direct_missile_test.c src/sm_direct_missile.c)
+    target_include_directories(sm_direct_missile_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    if(MSVC)
+        target_compile_options(sm_direct_missile_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(sm_direct_missile_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME sm_direct_missile COMMAND sm_direct_missile_test)
+
     # super-metroid.controls input transforms against a synthetic WRAM.
     add_executable(sm_controls_test tests/sm_controls_test.c
         ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
@@ -431,6 +440,7 @@ set(SM_HOST_SOURCES
     src/mods/sm_movement_plugins.c
     src/mods/sm_heavy_physics_plugin.c
     src/mods/sm_combat_plugins.c
+    src/sm_direct_missile.c
     src/mods/sm_balance_plugins.c
     src/mods/sm_bugfix_plugins.c
     src/mods/sm_world.c

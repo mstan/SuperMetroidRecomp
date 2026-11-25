@@ -5,6 +5,7 @@
 #include "sm_replay.h"
 #include "sm_activity.h"
 #include "sm_rooms.h"
+#include "sm_direct_missile.h"
 #include "mods/sm_return_to_title_plugin.h"
 #include "variables.h"
 #include "common_cpu_infra.h"
@@ -95,8 +96,9 @@ static int sm_rtl_diag_enabled(void) {
  * pointer-free execution residue, never a serialized host fiber or C stack.
  * No host stack or pointer is part of a file snapshot. */
 #define SM_FILE_STATE_MAGIC 0x534D4653u  /* SMFS */
-#define SM_FILE_STATE_VERSION 7u
+#define SM_FILE_STATE_VERSION 8u
 static uint32_t g_loaded_file_state[9];
+static SmDirectMissileState g_loaded_direct_missile;
 static uint32_t g_loaded_pause_options;
 static uint32_t g_loaded_quit_state;
 static bool g_loaded_file_state_valid;
@@ -112,6 +114,7 @@ void SmHardwareReset(void) {
   g_loaded_file_state_valid = false;
   SmPauseOptions_SetActive(false);
   SmRoomsReset();
+  SmDirectMissileReset();
 }
 
 const char *SmSnapshotIdentity(void) {
@@ -133,7 +136,7 @@ static bool pause_options_state_valid(uint32_t state) {
 bool SmSnapshotPreflight(const void *data, size_t size) {
   uint32_t version, header[9], stream_version, execution_size, pause_options, quit_state;
   size_t guest = RtlSnapshotGuestSize(&version);
-  if (!data || size < 8 || !guest || guest > size || size - guest < sizeof(header) + 12)
+  if (!data || size < 8 || !guest || guest > size || size - guest < sizeof(header) + 12 + sizeof(SmDirectMissileState))
     return false;
   memcpy(&stream_version, (const uint8_t *)data + 4, 4);
   memcpy(header, (const uint8_t *)data + guest, sizeof(header));
@@ -144,8 +147,11 @@ bool SmSnapshotPreflight(const void *data, size_t size) {
   if (!pause_options_state_valid(pause_options)) return false;
   memcpy(&quit_state, (const uint8_t *)data + guest + sizeof(header) + 4, 4);
   if (!SmQuitFileSelectStateValid(quit_state)) return false;
-  memcpy(&execution_size, (const uint8_t *)data + guest + sizeof(header) + 8, 4);
-  size_t tail = size - guest - sizeof(header) - 12;
+  SmDirectMissileState direct;
+  memcpy(&direct,(const uint8_t *)data+guest+sizeof(header)+8,sizeof(direct));
+  if (!SmDirectMissileStateValid(&direct)) return false;
+  memcpy(&execution_size, (const uint8_t *)data + guest + sizeof(header) + 8 + sizeof(direct), 4);
+  size_t tail = size - guest - sizeof(header) - 12 - sizeof(SmDirectMissileState);
   return execution_size >= 8 && execution_size <= tail && header[6]<=tail-execution_size &&
       tail-execution_size-header[6]==header[8] &&
       SmRoomsValidate((const uint8_t *)data+size-header[8],header[8]);
@@ -166,6 +172,7 @@ void SmStateSaveExtra(struct SaveLoadInfo *sli) {
   sli->func(sli, &pause_options, sizeof(pause_options));
   uint32_t quit_state=SmQuitFileSelectState();
   sli->func(sli, &quit_state, sizeof(quit_state));
+  sli->func(sli, &g_sm_direct_missile, sizeof(g_sm_direct_missile));
   RtlSaveExecutionState(sli);
   if (header[6]) {
     void *spc = malloc(header[6]);
@@ -194,6 +201,8 @@ void SmStateLoadExtra(struct SaveLoadInfo *sli, uint32_t version) {
   if (!pause_options_state_valid(g_loaded_pause_options)) { RtlStateStreamFail(sli); return; }
   sli->func(sli, &g_loaded_quit_state, sizeof(g_loaded_quit_state));
   if (!SmQuitFileSelectStateValid(g_loaded_quit_state)) { RtlStateStreamFail(sli); return; }
+  sli->func(sli, &g_loaded_direct_missile, sizeof(g_loaded_direct_missile));
+  if (!SmDirectMissileStateValid(&g_loaded_direct_missile)) { RtlStateStreamFail(sli); return; }
   if (!RtlLoadExecutionState(sli)) {
     fprintf(stderr, "[sm_state] execution residue does not match this runtime\n");
     RtlStateStreamFail(sli);
@@ -233,6 +242,7 @@ void SmOnStateLoaded(uint32_t version) {
   SmPauseOptions_SetActive(g_loaded_pause_options != 0);
   SmPauseOptions_RestoreCursor(g_loaded_pause_options>>8);
   SmQuitFileSelectRestore(g_loaded_quit_state);
+  g_sm_direct_missile = g_loaded_direct_missile;
   g_loaded_file_state_valid = false;
 }
 
@@ -246,9 +256,10 @@ typedef struct SmExecHeader {
   uint16_t activity_extra;
   uint8_t quit_state;
   uint32_t rooms_bytes;
+  SmDirectMissileState direct_missile;
 } SmExecHeader;
 #define SM_EXEC_MAGIC 0x534D4558u
-#define SM_EXEC_VERSION 7u
+#define SM_EXEC_VERSION 8u
 
 size_t SmExecStateBound(void) {
   return sizeof(SmExecHeader) + SmSpcPlayer_StateSize() + SmRoomsStateBound();
@@ -267,6 +278,7 @@ size_t SmExecStateSave(void *out, size_t capacity) {
   hdr.selected_row = (uint8_t)SmPauseOptions_Cursor();
   hdr.activity_extra = (uint16_t)SmActivityExtra();
   hdr.quit_state = (uint8_t)SmQuitFileSelectState();
+  hdr.direct_missile = g_sm_direct_missile;
   hdr.spc_bytes = (uint32_t)SmSpcPlayer_SaveState(
       (uint8_t *)out + sizeof(hdr), capacity - sizeof(hdr));
   if (hdr.spc_bytes != SmSpcPlayer_StateSize()) return 0;
@@ -287,6 +299,7 @@ int SmExecStateLoad(const void *in, size_t size) {
       (!hdr.pause_options && hdr.selected_row) ||
       !SmActivityExtraValid(hdr.activity_extra) ||
       !SmQuitFileSelectStateValid(hdr.quit_state) ||
+      !SmDirectMissileStateValid(&hdr.direct_missile) ||
       hdr.spc_bytes != SmSpcPlayer_StateSize() ||
       size - sizeof(hdr) < hdr.spc_bytes || hdr.rooms_bytes>SmRoomsStateBound() ||
       size-sizeof(hdr)-hdr.spc_bytes!=hdr.rooms_bytes ||
@@ -298,6 +311,7 @@ int SmExecStateLoad(const void *in, size_t size) {
   counter_global_frames = hdr.frames;
   SmActivityRestore(hdr.activity_extra);
   SmQuitFileSelectRestore(hdr.quit_state);
+  g_sm_direct_missile = hdr.direct_missile;
   SmPauseOptions_SetActive(hdr.pause_options != 0);
   SmPauseOptions_RestoreCursor(hdr.selected_row);
   g_game_started = hdr.started != 0;

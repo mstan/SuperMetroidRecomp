@@ -407,6 +407,7 @@ static void SmAfterRunFrame(const SnesDesktopHostFrameStats *st) {
       (unsigned long long)stats.dropped, st->audio_output_rate);
 }
 
+static const char *const kInputActions[] = {"Fire missile"};
 static const SnesDesktopHostGame kSuperMetroidHost = {
   .display_name = "Super Metroid",
   .window_title = "Super Metroid (Recompiled)",
@@ -421,6 +422,8 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
   .game_info = &kSuperMetroidGameInfo,
   .num_players = 1,
   .editable_state_menu_controller = 1,
+  .input_action_labels = kInputActions,
+  .input_action_count = 1,
   /* Per-game debug server port: 4377 SMW, 4378 Zelda LttP, 4379 MMX, 4380 SM. */
   .debug_port = 4380,
   .widescreen_supported = 0,       /* widescreen is this title's Mods page */
