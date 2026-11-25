@@ -15,9 +15,10 @@
  *     one frame, so the game's own HUD handlers do the switching.
  *
  * radial-menu: the right stick selects a HUD item by direction (up missiles,
- * right super missiles, down power bombs, left grapple, up-left X-ray) by
- * pulsing item select until the HUD shows it. Items Samus lacks are skipped.
- * While the stick is pushed a ring of the five items is drawn over the room
+ * right super missiles, down power bombs, left grapple, up-left X-ray,
+ * up-right beam) by pulsing the native select/cancel bindings until the HUD
+ * shows it. Items Samus lacks are skipped. While the stick is pushed a ring
+ * of the six items is drawn over the room
  * (presentation only), the pointed-at one highlighted, missing ones dimmed.
  *
  * Both act only during gameplay (game state 8) and pass every other screen
@@ -170,10 +171,11 @@ static void SmZeroMissionActivate(void) {
 
 static int RadialTarget(const SnesModInputContext *ctx) {
   int x = ctx->right_x, y = ctx->right_y;   /* SDL: +y is down */
-  if (x * x + y * y < kStickDeadzone * kStickDeadzone) return -1;
+  if ((int64_t)x * x + (int64_t)y * y < (int64_t)kStickDeadzone * kStickDeadzone) return -1;
   bool up = y < -kStickDeadzone / 2, down = y > kStickDeadzone / 2;
   bool left = x < -kStickDeadzone / 2, right = x > kStickDeadzone / 2;
   if (up && left) return 5;                 /* X-ray */
+  if (up && right) return 0;                /* ordinary beam */
   if (up && !left && !right) return 1;      /* missiles */
   if (right && !up && !down) return 2;      /* super missiles */
   if (down && !left && !right) return 3;    /* power bombs */
@@ -183,6 +185,7 @@ static int RadialTarget(const SnesModInputContext *ctx) {
 
 static bool Owned(const uint8_t *wram, int item) {
   switch (item) {
+    case 0: return true;
     case 1: return Word(wram, kMaxMissiles) != 0;
     case 2: return Word(wram, kMaxSupers) != 0;
     case 3: return Word(wram, kMaxPowerBombs) != 0;
@@ -203,8 +206,8 @@ static uint16_t SmRadialMenu(uint16_t buttons, const SnesModInputContext *ctx) {
   Seat *seat = &g_radial_seats[ctx->player & 1];
   int target = RadialTarget(ctx);
   if (ctx->player == 0) g_ring_target = target;
-  if (target > 0 && Owned(ctx->wram, target) && Word(ctx->wram, kHudItem) != target)
-    Pulse(seat, HostButtons(Word(ctx->wram, kCfgItemSwitch)));
+  if (target >= 0 && Owned(ctx->wram, target) && Word(ctx->wram, kHudItem) != target)
+    Pulse(seat, HostButtons(Word(ctx->wram, target ? kCfgItemSwitch : kCfgItemCancel)));
   return (uint16_t)(buttons | PulseOutput(seat));
 }
 
@@ -214,7 +217,7 @@ static void SmRadialRing(uint32_t *pixels, int stride, int width, int height,
   if (g_ring_target < 0 || !InGameplay(wram)) return;
   static const struct { int item, dx, dy; const char *label; } kSlots[] = {
     {1, 0, -40, "MSL"}, {2, 44, 0, "SUP"}, {3, 0, 40, "PB"},
-    {4, -44, 0, "GRP"}, {5, -32, -30, "XRY"},
+    {4, -44, 0, "GRP"}, {5, -32, -30, "XRY"}, {0, 32, -30, "BEAM"},
   };
   int cx = stage_x + 128, cy = 112;
   for (size_t i = 0; i < sizeof(kSlots) / sizeof(kSlots[0]); ++i) {

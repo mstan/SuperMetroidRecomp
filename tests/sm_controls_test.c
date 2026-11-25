@@ -134,6 +134,37 @@ int main(void) {
   for (int i = 0; i < 256 * 224; ++i) drawn += frame[i] != 0;
   assert(drawn > 0);
 
+  /* Beam is always available and uses native Cancel, including a remapped
+   * binding. Each armed slot can return without cycling or WRAM mutation. */
+  for (unsigned item=1;item<=5;++item) {
+    SmRadialMenuActivate();SetWord(kHudItem,(uint16_t)item);
+    SetWord(kCfgItemCancel,0x0080); /* native A, not the default Y */
+    uint8_t unchanged[sizeof(g_wram)];memcpy(unchanged,g_wram,sizeof(unchanged));
+    assert(Step(SNES_PAD_X,30000,-30000)==(SNES_PAD_X|SNES_PAD_A));
+    assert(g_ring_target==0 && !memcmp(unchanged,g_wram,sizeof(unchanged)));
+    assert(Step(0,30000,-30000)==0); /* one release frame */
+    SetWord(kHudItem,0);assert(Step(0,30000,-30000)==0);
+    assert(Step(0,30000,-30000)==0); /* holding Beam cannot reselect items */
+  }
+  SetWord(kCfgItemCancel,0x4000);
+  /* Two full-scale negative axes have radius squared 2^31. Overflow must not
+   * make the owned X-ray direction look centred. Preserve all old sectors. */
+  SetWord(kEquipped,0xc000);SetWord(kMaxMissiles,5);SetWord(kMaxSupers,5);
+  const int16_t axes[][2]={{0,-32768},{32767,0},{0,32767},{-32768,0},{-32768,-32768},{32767,-32768}};
+  const int expected[]={1,2,3,4,5,0};
+  for(unsigned i=0;i<sizeof(expected)/sizeof(*expected);++i) {
+    SnesModInputContext ctx={0,g_wram,axes[i][0],axes[i][1],0,0};
+    assert(RadialTarget(&ctx)==expected[i]);
+  }
+  SmRadialMenuActivate();SetWord(kHudItem,5);
+  assert(Step(0,32767,-32768)==SNES_PAD_Y);
+  SetWord(kGameState,15);
+  assert(Step(SNES_PAD_X,32767,-32768)==SNES_PAD_X);
+  SetWord(kGameState,8);SetWord(kHudItem,0);SmRadialMenuActivate();
+  memset(frame,0,sizeof(frame));assert(!Step(0,30000,-30000));
+  SmRadialRing(frame,256,256,224,0,g_wram);
+  drawn=0;for(int i=0;i<256*224;++i)drawn+=frame[i]!=0;assert(drawn>0);
+
   /* Run inversion follows the native binding and never changes menu input. */
   SmRunByDefaultActivate();
   SetWord(kCfgRun, 0x0080); /* A */
