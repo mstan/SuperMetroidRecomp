@@ -128,6 +128,7 @@ static void morph_entrance(const uint8_t *rom) {
     assert(neighbor && neighbor->placement.x==-512 && neighbor->placement.y==0 && neighbor->placement.right==256);
     assert(neighbor->placement.incoming==0xa438); /* shared allocation cached through the upper hatch */
     SmRoomPlacement p;assert(SmRoomsDoor(0xa45c,&p) && p.incoming==0xa45c && p.right==256);
+    assert(SmRoomsPlanarDoor(0xa45c,&p) && p.incoming==0xa45c && p.right==256);
     assert(SmRoomsDoorPhase(0xa45c)==SM_DOOR_OPEN);
     assert(SmRoomsDoor(0xa438,&p) && p.incoming==0xa438 && p.right==0); /* per-entrance departure plane */
     for (unsigned i=0; i<40; ++i)
@@ -141,6 +142,24 @@ static void morph_entrance(const uint8_t *rom) {
   }
   free(source);memcpy(active,original,sizeof(active));
   puts("uncapped Morph passage shares its canvas, resolves incoming aliases, keeps native floor/ceiling and requires the real trigger row On/Off");
+}
+static void nonplanar_save_return(const uint8_t *rom) {
+  /* The native Crocomire save return enters screen12. Its authored cap field
+   * points at block174, while the physical reverse doorway is block207.
+   * Retain that cartridge data and the cached room for ordinary transitions;
+   * it cannot authorize an immediate reciprocal planar handoff. */
+  memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
+  assert(SmRoomsFrame(active,true,43,false,true));
+  const SmWorldRoom *room=SmRoomPreviewRoom(0xb192);assert(room);
+  SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,room->default_state,0,active,false);assert(r);
+  memcpy(active,SmRoomRuntimeRam(r),sizeof(active));SmRoomRuntimeDestroy(r);
+  put(0x998,8);put(0x911,0);put(0x915,0);put(0xaf6,41);put(0xafa,139);put(0xafe,5);put(0xb00,16);
+  for(unsigned i=0;i<2;++i)assert(SmRoomsFrame(active,true,43,true,true));
+  SmRoomPlacement p;assert(SmRoomsDoor(0x9822,&p) && p.room==0xa923);
+  assert(!SmRoomsPlanarDoor(0x9822,&p));
+  assert(Read(NULL,0x839826)==174 && Read(NULL,0x839828)==12);
+  memcpy(active,original,sizeof(active));
+  puts("cached Crocomire save destination retains native non-planar transition ownership");
 }
 static const uint8_t *hall(void) {
   const SmRoomScene *scene=SmRoomsScene();
@@ -594,6 +613,11 @@ int main(int argc,char **argv) {
   SmRoomsSetEnemyReaction(root_enemy);
   f=fopen(argv[2],"rb"); assert(f); assert(fread(active,1,sizeof(active),f)==sizeof(active)); fclose(f);
   memcpy(original,active,sizeof(active));
+  if (argc==4 && !strcmp(argv[3],"planar")) {
+    SmRoomsSetDoorEvent(root_door);
+    nonplanar_save_return(rom);morph_entrance(rom);
+    SmRoomsSetRom(NULL,0);free(rom);return 0;
+  }
   if (argc==5 && !strcmp(argv[4],"upward")) { upward_arrival(rom,argv[3]);SmRoomsSetRom(NULL,0);free(rom);return 0; }
   if (SmShotWord(original,0x79b)==0xdf45 && (original[0x56]&7)==7) {
     for (unsigned logic=0; logic<2; ++logic) {
@@ -670,6 +694,7 @@ int main(int argc,char **argv) {
   world_shots(rom);
   uncapped_entrance(rom);
   morph_entrance(rom);
+  nonplanar_save_return(rom);
   world_combat(rom);
   world_grapple(rom);
   neighbor_pickups(rom);

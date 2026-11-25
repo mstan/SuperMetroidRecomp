@@ -188,7 +188,7 @@ bool SmSeamlessDoor(uint32_t *inputs) {
   }
   bool crossing=word(g_ram+0x998)==8 && SmRoomsCrossing(g_ram,&crossed_door,&p);
   if (crossing) { put(0x78d,crossed_door); put(0x998,9); }
-  else if (word(g_ram+0x998)!=9 || !SmRoomsDoor((uint16_t)word(g_ram+0x78d),&p)) return true;
+  else if (word(g_ram+0x998)!=9 || !SmRoomsPlanarDoor((uint16_t)word(g_ram+0x78d),&p)) return true;
   unsigned door=word(g_ram+0x78d);
   const uint8_t *definition=RomPtr(0x830000u+door);
   if ((definition[2]&0x80) || word(definition)!=p.room) return true;

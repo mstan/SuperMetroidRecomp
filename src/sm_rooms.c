@@ -126,10 +126,15 @@ static bool mirror_doors(uint8_t active[0x20000]) {
   memcpy(links,next,next_count*sizeof(*next)); link_count=next_count; return true;
 }
 static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p);
-bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination) {
+bool SmRoomsPlanarDoor(uint16_t definition, SmRoomPlacement *destination) {
   if (!destination) return false;
   unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
   for (unsigned i=0; i<n; ++i) if (doors[i].definition==definition && planar_portal(&doors[i],destination)) return true;
+  return false;
+}
+bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination) {
+  if (!destination) return false;
+  if (SmRoomsPlanarDoor(definition,destination)) return true;
   for (unsigned i=0; i<count; ++i) if (residents[i].placement.incoming==definition) {
     *destination=residents[i].placement; return true;
   }
