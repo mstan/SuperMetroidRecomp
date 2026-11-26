@@ -5,6 +5,7 @@
 #include "sm_replay.h"
 #include "sm_activity.h"
 #include "sm_rooms.h"
+#include "sm_direct_missile.h"
 #include "sm_video.h"
 #include "diagnostics/replay_writer.h"
 #include "common_rtl.h"
@@ -88,13 +89,17 @@ static bool resident_hash(uint32_t *out) {
   *out=hash(room_hash_buffer,size); return true;
 }
 /* Explicit integers exclude process pointers and struct padding. */
-static void cpu_words(uint64_t words[16]) {
+static void cpu_words(uint64_t words[23]) {
   words[0]=g_cpu.A; words[1]=g_cpu.X; words[2]=g_cpu.Y;
   words[3]=g_cpu.S; words[4]=g_cpu.D; words[5]=g_cpu.DB; words[6]=g_cpu.PB;
   words[7]=g_cpu.P; words[8]=g_cpu.m_flag; words[9]=g_cpu.x_flag;
   words[10]=g_cpu.emulation; words[11]=g_cpu.cycles;
   words[12]=g_cpu.master_cycles; words[13]=g_cpu.coprocessor_master_cycles;
   words[14]=g_cpu.open_bus; words[15]=g_cpu.host_return_valid;
+  const SmDirectMissileState *action=&g_sm_direct_missile;
+  words[16]=action->held; words[17]=action->pending; words[18]=action->active;
+  words[19]=action->selection; words[20]=action->cancel;
+  words[21]=action->new_keys; words[22]=action->filtered;
 }
 static void close_segment(void) {
   if(recording) {
@@ -362,7 +367,7 @@ bool SmReplayBegin(uint32_t *inputs) {
 void SmReplayEnd(void) {
   if(!pending || failed || finished)return;
   pending=false;
-  uint64_t cpu[16]; cpu_words(cpu);
+  uint64_t cpu[23]; cpu_words(cpu);
   if(playing) {
     uint32_t actual[4]={hash(g_ram,0x20000),hash(cpu,sizeof(cpu)),hash(g_snes->apu->ram,sizeof(g_snes->apu->ram)),hash(g_ppu->vram,sizeof(g_ppu->vram))};
     unsigned frame, expected[4]; char line[256],tail;
