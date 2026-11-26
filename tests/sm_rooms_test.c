@@ -158,8 +158,40 @@ static void nonplanar_save_return(const uint8_t *rom) {
   SmRoomPlacement p;assert(SmRoomsDoor(0x9822,&p) && p.room==0xa923);
   assert(!SmRoomsPlanarDoor(0x9822,&p));
   assert(Read(NULL,0x839826)==174 && Read(NULL,0x839828)==12);
+  /* Native cap opening must reach the other physical face before crossing.
+   * A completed native transition alone did not establish this contract. */
+  for (unsigned side=0;side<2;++side) for (unsigned logic=0;logic<2;++logic) {
+    memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);
+    assert(SmRoomsFrame(active,true,213,logic!=0,true));
+    unsigned source=side ? 0xa923:0xb192,destination=side ? 0xb192:0xa923;
+    const SmWorldRoom *from=SmRoomPreviewRoom((uint16_t)source);assert(from);
+    r=SmRoomRuntimeCreateConfigured(Read,NULL,from,from->default_state,0,active,false);assert(r);
+    memcpy(active,SmRoomRuntimeRam(r),sizeof(active));SmRoomRuntimeDestroy(r);
+    put(0x998,8);put(0x911,side ? 3072:0);put(0x915,side ? 256:0);
+    put(0xaf6,side ? 3223:41);put(0xafa,side ? 395:139);put(0xafe,5);put(0xb00,16);
+    SmRoomsSetDoorEvent(root_door);
+    for (unsigned tick=0;tick<2;++tick) assert(SmRoomsFrame(active,true,213,logic!=0,true));
+    const uint8_t *other=NULL;
+    const SmRoomScene *scene=SmRoomsScene();
+    for (unsigned i=0;i<scene->count;++i) if (scene->rooms[i].placement.room==destination) other=scene->rooms[i].ram;
+    assert(other);
+    unsigned dx=side ? 1:206,dy=side ? 6:22;
+    assert(SmDoorPhase(Read,NULL,other,dx,dy)==SM_DOOR_SHUT);
+    /* Execute the real blue-cap PLM provider; never set an open tile/result. */
+    assert(root_door(side ? 206:1,side ? 22:6,side ? 0:1,false));
+    for (unsigned tick=0;tick<64;++tick) assert(SmRoomsFrame(active,true,213,logic!=0,true));
+    scene=SmRoomsScene();other=NULL;
+    for (unsigned i=0;i<scene->count;++i) if (scene->rooms[i].placement.room==destination) other=scene->rooms[i].ram;
+    assert(other);
+    unsigned phase=SmDoorPhase(Read,NULL,other,dx,dy);
+    unsigned type=SmShotWord(other,0x10002+2*(dy*SmShotWord(other,0x7a5)+dx))>>12;
+    printf("Croco side%u logic%u opposite phase%u tile type%u\n",side,logic,phase,type);fflush(stdout);
+    assert((phase==SM_DOOR_OPEN || phase==SM_DOOR_OPENING) && (type==0 || type==4));
+    assert(Read(NULL,0x839826)==174 && Read(NULL,0x839828)==12);
+  }
+  SmRoomsSetDoorEvent(NULL);
   memcpy(active,original,sizeof(active));
-  puts("cached Crocomire save destination retains native non-planar transition ownership");
+  puts("Crocomire native cap opening mirrors both physical faces, logic On/Off, while preserving native non-planar transition ownership");
 }
 static const uint8_t *hall(void) {
   const SmRoomScene *scene=SmRoomsScene();

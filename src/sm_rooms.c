@@ -71,23 +71,24 @@ static bool mirror_doors(uint8_t active[0x20000]) {
     for (unsigned d=0; d<n; ++d) {
       const SmWorldDoor *out=&doors[d]; unsigned dir=out->direction&3;
       if ((out->flags&0x80) || out->block_x<0 || !out->reciprocal) continue;
-      int target_x=a->x+(out->block_x/16+dx[dir]-out->arrival_x/16)*256;
-      int target_y=a->y+(out->block_y/16+dy[dir]-out->arrival_y/16)*256;
+      unsigned bx,by; SmRoomPreviewArrivalHatch(out,&bx,&by);
+      int target_x=a->x+(out->block_x/16+dx[dir]-(int)bx/16)*256;
+      int target_y=a->y+(out->block_y/16+dy[dir]-(int)by/16)*256;
       for (unsigned j=0; j<=count; ++j) {
         const DoorContext *b=&contexts[j];
         if (b->room!=out->destination || b->x!=target_x || b->y!=target_y) continue;
-        unsigned back_count=0; const SmWorldDoor *back=SmRoomPreviewDoors((uint16_t)b->room,&back_count),*reverse=NULL;
+        unsigned back_count=0,ax=0,ay=0; const SmWorldDoor *back=SmRoomPreviewDoors((uint16_t)b->room,&back_count),*reverse=NULL;
         for (unsigned k=0; k<back_count; ++k) {
           const SmWorldDoor *candidate=&back[k]; unsigned back_dir=candidate->direction&3;
           if (candidate->destination!=a->room || back_dir!=(dir^1) || candidate->block_x<0 ||
-              (candidate->flags&0x80) || abs((int)candidate->arrival_x-out->block_x)>3 ||
-              abs((int)candidate->arrival_y-out->block_y)>3) continue;
-          if (b->x+(candidate->block_x/16+dx[back_dir]-candidate->arrival_x/16)*256==a->x &&
-              b->y+(candidate->block_y/16+dy[back_dir]-candidate->arrival_y/16)*256==a->y) { reverse=candidate; break; }
+              (candidate->flags&0x80)) continue;
+          unsigned rx,ry; SmRoomPreviewArrivalHatch(candidate,&rx,&ry);
+          if (abs((int)rx-out->block_x)>3 || abs((int)ry-out->block_y)>3) continue;
+          if (b->x+(candidate->block_x/16+dx[back_dir]-(int)rx/16)*256==a->x &&
+              b->y+(candidate->block_y/16+dy[back_dir]-(int)ry/16)*256==a->y) { reverse=candidate; ax=rx; ay=ry; break; }
         }
         if (!reverse || out->definition>=reverse->definition) continue;
         if (next_count==MAX_LINKS) return false;
-        unsigned ax=reverse->arrival_x,ay=reverse->arrival_y,bx=out->arrival_x,by=out->arrival_y;
         bool cap_a=SmDoorHasArrivalCap(reverse->direction),cap_b=SmDoorHasArrivalCap(out->direction);
         DoorLink current={out->definition,reverse->definition,(uint16_t)a->state,(uint16_t)b->state,
             (uint8_t)(cap_a ? SmDoorPhase(read_rom,NULL,a->ram,ax,ay) : SM_DOOR_OPEN),

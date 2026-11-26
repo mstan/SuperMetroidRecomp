@@ -103,26 +103,12 @@ static bool decode(Preview *p, const SmWorldRoom *room, uint16_t state, uint16_t
 static bool overlaps(int x, int y, int w, int h, int left, int top, int right, int bottom) {
   return x < right && x+w > left && y < bottom && y+h > top;
 }
+void SmRoomPreviewArrivalHatch(const SmWorldDoor *door,unsigned *x,unsigned *y) {
+  SmWorldDoorHatch(&world,door,x,y);
+}
 static void preview_arrival(const SmWorldDoor *door,int *x,int *y) {
-  *x=door->arrival_x/16; *y=door->arrival_y/16;
-  /* Some cartridge transitions name a cap outside their native arrival
-   * screen (Crocomire's save return). For
-   * scenery only, use that screen's unique physical return hatch. Keep the
-   * authored cap and the native transition/planar-handoff rules unchanged. */
-  if (door->source==door->destination || door->direction<4 || (door->flags&0x80) ||
-      (*x==door->arrival_screen_x && *y==door->arrival_screen_y)) return;
-  const SmWorldRoom *to=SmWorldFindRoom(&world,door->destination);
-  if (!to) return;
-  const SmWorldDoor *match=NULL;
-  for (unsigned i=0;i<to->door_count;++i) {
-    const SmWorldDoor *back=&world.doors[to->first_door+i];
-    if (back->destination!=door->source || (back->flags&0x80) ||
-        (back->direction&3)!=((door->direction&3)^1) || back->block_x<0 || back->block_y<0 ||
-        back->block_x/16!=door->arrival_screen_x || back->block_y/16!=door->arrival_screen_y) continue;
-    if (match) return;
-    match=back;
-  }
-  if (match) { *x=match->block_x/16; *y=match->block_y/16; }
+  unsigned cap_x,cap_y; SmRoomPreviewArrivalHatch(door,&cap_x,&cap_y);
+  *x=(int)(cap_x/16); *y=(int)(cap_y/16);
 }
 void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int right, int bottom) {
   camera_x=(int16_t)word(ram+0x911); camera_y=(int16_t)word(ram+0x915);
