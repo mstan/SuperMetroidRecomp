@@ -16,3 +16,6 @@ bool SmReplayPlayback(const char *path);
 bool SmReplayPlaying(void);
 bool SmReplayFinished(void);
 bool SmReplayFailed(void);
+/* Same visible recording switch, cached environment override and playback/error
+ * gates used by the recorder. Does not change its execution/segment policy. */
+bool SmReplayDiagnosticsEnabled(void);

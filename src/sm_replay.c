@@ -53,6 +53,14 @@
 enum { SEGMENT_FRAMES=600, SEGMENTS=360, STATE_LIMIT=16*1024*1024,
        HISTORY_LIMIT=256*1024*1024, SNAPSHOT_LIMIT=8*1024*1024 };
 static bool playing, finished, failed, pending, recording, loaded;
+static bool capture_requested(void) {
+  static int capture=-1;
+  if(capture<0) {const char *v=getenv("SM_REPLAY_RECORD");capture=!v || *v!='0';}
+  return capture!=0;
+}
+bool SmReplayDiagnosticsEnabled(void) {
+  return !playing && !failed && capture_requested() && g_sm_video.replay_recording;
+}
 static bool awaiting_render, incomplete_render;
 static SnesReplayWriter *writer;
 static FILE *stream, *states;
@@ -334,9 +342,7 @@ static bool playback_begin(uint32_t *inputs) {
 }
 bool SmReplayBegin(uint32_t *inputs) {
   if(playing)return !finished && !failed && playback_begin(inputs);
-  static int capture=-1;
-  if(capture<0) {const char *v=getenv("SM_REPLAY_RECORD");capture=!v || *v!='0';}
-  if(!capture || failed)return true;
+  if(!capture_requested() || failed)return true;
   if (!g_sm_video.replay_recording) {
     if (recording) close_segment();
     return true;

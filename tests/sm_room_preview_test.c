@@ -51,6 +51,47 @@ int main(int argc, char **argv) {
   }
   printf("%u physical non-elevator door records have an interior trigger plane\n",interior);
   SmRoomPreviewSetRom(rom,size);
+  /* The Crocomire save return's cap is not in its native arrival screen.
+   * Drawing must join the real opposed hatches, without editing that header
+   * or changing the cartridge-owned nonplanar transition. */
+  const SmWorldRoom *save=SmWorldFindRoom(world,0xb192); assert(save);
+  Word(0x79b,save->header); Word(0x7bb,save->default_state);
+  Word(0x7a5,save->width*16); Word(0x7a7,save->height*16);
+  memcpy(before,ram,sizeof(ram));
+  SmRoomPreviewPrepare(ram,-213,-32,469,288);
+  unsigned croco=0;
+  for (unsigned i=0;i<SmRoomPreviewCount();++i) {
+    SmRoomPlacement p; assert(SmRoomPreviewPlacement(i,&p));
+    if (p.room==0xa923) {
+      assert(p.incoming==0x9822 && p.x==-3328 && p.y==-256 && p.right==0);
+      ++croco;
+    }
+  }
+  assert(croco==1 && !memcmp(before,ram,sizeof(ram)));
+  assert(Read(NULL,0x839826)==174 && Read(NULL,0x839828)==12);
+  /* Placement and mirroring share one physical-cap query. Across the pinned
+   * original605 records only9822 moves its cap; self-loops stay authored. */
+  unsigned adjusted=0; const SmWorldDoor *croco_return=NULL,*physical_return=NULL;
+  for (unsigned i=0;i<world->door_count;++i) {
+    const SmWorldDoor *door=&world->doors[i];unsigned x,y;
+    bool changed=SmWorldDoorHatch(world,door,&x,&y);
+    if (changed) {
+      assert(door->definition==0x9822 && x==206 && y==22);
+      croco_return=door;++adjusted;
+    } else assert(x==door->arrival_x && y==door->arrival_y);
+    if (door->definition==0x93ba) physical_return=door;
+    if (door->source==door->destination) assert(!changed);
+  }
+  assert(world->door_count==605 && adjusted==1 && croco_return && physical_return);
+  SmWorld *ambiguous=calloc(1,sizeof(*ambiguous));assert(ambiguous);
+  ambiguous->room_count=1;ambiguous->door_count=2;
+  ambiguous->rooms[0]=*SmWorldFindRoom(world,0xa923);
+  ambiguous->rooms[0].first_door=0;ambiguous->rooms[0].door_count=2;
+  ambiguous->doors[0]=ambiguous->doors[1]=*physical_return;
+  unsigned ax,ay;assert(!SmWorldDoorHatch(ambiguous,croco_return,&ax,&ay) && ax==174 && ay==22);
+  free(ambiguous);
+  puts("physical-cap query preserves within-screen offsets, rejects ambiguous/self-loop remaps and changes only9822/605 records");
+  puts("Crocomire preview joins physical trigger207 in native screen12; authored cap174 and guest RAM untouched");
   unsigned rooms=0, pixels=0, residents=0,ceres=0,uncapped=0;
   for (unsigned i=0; i<world->room_count; ++i) {
     const SmWorldRoom *r=&world->rooms[i];

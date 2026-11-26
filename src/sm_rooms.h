@@ -17,6 +17,9 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
 bool SmRoomsNativeFrame(const uint8_t active[0x20000],const uint16_t vram[0x8000],bool enabled);
 const SmRoomScene *SmRoomsScene(void);
 bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination);
+/* Immediate handoff requires a verified reciprocal screen-edge link. A
+ * cached destination alone may still require the cartridge's transition. */
+bool SmRoomsPlanarDoor(uint16_t definition, SmRoomPlacement *destination);
 unsigned SmRoomsDoorPhase(uint16_t definition);
 /* Native collision keeps its own slope/solid responses. These queries only
  * replace samples belonging to an adjoining room at a planar doorway. */

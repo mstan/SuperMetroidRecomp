@@ -65,7 +65,7 @@ name = "Right-stick weapon select"
 author = "SuperMetroidRecomp contributors (native implementation; tester request)"
 source_name = "Native radial-menu implementation"
 source_url = "https://github.com/mstan/SuperMetroidRecomp/blob/feat/super-metroid-enhancements/src/mods/sm_controls_plugin.c"
-description = "Point the right stick to select a weapon: up missiles, right super missiles, down power bombs, left grapple, up-left X-ray."
+description = "Point the right stick to select a weapon: up missiles, right super missiles, down power bombs, left grapple, up-left X-ray, up-right beam."
 group = "Controls"
 default_enabled = false
 
