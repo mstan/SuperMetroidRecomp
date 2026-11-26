@@ -105,11 +105,11 @@ static bool overlaps(int x, int y, int w, int h, int left, int top, int right, i
 }
 static void preview_arrival(const SmWorldDoor *door,int *x,int *y) {
   *x=door->arrival_x/16; *y=door->arrival_y/16;
-  /* Some cartridge transitions keep a cap coordinate from an older layout
-   * (Crocomire's save return), but enter a different native screen. For
+  /* Some cartridge transitions name a cap outside their native arrival
+   * screen (Crocomire's save return). For
    * scenery only, use that screen's unique physical return hatch. Keep the
    * authored cap and the native transition/planar-handoff rules unchanged. */
-  if (door->direction<4 || (door->flags&0x80) ||
+  if (door->source==door->destination || door->direction<4 || (door->flags&0x80) ||
       (*x==door->arrival_screen_x && *y==door->arrival_screen_y)) return;
   const SmWorldRoom *to=SmWorldFindRoom(&world,door->destination);
   if (!to) return;
