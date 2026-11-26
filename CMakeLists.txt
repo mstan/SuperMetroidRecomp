@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(SuperMetroidSNESRecomp VERSION 0.4.13 LANGUAGES C)
+project(SuperMetroidSNESRecomp VERSION 0.4.14 LANGUAGES C)
 
 # Cross-platform (macOS/Linux/MinGW) build for SuperMetroidSNESRecomp.
 #
