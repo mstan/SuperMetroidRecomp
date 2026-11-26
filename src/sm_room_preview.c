@@ -103,6 +103,27 @@ static bool decode(Preview *p, const SmWorldRoom *room, uint16_t state, uint16_t
 static bool overlaps(int x, int y, int w, int h, int left, int top, int right, int bottom) {
   return x < right && x+w > left && y < bottom && y+h > top;
 }
+static void preview_arrival(const SmWorldDoor *door,int *x,int *y) {
+  *x=door->arrival_x/16; *y=door->arrival_y/16;
+  /* Some cartridge transitions keep a cap coordinate from an older layout
+   * (Crocomire's save return), but enter a different native screen. For
+   * scenery only, use that screen's unique physical return hatch. Keep the
+   * authored cap and the native transition/planar-handoff rules unchanged. */
+  if (door->direction<4 || (door->flags&0x80) ||
+      (*x==door->arrival_screen_x && *y==door->arrival_screen_y)) return;
+  const SmWorldRoom *to=SmWorldFindRoom(&world,door->destination);
+  if (!to) return;
+  const SmWorldDoor *match=NULL;
+  for (unsigned i=0;i<to->door_count;++i) {
+    const SmWorldDoor *back=&world.doors[to->first_door+i];
+    if (back->destination!=door->source || (back->flags&0x80) ||
+        (back->direction&3)!=((door->direction&3)^1) || back->block_x<0 || back->block_y<0 ||
+        back->block_x/16!=door->arrival_screen_x || back->block_y/16!=door->arrival_screen_y) continue;
+    if (match) return;
+    match=back;
+  }
+  if (match) { *x=match->block_x/16; *y=match->block_y/16; }
+}
 void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int right, int bottom) {
   camera_x=(int16_t)word(ram+0x911); camera_y=(int16_t)word(ram+0x915);
   if (!attempted) {
@@ -134,8 +155,9 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
           (d->direction<4 && !d->reciprocal)) continue;
       unsigned dir = d->direction & 3;
       static const int dx[] = {1,-1,0,0}, dy[] = {0,0,1,-1};
-      int x = from.x + (d->block_x/16 + dx[dir] - d->arrival_x/16)*256;
-      int y = from.y + (d->block_y/16 + dy[dir] - d->arrival_y/16)*256;
+      int ax,ay;preview_arrival(d,&ax,&ay);
+      int x = from.x + (d->block_x/16 + dx[dir] - ax)*256;
+      int y = from.y + (d->block_y/16 + dy[dir] - ay)*256;
       /* Door alignment can overlap authored allocations (Kraid's exit is a
        * stock example). Clip previews to the far side of the connection,
        * rather than discarding the entire destination as non-planar. */

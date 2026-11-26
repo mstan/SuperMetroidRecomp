@@ -51,6 +51,25 @@ int main(int argc, char **argv) {
   }
   printf("%u physical non-elevator door records have an interior trigger plane\n",interior);
   SmRoomPreviewSetRom(rom,size);
+  /* The Crocomire save return's cap is not in its native arrival screen.
+   * Drawing must join the real opposed hatches, without editing that header
+   * or changing the cartridge-owned nonplanar transition. */
+  const SmWorldRoom *save=SmWorldFindRoom(world,0xb192); assert(save);
+  Word(0x79b,save->header); Word(0x7bb,save->default_state);
+  Word(0x7a5,save->width*16); Word(0x7a7,save->height*16);
+  memcpy(before,ram,sizeof(ram));
+  SmRoomPreviewPrepare(ram,-213,-32,469,288);
+  unsigned croco=0;
+  for (unsigned i=0;i<SmRoomPreviewCount();++i) {
+    SmRoomPlacement p; assert(SmRoomPreviewPlacement(i,&p));
+    if (p.room==0xa923) {
+      assert(p.incoming==0x9822 && p.x==-3328 && p.y==-256 && p.right==0);
+      ++croco;
+    }
+  }
+  assert(croco==1 && !memcmp(before,ram,sizeof(ram)));
+  assert(Read(NULL,0x839826)==174 && Read(NULL,0x839828)==12);
+  puts("Crocomire preview joins physical trigger207 in native screen12; authored cap174 and guest RAM untouched");
   unsigned rooms=0, pixels=0, residents=0,ceres=0,uncapped=0;
   for (unsigned i=0; i<world->room_count; ++i) {
     const SmWorldRoom *r=&world->rooms[i];
