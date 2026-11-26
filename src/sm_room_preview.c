@@ -103,6 +103,13 @@ static bool decode(Preview *p, const SmWorldRoom *room, uint16_t state, uint16_t
 static bool overlaps(int x, int y, int w, int h, int left, int top, int right, int bottom) {
   return x < right && x+w > left && y < bottom && y+h > top;
 }
+void SmRoomPreviewArrivalHatch(const SmWorldDoor *door,unsigned *x,unsigned *y) {
+  SmWorldDoorHatch(&world,door,x,y);
+}
+static void preview_arrival(const SmWorldDoor *door,int *x,int *y) {
+  unsigned cap_x,cap_y; SmRoomPreviewArrivalHatch(door,&cap_x,&cap_y);
+  *x=(int)(cap_x/16); *y=(int)(cap_y/16);
+}
 void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int right, int bottom) {
   camera_x=(int16_t)word(ram+0x911); camera_y=(int16_t)word(ram+0x915);
   if (!attempted) {
@@ -134,8 +141,9 @@ void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int rig
           (d->direction<4 && !d->reciprocal)) continue;
       unsigned dir = d->direction & 3;
       static const int dx[] = {1,-1,0,0}, dy[] = {0,0,1,-1};
-      int x = from.x + (d->block_x/16 + dx[dir] - d->arrival_x/16)*256;
-      int y = from.y + (d->block_y/16 + dy[dir] - d->arrival_y/16)*256;
+      int ax,ay;preview_arrival(d,&ax,&ay);
+      int x = from.x + (d->block_x/16 + dx[dir] - ax)*256;
+      int y = from.y + (d->block_y/16 + dy[dir] - ay)*256;
       /* Door alignment can overlap authored allocations (Kraid's exit is a
        * stock example). Clip previews to the far side of the connection,
        * rather than discarding the entire destination as non-planar. */

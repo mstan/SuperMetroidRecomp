@@ -188,7 +188,7 @@ bool SmSeamlessDoor(uint32_t *inputs) {
   }
   bool crossing=word(g_ram+0x998)==8 && SmRoomsCrossing(g_ram,&crossed_door,&p);
   if (crossing) { put(0x78d,crossed_door); put(0x998,9); }
-  else if (word(g_ram+0x998)!=9 || !SmRoomsDoor((uint16_t)word(g_ram+0x78d),&p)) return true;
+  else if (word(g_ram+0x998)!=9 || !SmRoomsPlanarDoor((uint16_t)word(g_ram+0x78d),&p)) return true;
   unsigned door=word(g_ram+0x78d);
   const uint8_t *definition=RomPtr(0x830000u+door);
   if ((definition[2]&0x80) || word(definition)!=p.room) return true;
@@ -251,7 +251,7 @@ bool SmSeamlessDoor(uint32_t *inputs) {
       if (id && word(RomPtr(0xa00010u+id))) boss=true;
     }
     ok=ok && enemy_tiles(&b) && ((arrival_phase==SM_DOOR_OPEN || arrival_phase==SM_DOOR_OPENING) && !boss ? true :
-       entry_call(&b,0x82e8eb,2) && open_entrance(&b,definition)) && entry_call(&b,0x82e97c,3) &&
+       entry_call(&b,0x82e8eb,2) && (boss || open_entrance(&b,definition))) && entry_call(&b,0x82e97c,3) &&
        entry_call(&b,0x80a2f9,2) && entry_call(&b,0x80a33a,2) &&
        entry_call(&b,0x80a37b,2) && entry_call(&b,0x80a176,3) &&
        entry_call(&b,0x88d865,3) && entry_call(&b,0x82e071,3) && entry_call(&b,0x82e0d5,3);

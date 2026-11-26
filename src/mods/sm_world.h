@@ -46,6 +46,12 @@ bool SmWorldLoad(SmWorld *world, SmWorldRead read, void *context);
 size_t SmWorldUnpack(SmWorldRead read, void *context, uint32_t source,
                      uint8_t *destination, size_t capacity);
 const SmWorldRoom *SmWorldFindRoom(const SmWorld *world, uint16_t header);
+/* Connected scenery/cap mirroring uses the unique physical return hatch in
+ * the native arrival screen when an authored cap names another screen.
+ * Preserve its within-screen cap offset. Never edits cartridge metadata or
+ * selects a different native transition. False leaves authored coordinates. */
+bool SmWorldDoorHatch(const SmWorld *world, const SmWorldDoor *door,
+                       unsigned *x, unsigned *y);
 uint16_t SmWorldRoomState(const SmWorldRoom *room, SmWorldRead read,
                           void *context, const uint8_t *wram);
 uint16_t SmWorldRoomStateForDoor(const SmWorldRoom *room, SmWorldRead read,

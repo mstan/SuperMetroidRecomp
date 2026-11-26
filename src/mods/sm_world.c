@@ -1,4 +1,27 @@
 #include "sm_world.h"
+
+bool SmWorldDoorHatch(const SmWorld *world, const SmWorldDoor *door,
+                       unsigned *x, unsigned *y) {
+  *x=door->arrival_x; *y=door->arrival_y;
+  if (door->source==door->destination || door->direction<4 || door->direction>=8 ||
+      (door->flags&0x80) ||
+      (*x/16==door->arrival_screen_x && *y/16==door->arrival_screen_y)) return false;
+  const SmWorldRoom *to=SmWorldFindRoom(world,door->destination);
+  if (!to) return false;
+  const SmWorldDoor *match=NULL;
+  for (unsigned i=0; i<to->door_count; ++i) {
+    const SmWorldDoor *back=&world->doors[to->first_door+i];
+    if (back->destination!=door->source || (back->flags&0x80) ||
+        (back->direction&3)!=((door->direction&3)^1) || back->block_x<0 || back->block_y<0 ||
+        back->block_x/16!=door->arrival_screen_x || back->block_y/16!=door->arrival_screen_y) continue;
+    if (match) return false;
+    match=back;
+  }
+  if (!match) return false;
+  *x=(unsigned)(match->block_x/16)*16+(door->arrival_x&15u);
+  *y=(unsigned)(match->block_y/16)*16+(door->arrival_y&15u);
+  return true;
+}
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

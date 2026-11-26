@@ -71,23 +71,24 @@ static bool mirror_doors(uint8_t active[0x20000]) {
     for (unsigned d=0; d<n; ++d) {
       const SmWorldDoor *out=&doors[d]; unsigned dir=out->direction&3;
       if ((out->flags&0x80) || out->block_x<0 || !out->reciprocal) continue;
-      int target_x=a->x+(out->block_x/16+dx[dir]-out->arrival_x/16)*256;
-      int target_y=a->y+(out->block_y/16+dy[dir]-out->arrival_y/16)*256;
+      unsigned bx,by; SmRoomPreviewArrivalHatch(out,&bx,&by);
+      int target_x=a->x+(out->block_x/16+dx[dir]-(int)bx/16)*256;
+      int target_y=a->y+(out->block_y/16+dy[dir]-(int)by/16)*256;
       for (unsigned j=0; j<=count; ++j) {
         const DoorContext *b=&contexts[j];
         if (b->room!=out->destination || b->x!=target_x || b->y!=target_y) continue;
-        unsigned back_count=0; const SmWorldDoor *back=SmRoomPreviewDoors((uint16_t)b->room,&back_count),*reverse=NULL;
+        unsigned back_count=0,ax=0,ay=0; const SmWorldDoor *back=SmRoomPreviewDoors((uint16_t)b->room,&back_count),*reverse=NULL;
         for (unsigned k=0; k<back_count; ++k) {
           const SmWorldDoor *candidate=&back[k]; unsigned back_dir=candidate->direction&3;
           if (candidate->destination!=a->room || back_dir!=(dir^1) || candidate->block_x<0 ||
-              (candidate->flags&0x80) || abs((int)candidate->arrival_x-out->block_x)>3 ||
-              abs((int)candidate->arrival_y-out->block_y)>3) continue;
-          if (b->x+(candidate->block_x/16+dx[back_dir]-candidate->arrival_x/16)*256==a->x &&
-              b->y+(candidate->block_y/16+dy[back_dir]-candidate->arrival_y/16)*256==a->y) { reverse=candidate; break; }
+              (candidate->flags&0x80)) continue;
+          unsigned rx,ry; SmRoomPreviewArrivalHatch(candidate,&rx,&ry);
+          if (abs((int)rx-out->block_x)>3 || abs((int)ry-out->block_y)>3) continue;
+          if (b->x+(candidate->block_x/16+dx[back_dir]-(int)rx/16)*256==a->x &&
+              b->y+(candidate->block_y/16+dy[back_dir]-(int)ry/16)*256==a->y) { reverse=candidate; ax=rx; ay=ry; break; }
         }
         if (!reverse || out->definition>=reverse->definition) continue;
         if (next_count==MAX_LINKS) return false;
-        unsigned ax=reverse->arrival_x,ay=reverse->arrival_y,bx=out->arrival_x,by=out->arrival_y;
         bool cap_a=SmDoorHasArrivalCap(reverse->direction),cap_b=SmDoorHasArrivalCap(out->direction);
         DoorLink current={out->definition,reverse->definition,(uint16_t)a->state,(uint16_t)b->state,
             (uint8_t)(cap_a ? SmDoorPhase(read_rom,NULL,a->ram,ax,ay) : SM_DOOR_OPEN),
@@ -126,10 +127,15 @@ static bool mirror_doors(uint8_t active[0x20000]) {
   memcpy(links,next,next_count*sizeof(*next)); link_count=next_count; return true;
 }
 static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p);
-bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination) {
+bool SmRoomsPlanarDoor(uint16_t definition, SmRoomPlacement *destination) {
   if (!destination) return false;
   unsigned n=0;const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
   for (unsigned i=0; i<n; ++i) if (doors[i].definition==definition && planar_portal(&doors[i],destination)) return true;
+  return false;
+}
+bool SmRoomsDoor(uint16_t definition, SmRoomPlacement *destination) {
+  if (!destination) return false;
+  if (SmRoomsPlanarDoor(definition,destination)) return true;
   for (unsigned i=0; i<count; ++i) if (residents[i].placement.incoming==definition) {
     *destination=residents[i].placement; return true;
   }
@@ -161,12 +167,30 @@ static bool linked_door(uint16_t definition) {
 static bool planar_portal(const SmWorldDoor *d,SmRoomPlacement *p) {
   unsigned dir=d->direction&3;
   if (!planar_shape(d)) return false;
-  bool paired=false;
-  for (unsigned i=0; i<link_count; ++i) if (links[i].a==d->definition || links[i].b==d->definition) { paired=true; break; }
-  if (!paired) return false;
   static const int dx[4]={1,-1,0,0},dy[4]={0,0,1,-1};
   int x=(d->block_x/16+dx[dir]-d->arrival_x/16)*256;
   int y=(d->block_y/16+dy[dir]-d->arrival_y/16)*256;
+  bool paired=false;
+  for (unsigned i=0; i<link_count && !paired; ++i) {
+    unsigned reverse=links[i].a==d->definition ? links[i].b :
+        links[i].b==d->definition ? links[i].a : 0;
+    if (!reverse) continue;
+    unsigned n=0;const SmWorldDoor *back=SmRoomPreviewDoors(d->destination,&n);
+    for (unsigned j=0;j<n;++j) {
+      const SmWorldDoor *b=&back[j];unsigned bd=b->direction&3;
+      if (b->definition!=reverse || b->destination!=d->source || bd!=(dir^1) || !planar_shape(b)) continue;
+      /* Mirroring follows the physical hatch, including non-planar native
+       * arrivals. Immediate ownership transfer still requires BOTH original
+       * cartridge headers to describe the same reciprocal plane. Otherwise
+       * retain the native trigger/loader, never a cached incoming pointer. */
+      if (abs((int)d->arrival_x-b->block_x)>3 || abs((int)d->arrival_y-b->block_y)>3 ||
+          abs((int)b->arrival_x-d->block_x)>3 || abs((int)b->arrival_y-d->block_y)>3) continue;
+      paired=x+(b->block_x/16+dx[bd]-b->arrival_x/16)*256==0 &&
+          y+(b->block_y/16+dy[bd]-b->arrival_y/16)*256==0;
+      if (paired) break;
+    }
+  }
+  if (!paired) return false;
   for (unsigned i=0; i<count; ++i) {
     const SmRoomPlacement *v=&residents[i].placement;
     if (v->room==d->destination && v->x==x && v->y==y) {

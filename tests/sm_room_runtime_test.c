@@ -924,6 +924,7 @@ static bool pirate_projectiles(SmWorld *world) {
   const SmWorldRoom *room=SmWorldFindRoom(world,0x975c);assert(room);
   memcpy(seed,active,sizeof(seed));
   SmShotPut(seed,0x9a2,SmShotWord(seed,0x9a2)|4);
+  SmShotPut(seed,0x9a4,SmShotWord(seed,0x9a4)|4);
   SmShotPut(seed,0x9c8,5); /* native post-Morph population prerequisite */
   uint16_t state=SmWorldRoomState(room,Read,NULL,seed);
   SmRoomRuntime *r=SmRoomRuntimeCreate(Read,NULL,room,state,seed);
@@ -985,6 +986,81 @@ static bool pirate_projectiles(SmWorld *world) {
   puts("native resident pirate lasers animate/move, promote and resume exact current state; explicit suspension and live progress preserved");
   return true;
 }
+static bool gate_scenery(SmWorld *world) {
+  static uint8_t entered[0x20000],shot[0x20000],full[0x20000];static uint16_t vram[0x8000];
+  const unsigned rooms[]={0x9e52,0xab64},xs[]={100,42},ys[]={55,5},types[]={0,0x200};
+  for (unsigned sample=0;sample<2;++sample) for (unsigned actors=0;actors<2;++actors) {
+    const SmWorldRoom *room=SmWorldFindRoom(world,(uint16_t)rooms[sample]);assert(room);
+    uint16_t state=SmWorldRoomState(room,Read,NULL,active);
+    SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,state,0,active,actors!=0);
+    assert(r && !*SmRoomRuntimeError(r));const uint8_t *ram=SmRoomRuntimeRam(r);
+    unsigned gate=18,plms=0;
+    for (unsigned i=0;i<40;++i) { unsigned h=SmShotWord(ram,0x1c37+2*i);plms+=h>=0xc826 && h<=0xc83a; }
+    for (unsigned i=0;i<18;++i) if (SmShotWord(ram,0x1997+2*i)==0xe659) gate=i;
+    if (plms!=2 || gate==18) {
+      fprintf(stderr,"gate scenery missing in %04X actors%u: PLMs%u projectile%u\n",rooms[sample],actors,plms,gate);
+      return false;
+    }
+    assert(SmShotWord(ram,0x1aff+2*gate)==2*(ys[sample]*room->width*16+xs[sample]));
+    memcpy(entered,ram,sizeof(entered));
+    for (unsigned i=0;i<0x8000;++i)vram[i]=(uint16_t)SmShotWord(SmRoomRuntimeVram(r),2*i);
+    bool redraw=false;assert(SmRoomRuntimePromoteDoors(r,entered,&redraw));
+    /* Logic Off must retain unrelated active effects while moving the gate
+     * phase by block identity into a different physical projectile slot. */
+    if (!actors) {
+      for (unsigned base=0x1997;base<=0x1bfb;base+=36)memcpy(entered+base+4,entered+base+2*gate,2);
+      SmShotPut(entered,0x1997+2*gate,0);SmShotPut(entered,0x1997,0xb4b1);SmShotPut(entered,0x1a4b,0x1234);
+      assert(SmRoomRuntimePromoteDoors(r,entered,&redraw));SmRoomRuntimePromote(r,entered,vram);
+      assert(SmShotWord(entered,0x199b)==0xe659 && SmShotWord(entered,0x1997)==0xb4b1 && SmShotWord(entered,0x1a4b)==0x1234);
+      memcpy(full,entered,sizeof(full));
+      for (unsigned i=0;i<18;++i)SmShotPut(full,0x1997+2*i,0xb4b1);
+      memcpy(shot,full,sizeof(shot));assert(!SmRoomRuntimePromoteDoors(r,full,&redraw) && !memcmp(full,shot,sizeof(full)));
+    } else SmRoomRuntimePromote(r,entered,vram);
+    assert(SmRoomRuntimeCapture(r,entered,vram));
+    int px=(int)xs[sample]*16-48,py=(int)ys[sample]*16+32;
+    int cx=px-64,cy=py>96 ? py-96 : 0;
+    for (unsigned i=0;i<8;++i) {
+      assert(SmRoomRuntimeStepVisible(r,px,py,cx,cy,43));assert(SmRoomRuntimeStepEffects(r));
+    }
+    memcpy(shot,active,sizeof(shot));memset(shot+SM_SHOT_POOL,0,SM_SHOT_POOL_BYTES);
+    SmShotPut(shot,0xdde,0);SmShotPut(shot,0xc18,(int)types[sample]);
+    /* Invoke the cartridge's real block/PLM response at the authored trigger.
+     * This controls impact setup, not player aiming or ordinary hit detection. */
+    int trigger=(int)xs[sample]-1;
+    assert(ram[0x16402+ys[sample]*room->width*16+(unsigned)trigger]==(sample ? 0x4a : 0x46));
+    if (sample) {
+      SmShotPut(shot,0xc18,0); /* The green side rejects an ordinary beam. */
+      assert(SmRoomRuntimeShot(r,shot,0,0,trigger,(int)ys[sample],true,NULL,NULL)>=0);
+      for(unsigned i=0;i<8;++i){assert(SmRoomRuntimeStepVisible(r,px,py,cx,cy,43));assert(SmRoomRuntimeStepEffects(r));}
+      for(unsigned i=0;i<18;++i)if(SmShotWord(ram,0x1997+2*i)==0xe659)assert(SmShotWord(ram,0x1a93+2*i)==ys[sample]*16+64);
+      SmShotPut(shot,0xc18,0x200);
+    }
+    assert(SmRoomRuntimeShot(r,shot,0,0,trigger,(int)ys[sample],true,NULL,NULL)>=0);
+    unsigned initial_y=0;gate=18;
+    for (unsigned i=0;i<18;++i)if(SmShotWord(ram,0x1997+2*i)==0xe659){gate=i;initial_y=SmShotWord(ram,0x1a93+2*i);}
+    assert(gate<18);
+    bool moved=false;
+    size_t bytes=SmRoomRuntimeStateSize();void *saved=malloc(bytes),*end=malloc(bytes),*again=malloc(bytes);assert(saved && end && again);
+    for (unsigned i=0;i<120;++i) {
+      assert(SmRoomRuntimeStepVisible(r,px,py,cx,cy,43));assert(SmRoomRuntimeStepEffects(r));
+      moved|=SmShotWord(ram,0x1a93+2*gate)!=initial_y;
+      if(i==7)assert(SmRoomRuntimeSave(r,saved,bytes));
+      if(i==19)assert(SmRoomRuntimeSave(r,end,bytes));
+    }
+    if(!moved) {
+      unsigned block=ys[sample]*room->width*16+(unsigned)trigger;
+      fprintf(stderr,"gate did not move: tile%04X bts%02X id%04X y%u/%u EP%04X\n",SmShotWord(ram,0x10002+2*block),ram[0x16402+block],SmShotWord(ram,0x1997+2*gate),initial_y,SmShotWord(ram,0x1a93+2*gate),SmShotWord(ram,0x1b47+2*gate));
+      for(unsigned i=0;i<40;++i)if(SmShotWord(ram,0x1c37+2*i))fprintf(stderr,"PLM%u h%04X block%04X instr%04X timer%04X\n",i,SmShotWord(ram,0x1c37+2*i),SmShotWord(ram,0x1c87+2*i),SmShotWord(ram,0x1d27+2*i),SmShotWord(ram,0x1d77+2*i));
+    }
+    assert(moved);assert(SmRoomRuntimeLoad(r,saved,bytes));
+    for(unsigned i=0;i<12;++i){assert(SmRoomRuntimeStepVisible(r,px,py,cx,cy,43));assert(SmRoomRuntimeStepEffects(r));}
+    assert(SmRoomRuntimeSave(r,again,bytes) && !memcmp(end,again,bytes));
+    assert(!memcmp(active,before,sizeof(active)));
+    free(saved);free(end);free(again);SmRoomRuntimeDestroy(r);
+    printf("room%04X actors%u: native gate object, block impact, animated opening, promotion and exact current-state continuation pass\n",rooms[sample],actors);
+  }
+  return true;
+}
 int main(int argc,char **argv) {
   if (argc!=4) return 2;
   rom=malloc(0x300000); assert(rom);
@@ -995,6 +1071,7 @@ int main(int argc,char **argv) {
   memcpy(before,active,sizeof(active));
   SmWorld *world=malloc(sizeof(*world)); assert(world);
   assert(SmWorldLoad(world,Read,NULL));
+  if (!strcmp(argv[3],"gates")) { bool ok=gate_scenery(world);free(world);free(rom);return ok ? 0 : 1; }
   if (!strcmp(argv[3],"pirates")) {
     bool ok=pirate_projectiles(world);free(world);free(rom);return ok ? 0 : 1;
   }

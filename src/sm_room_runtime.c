@@ -250,8 +250,20 @@ static bool item_plm(unsigned header) {
 static bool grapple_plm(unsigned header) {
   return header>=0xd0d8 && header<=0xd0e8 && !(header&3);
 }
+static bool gate_plm(unsigned header) {
+  return header>=0xc826 && header<=0xc83a && !((header-0xc826)&3);
+}
+static bool gate_projectile(unsigned id) {
+  return id==0xe64b || id==0xe659 || id==0xe667 || id==0xe675;
+}
+static void clear_stale_gate_owners(const uint8_t *source,uint8_t *ram) {
+  for (unsigned i=0;i<18;++i) if (!word(ram+0x1997+2*i))
+    for (unsigned j=0;j<18;++j) if (gate_projectile(word(source+0x1997+2*j)) &&
+        word(ram+0x1aff+2*i)==word(source+0x1aff+2*j))
+      ram[0x1aff+2*i]=ram[0x1b00+2*i]=255;
+}
 static bool scenic_plm(unsigned header) {
-  return SmDoorHeader(header) || item_plm(header);
+  return SmDoorHeader(header) || item_plm(header) || gate_plm(header);
 }
 static bool initialize_doors(SmRoomRuntime *r,uint16_t state) {
   unsigned cursor=(unsigned)rom_long(r,0x8f0014u+state)&65535;
@@ -516,7 +528,7 @@ static bool step_plms(SmRoomRuntime *r,bool items) {
   for (unsigned i=0; i<40; ++i) {
     unsigned header=word(r->ram+0x1c37+2*i);
     if (!header) continue;
-    if (items ? item_plm(header) : SmDoorHeader(header) || grapple_plm(header)) { present=true;continue; }
+    if (items ? item_plm(header) : SmDoorHeader(header) || grapple_plm(header) || gate_plm(header)) { present=true;continue; }
     /* Each native family advances once. Reserve the other family, stations
      * and entry scripts without executing their pre-instruction or draw. */
     suspended[i]=true; pre[i]=(uint16_t)word(r->ram+0x1cd7+2*i);
@@ -858,7 +870,9 @@ bool SmRoomRuntimeCapture(SmRoomRuntime *r,const uint8_t ram[0x20000],const uint
   if (!r->actors) {
     for (unsigned i=0; i<32; ++i) if (!SmRoomEnvironmentEnemy(word(r->ram+0xf78+64*i)))
       memset(r->ram+0xf78+64*i,0,64);
-    memset(r->ram+0x1997,0,36);
+    for (unsigned i=0; i<18; ++i)
+      if (!gate_projectile(word(r->ram+0x1997+2*i))) put(r,0x1997+2*i,0);
+    clear_stale_gate_owners(r->ram,r->ram);
   }
   return true;
 }
@@ -897,6 +911,35 @@ static void promote_enemy_graphics(const SmRoomRuntime *r,uint16_t vram[0x8000])
     if (size!=expected || ((size|offset)&1) || target>0x8000 || size/2>0x8000-target) continue;
     for (unsigned j=0;j<size/2;++j) vram[target+j]=(uint16_t)word(r->vram+2*(target+j));
   }
+}
+static bool promote_gate_projectiles(const SmRoomRuntime *r,uint8_t *ram) {
+  unsigned slots[18],count=0;bool reserved[18]={false};
+  /* Gate projectiles identify their PLM by block coordinate, never its slot.
+   * Reserve their existing native slots or empty slots before changing RAM. */
+  for (unsigned i=0; i<18; ++i) if (gate_projectile(word(r->ram+0x1997+2*i))) {
+    int slot=-1;unsigned block=word(r->ram+0x1aff+2*i);
+    for (unsigned j=0; j<18; ++j) if (!reserved[j] &&
+        gate_projectile(word(ram+0x1997+2*j)) && word(ram+0x1aff+2*j)==block) { slot=(int)j;break; }
+    if (slot<0) for (unsigned j=0; j<18; ++j)
+      if (!reserved[j] && (!word(ram+0x1997+2*j) || gate_projectile(word(ram+0x1997+2*j)))) { slot=(int)j;break; }
+    if (slot<0) return false;
+    slots[count++]=(unsigned)slot;reserved[(unsigned)slot]=true;
+  }
+  for (unsigned i=0; i<18; ++i) if (gate_projectile(word(ram+0x1997+2*i)))
+    { ram[0x1997+2*i]=ram[0x1998+2*i]=0;ram[0x1aff+2*i]=ram[0x1b00+2*i]=255; }
+  /* WakeEprojAtPlmPos searches E even for unused slots. A stale owner above
+   * a relocated live gate must not intercept its native wake instruction. */
+  clear_stale_gate_owners(r->ram,ram);
+  count=0;
+  for (unsigned i=0; i<18; ++i) if (gate_projectile(word(r->ram+0x1997+2*i))) {
+    unsigned slot=slots[count++];
+    for (unsigned base=0x1997; base<=0x1bfb; base+=36)
+      memcpy(ram+base+2*slot,r->ram+base+2*i,2);
+    const unsigned extra[]={0xf380,0xf3c8,0xf410};
+    for (unsigned j=0; j<sizeof(extra)/sizeof(*extra); ++j)
+      memcpy(ram+extra[j]+2*slot,r->ram+extra[j]+2*i,2);
+  }
+  return true;
 }
 void SmRoomRuntimePromote(const SmRoomRuntime *r,uint8_t ram[0x20000],uint16_t vram[0x8000]) {
   if (!r || r->error[0] || word(ram+0x79b)!=word(r->ram+0x79b) || word(ram+0x7bb)!=word(r->ram+0x7bb)) return;
@@ -972,6 +1015,27 @@ bool SmRoomRuntimePromoteDoors(const SmRoomRuntime *r,uint8_t ram[0x20000],bool 
   /* Encounter doors retain the actual entry scripts/lock initialization. */
   if (SmRoomRuntimeEntryOnly(r,ram)) return true;
   unsigned w=word(r->ram+0x7a5),h=word(r->ram+0x7a7);
+  if (!r->actors && !promote_gate_projectiles(r,ram)) return false;
+  for (unsigned i=0; i<40; ++i) if (gate_plm(word(r->ram+0x1c37+2*i))) {
+    unsigned header=word(r->ram+0x1c37+2*i),block=word(r->ram+0x1c87+2*i)/2;
+    if (block>=w*h) return false;
+    int slot=-1;
+    for (unsigned j=0; j<40; ++j) if (word(ram+0x1c37+2*j)==header && word(ram+0x1c87+2*j)==2*block) { slot=(int)j;break; }
+    if (slot<0) { slot=39;while (slot>=0 && word(ram+0x1c37+2*(unsigned)slot)) --slot; }
+    if (slot<0) return false;
+    const unsigned arrays[]={0x1c37,0x1c87,0x1cd7,0x1d27,0x1d77,0x1dc7,0x1e17,0xde1c,0xde6c,0xdebc,0xdf0c};
+    for (unsigned j=0; j<sizeof(arrays)/sizeof(*arrays); ++j)
+      memcpy(ram+arrays[j]+2*(unsigned)slot,r->ram+arrays[j]+2*i,2);
+    /* The body owns five vertical cells; its shoot block owns both sides. */
+    unsigned cells=header<=0xc832 ? 5 : 3;
+    for (unsigned j=0; j<cells; ++j) {
+      int at=header<=0xc832 ? (int)block+(header<=0xc82a ? 1 : -1)*(int)(j*w) : (int)block+(int)j-1;
+      if (at<0 || (unsigned)at>=w*h) return false;
+      if (redraw && word(ram+0x10002+2*(unsigned)at)!=word(r->ram+0x10002+2*(unsigned)at)) *redraw=true;
+      memcpy(ram+0x10002+2*(unsigned)at,r->ram+0x10002+2*(unsigned)at,2);
+      ram[0x16402+(unsigned)at]=r->ram[0x16402+(unsigned)at];
+    }
+  }
   for (unsigned door=0; door<r->door_count; ++door) {
     unsigned block=r->door_blocks[door],orientation=r->door_orientations[door];
     unsigned step=orientation<2 ? w : 1;
