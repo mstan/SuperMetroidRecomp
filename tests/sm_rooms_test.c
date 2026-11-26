@@ -171,6 +171,10 @@ static void nonplanar_save_return(const uint8_t *rom) {
     put(0xaf6,side ? 3223:41);put(0xafa,side ? 395:139);put(0xafe,5);put(0xb00,16);
     SmRoomsSetDoorEvent(root_door);
     for (unsigned tick=0;tick<2;++tick) assert(SmRoomsFrame(active,true,213,logic!=0,true));
+    /* Mirrored physical faces need not form a planar cartridge transition.
+     * The reverse entry must not activate a cached room with its stale
+     * incoming pointer before the original native trigger owns the load. */
+    assert(!SmRoomsPlanarDoor(side ? 0x93ba:0x9822,&p));
     const uint8_t *other=NULL;
     const SmRoomScene *scene=SmRoomsScene();
     for (unsigned i=0;i<scene->count;++i) if (scene->rooms[i].placement.room==destination) other=scene->rooms[i].ram;
