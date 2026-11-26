@@ -56,9 +56,10 @@ It remains a work in progress and needs broader end-to-end regression testing.
 
 ## Reporting a gameplay problem
 
-Session logs and gameplay replay capture are **enabled automatically**, including
-after an update. No diagnostic mod or console setup is needed. When a problem
-occurs, stop playing and quit normally if possible. Zip the session's
+Session logs start automatically. Gameplay replay and diagnostic recording are
+enabled by default through Gameplay Diagnostics in Mods and respect your saved
+on/off choice. When a problem occurs, stop playing and quit normally if possible.
+Zip the session's
 `logs/sm-*.log` and **all matching `logs/sm-replay-*` files**: `.replay`,
 `.replay.sav`, `.replay.config.ini` and `.replay.mods.txt`. A `.replay` alone is
 insufficient. Attach `last_run_report.json` and any `crash_report_*.json` or

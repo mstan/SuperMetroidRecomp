@@ -8,3 +8,6 @@ void ppu_drawCapturedLine(Ppu *p, int line, bool pixels) {
   (void)p; (void)line; (void)pixels;
   abort();
 }
+void ppu_drawInspectionLine(Ppu *p, int line, bool pixels) {
+  ppu_drawCapturedLine(p, line, pixels);
+}
