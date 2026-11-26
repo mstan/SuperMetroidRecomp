@@ -369,6 +369,9 @@ static void SmWriteWramProbe(void) {
 }
 
 static void SmAfterRunFrame(const SnesDesktopHostFrameStats *st) {
+#if defined(SNESRECOMP_HAS_AUDIO_REPORT_DIAGNOSTICS)
+  snesrecomp_desktop_audio_diagnostics(SmReplayDiagnosticsEnabled(), st, 0);
+#endif
   if (SmReplayPlaying() && (SmReplayFinished() || SmReplayFailed())) {
     SDL_Event quit = {0}; quit.type = SDL_QUIT; SDL_PushEvent(&quit);
   }
@@ -408,6 +411,13 @@ static void SmAfterRunFrame(const SnesDesktopHostFrameStats *st) {
 }
 
 static const char *const kInputActions[] = {"Fire missile"};
+static void SmShutdown(void) {
+#if defined(SNESRECOMP_HAS_AUDIO_REPORT_DIAGNOSTICS)
+  snesrecomp_desktop_audio_diagnostics(SmReplayDiagnosticsEnabled(), NULL, 1);
+#endif
+  SmReplayShutdown();
+}
+
 static const SnesDesktopHostGame kSuperMetroidHost = {
   .display_name = "Super Metroid",
   .window_title = "Super Metroid (Recompiled)",
@@ -441,7 +451,7 @@ static const SnesDesktopHostGame kSuperMetroidHost = {
   .on_rom_loaded = &SmOnRomLoaded,
   .on_reset = &SmOnReset,
   .after_run_frame = &SmAfterRunFrame,
-  .on_shutdown = &SmReplayShutdown,
+  .on_shutdown = &SmShutdown,
   .keep_pacing_debt = &SmKeepPacingDebt,
 
   .prepare_frame = &SmPrepareFrame,
