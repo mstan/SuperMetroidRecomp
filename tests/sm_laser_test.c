@@ -81,6 +81,31 @@ int main(void) {
   use_shown=false; draw(0);
   assert(pixels[150*342+59]==0xffff3030u); /* native renderer keeps the live path */
   assert(!memcmp(shown,live,0x10002));
+  /* Original standing-up cannon records select a diagonal tile/offset on
+   * frame zero, then a vertical one. Their first offset is not the reference
+   * for running bob: subtracting it moves the final sight sixteen pixels
+   * sideways. Exercise both native records and both presentation paths. */
+  static const uint8_t up_right[8]={0x81,1,0x80,1,14,234,254,225};
+  static const uint8_t up_left[8]={0x88,1,0x89,1,234,233,250,225};
+  memcpy(image+0x85020,up_right,sizeof(up_right));
+  memcpy(image+0x85030,up_left,sizeof(up_left));
+  image[0x847df+3*2]=0x20;image[0x847e0+3*2]=0xd0;
+  image[0x847df+4*2]=0x30;image[0x847e0+4*2]=0xd0;
+  image[0x8b629+3*8+3]=0;image[0x8b629+3*8+4]=6;
+  image[0x8b629+4*8+3]=9;image[0x8b629+4*8+4]=6;
+  for(unsigned path=0;path<2;++path) for(unsigned facing=0;facing<2;++facing)
+    for(unsigned frame=0;frame<2;++frame) {
+      use_shown=path==0;player=(SmPlayerView){shown,3+facing,0,64,120,0,0};
+      put(live,0xa1c,3+facing);put(live,0xaf6,64);put(live,0xafa,120);
+      put(live,0xa96,frame);put(shown,0xa96,frame);
+      const int axis=64+(facing ? -2 : 2)+43;
+      draw(43);
+      if(pixels[100*342+axis]!=0xffff3030u ||
+         pixels[100*342+axis+(facing ? 16 : -16)]!=0) {
+        fprintf(stderr,"vertical cannon transition alignment failed path=%u facing=%u frame=%u\n",path,facing,frame);
+        return 1;
+      }
+    }
   SmLaserSightReset();assert(!needs_mask);
   puts("sm_laser_test: displayed pose/origin, centered width, wall/HUD clipping and stock fallback PASS");
   return 0;

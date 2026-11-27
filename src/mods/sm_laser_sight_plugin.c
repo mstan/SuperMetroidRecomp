@@ -75,7 +75,12 @@ static void CannonMotion(uint16_t pose, unsigned frame, int *dx, int *dy) {
   if (address==0xc9d9 || address==0xc9db) return;
   if (address < 0x8000) return;
   const uint8_t *data = g_rom + 0x80000 + (address & 0x7fff);
-  unsigned first = data[0] & 128 ? 4 : 2;
+  /* A high-bit record switches cannon direction between frame zero and the
+   * settled pose (native DrawArmCannon, $90:C683). It is not running bob.
+   * Keep the native projectile axis rather than subtracting the transitional
+   * diagonal offset from the final vertical cannon. */
+  if (data[0] & 128) return;
+  unsigned first = 2;
   if ((address & 0x7fff) + first + frame * 2 + 2 > 0x8000) return;
   *dx = (int8_t)data[first + frame * 2] - (int8_t)data[first];
   *dy = (int8_t)data[first + frame * 2 + 1] - (int8_t)data[first + 1];
