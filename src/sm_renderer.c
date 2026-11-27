@@ -1191,7 +1191,7 @@ static uint16_t background_pixel(const SmBackgroundLine *b, const uint16_t *vram
 typedef struct SmWideWindow {
   bool valid;
   int left, right;
-  bool first, remove_clamped_edge;
+  bool first, project_center, suit;
 } SmWideWindow;
 
 static int q8_floor(int value) {
@@ -1505,6 +1505,42 @@ static void power_bomb_windows(const SmSourceFrame *f, SmWideWindow rows[224]) {
   }
 }
 
+static int suit_window_edge(int edge, int center, int extra) {
+  int distance = edge - center;
+  int span = distance < 0 ? center : 255 - center;
+  int extension = (abs(distance) * extra + span - 1) / span;
+  return edge + (distance < 0 ? -extension : extension);
+}
+
+static bool suit_windows(const SmSourceFrame *f, SmWideWindow rows[224], int extra) {
+  /* Varia and Gravity use the same native window animation around $7878.
+   * Project its captured edges across the viewport, keeping the beam's
+   * origin over Samus. Scaling only the margins leaves a seam at x=0/255. */
+  if (!extra || !(read16(f->ram, 0x18b0) & 0x8000) ||
+      read16(f->ram, 0xdec) > 6) return false;
+  bool active = false;
+  for (unsigned slot = 0; slot < 6; ++slot) {
+    unsigned callback = read16(f->ram, 0x18f0 + slot * 2);
+    active |= read16(f->ram, 0x18b4 + slot * 2) != 0 &&
+        (read16(f->ram, 0x18fc + slot * 2) & 255) == 0x88 &&
+        (callback == 0xe026 || callback == 0xe05c);
+  }
+  const uint8_t *origin = rom_bytes(0x88, 0xe0d5, 2);
+  if (!active || !origin || origin[0] != origin[1] ||
+      !origin[0] || origin[0] == 255) return false;
+  for (unsigned y = 0; y < 224; ++y) {
+    SnesRenderRegisters raster;
+    memcpy(&raster, f->lines[y].registers, PPU_SAVESTATE_REGS_SIZE);
+    int left = raster.window1left, right = raster.window1right;
+    if (left <= right) {
+      left = suit_window_edge(left, origin[0], extra);
+      right = suit_window_edge(right, origin[0], extra);
+    }
+    rows[y] = (SmWideWindow){true, left, right, true, true, true};
+  }
+  return true;
+}
+
 static bool in_window(const SnesRenderRegisters *p, int layer, int x, int extra, const SmWideWindow *wide) {
   unsigned flags = (p->windowsel >> (layer * 4)) & 15;
   bool enabled1 = (flags & 2) != 0, enabled2 = (flags & 8) != 0;
@@ -1512,7 +1548,7 @@ static bool in_window(const SnesRenderRegisters *p, int layer, int x, int extra,
   int r1 = p->window1right == 255 ? 255 + extra : p->window1right;
   int l2 = p->window2left == 0 ? -extra : p->window2left;
   int r2 = p->window2right == 255 ? 255 + extra : p->window2right;
-  if (wide->valid && (x < 0 || x >= 256 || (extra && wide->remove_clamped_edge))) {
+  if (wide->valid && (x < 0 || x >= 256 || (extra && wide->project_center))) {
     if (wide->first) { l1 = wide->left; r1 = wide->right; }
     else { l2 = wide->left; r2 = wide->right; }
   }
@@ -2132,6 +2168,26 @@ static uint32_t colour(const SnesRenderRegisters *p, const uint16_t *palette, co
   return colour_palettes(p,palette,palette,brightness,main,sub,inside);
 }
 
+static void suit_colour_math(SnesRenderRegisters *p, const SnesRenderRegisters *effect) {
+  p->cgadsub=effect->cgadsub;
+  /* The suit's window removes the black BG3 subscreen inside the beam,
+   * selecting COLDATA. Foreign rooms and the matte have no such BG3. */
+  p->cgwsel=effect->cgwsel & ~2u;
+  p->fixedColor=effect->fixedColor;
+}
+
+static void suit_backdrop_margin(SmViewport view, const SmWideWindow *wide,
+    const SnesRenderRegisters *effect, const uint8_t brightness[32], uint32_t *row) {
+  if (!wide->suit) return;
+  SnesRenderRegisters p=*effect; suit_colour_math(&p,effect);
+  const uint16_t black[256]={0};
+  uint32_t glow=colour(&p,black,brightness,0x500,0x500,true);
+  for (int sx=0;sx<view.width;++sx) {
+    int x=sx-view.extra;
+    if ((x<0 || x>=256) && x>=wide->left && x<=wide->right && !row[sx]) row[sx]=glow;
+  }
+}
+
 /* Ceres haze is a scanline backdrop. Apply the live palette and color
  * math to empty space beyond the room while leaving geometry and OBJ clipped. */
 static void ceres_haze_margin(SmViewport view, int y, int cx, int cy,
@@ -2241,7 +2297,7 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
                                 const uint16_t *active_objects, const uint16_t *active_palette,
                                 const uint8_t *object_owners,
                                 const SmRoomScene *rooms, const SmRoomScene *old_rooms, double alpha,
-                                const SnesRenderRegisters *live_haze);
+                                const SnesRenderRegisters *live_haze, const SmWideWindow *wide);
 
 static uint16_t private_vram[SM_ROOM_RESIDENTS+1][0x8000], private_palettes[SM_ROOM_RESIDENTS+1][256];
 static uint16_t foreground_fill[SM_ROOM_RESIDENTS+1][0x3200],foreground_distance[SM_ROOM_RESIDENTS+1][0x3200];
@@ -2385,7 +2441,7 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
                                 const uint16_t *active_objects, const uint16_t *active_palette,
                                 const uint8_t *object_owners,
                                 const SmRoomScene *rooms, const SmRoomScene *old_rooms, double alpha,
-                                const SnesRenderRegisters *live_haze) {
+                                const SnesRenderRegisters *live_haze, const SmWideWindow *wide) {
   (void)old_rooms;(void)alpha;(void)preview_brightness;
   /* Only a published room scene authorizes foreign scenery. Widescreen
    * alone must not fall back to rendering immutable neighboring ROM rooms. */
@@ -2433,7 +2489,10 @@ static void neighboring_scenery(SmViewport view, int y, int camera_x, int camera
       bool sub_object=(ts&16) && object>screens[1];
       if (main_object) screens[0]=object;
       if (sub_object) screens[1]=object;
-      row[sx]=object_colour(&p,private_palettes[i],active_palette,brightness,
+      SnesRenderRegisters pixel=p;
+      if (wide && wide->suit && x>=wide->left && x<=wide->right)
+        suit_colour_math(&pixel,live_haze);
+      row[sx]=object_colour(&pixel,private_palettes[i],active_palette,brightness,
           screens[0],screens[1],false,object,object_owners[sx]);
     }
   }
@@ -2536,6 +2595,8 @@ static void continue_foreground(SmViewport view,int y,int cx,int cy,const uint8_
       if ((p.screenEnabled[sub]&16) && objects[sx]>screens[sub] &&
           (!(p.screenWindowed[sub]&16) || !in_window(&p,4,sx-view.extra,view.extra,wide))) screens[sub]=objects[sx];
     }
+    if (wide->suit && sx-view.extra>=wide->left && sx-view.extra<=wide->right)
+      suit_colour_math(&p,root_registers);
     row[sx]=object_colour(&p,palette,root_palette,brightness,screens[0],screens[1],
         in_window(&p,5,sx-view.extra,view.extra,wide),objects[sx],owners[sx]);
   }
@@ -2759,9 +2820,10 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
   power_bomb_windows(f, wide_windows);
   bool power_bomb = false;
   for (unsigned y = 0; y < 224; ++y) power_bomb |= wide_windows[y].valid;
-  bool xray = xray_windows(f, wide_windows);
-  bool eye_beam = !xray && !power_bomb && eye_beam_windows(f, wide_windows);
-  bool mother_brain = !xray && !power_bomb && !eye_beam && mother_brain_windows(f, wide_windows);
+  bool suit = !power_bomb && suit_windows(f, wide_windows, viewport.extra);
+  bool xray = !suit && xray_windows(f, wide_windows);
+  bool eye_beam = !suit && !xray && !power_bomb && eye_beam_windows(f, wide_windows);
+  bool mother_brain = !suit && !xray && !power_bomb && !eye_beam && mother_brain_windows(f, wide_windows);
   bool xray_reveal = xray && SmRendererXrayBlocks(f->ram, xray_blocks);
   SmGrapplePiece grapple[17];
   bool grapple_recover_native[17] = {false};
@@ -2902,12 +2964,12 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     /* The shaft's affine scene already owns the whole row. A neighboring
      * room drawn in unrotated coordinates can cover its lit terrain. */
     const SmRoomScene *row_rooms=ceres && mode==7 && fx_type==0x2a ? NULL : rooms;
-    const SnesRenderRegisters *live_haze=ceres_haze && mode==1 && !hud_tail ? &scanout : NULL;
+    const SnesRenderRegisters *live_haze=(ceres_haze || suit) && mode==1 && !hud_tail ? &scanout : NULL;
     if (wide_windows[y].valid) {
       if (xray) ++render_stats.xray_lines;
       else if (eye_beam) ++render_stats.eye_beam_lines;
       else if (mother_brain) ++render_stats.mother_brain_lines;
-      else ++render_stats.power_bomb_lines;
+      else if (power_bomb) ++render_stats.power_bomb_lines;
     }
     if (scanout.inidisp & 128) continue;
 #if SM_NATIVE_RASTER
@@ -2921,7 +2983,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       wl[which] = wide_windows[y].left; wr[which] = wide_windows[y].right;
     }
     SnesRenderWindowPlan margin_windows = SnesRenderRegistersWindows(&scanout, wl[0], wr[0], wl[1], wr[1]);
-    if (viewport.extra && wide_windows[y].remove_clamped_edge)
+    if (viewport.extra && wide_windows[y].project_center)
       native_windows = margin_windows;
 #endif
     int mode7_y = y + 1;
@@ -2997,7 +3059,7 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     bool foreign_center=false;
     for (int sx=viewport.extra; sx<viewport.extra+256; ++sx) if (foreign_objects[sx]) { foreign_center=true;break; }
     reuse_center = !(rooms && rooms->ownership) && !foreign_center && !displaced && mode == 1 && alpha >= 1 && native_centers[current][y] && !hud_tail &&
-        !(viewport.extra && wide_windows[y].remove_clamped_edge) &&
+        !(viewport.extra && wide_windows[y].project_center) &&
         !liquid_surface_line(&background_lines[2],y+1);
     if (reuse_center) ++render_stats.native_center_lines;
 #endif
@@ -3106,9 +3168,10 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
           out + y * viewport.width);
       if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
           brightness, &wide_windows[y], out + y * viewport.width);
+      suit_backdrop_margin(viewport,&wide_windows[y],&scanout,brightness,out+y*viewport.width);
       neighboring_scenery(viewport, y, matte_x, matte_y,
           read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, preview_brightness,out + y * viewport.width,
-          objects,l->palette,object_owners,row_rooms,old_rooms,alpha,live_haze);
+          objects,l->palette,object_owners,row_rooms,old_rooms,alpha,live_haze,&wide_windows[y]);
       if (!hud_tail) continue_foreground(viewport,y,matte_x,matte_y,f->ram,l->vram,l->palette,&scanout,
           background_lines,objects,object_owners,brightness,out+y*viewport.width,row_rooms,&wide_windows[y],live_haze);
       if (ceres_haze && !hud_tail) ceres_haze_margin(viewport,y,matte_x,matte_y,&background_lines[0],
@@ -3220,10 +3283,11 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     }
     if (anchor_tail) hud_tail_matte(&scanout, l, background_lines, y, viewport, matte_x, matte_y,
         brightness, &wide_windows[y], out + y * viewport.width);
+    suit_backdrop_margin(viewport,&wide_windows[y],&scanout,brightness,out+y*viewport.width);
     if (mode == 1 || mode == 7)
       neighboring_scenery(viewport, y, matte_x, matte_y,
           read16(f->ram, 0x7a5)*16, read16(f->ram, 0x7a7)*16, padding_screens, brightness, preview_brightness,out + y * viewport.width,
-          objects,l->palette,object_owners,row_rooms,old_rooms,alpha,live_haze);
+          objects,l->palette,object_owners,row_rooms,old_rooms,alpha,live_haze,&wide_windows[y]);
     if (!hud_tail) continue_foreground(viewport,y,matte_x,matte_y,f->ram,l->vram,l->palette,&scanout,
         mode==1 ? background_lines : NULL,objects,object_owners,brightness,out+y*viewport.width,row_rooms,&wide_windows[y],live_haze);
     if (mode==1 && ceres_haze && !hud_tail) ceres_haze_margin(viewport,y,matte_x,matte_y,&background_lines[0],

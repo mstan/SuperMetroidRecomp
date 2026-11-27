@@ -78,6 +78,52 @@ static void standalone_widescreen_foreground(void) {
   assert(!memcmp(center,output+64*256,sizeof(center)));
 }
 
+static void suit_acquisition_window(void) {
+  const SmViewport views[] = {{256,0,4.0/3,false},{342,43,16.0/9,true},
+      {456,100,21.0/9,true},{682,213,32.0/9,true}};
+  for (unsigned suit = 0; suit < 2; ++suit) {
+    for (unsigned fault = 0; fault < 4; ++fault) {
+      for (unsigned shape = 0; shape < 3; ++shape) {
+        ResetFixtureRenderer(); memset(ram,0,sizeof(ram));
+        memset(&ppu,0,sizeof(ppu)); memset(rom,0,sizeof(rom));
+        SmRendererSetRom(rom,sizeof(rom)); romword(0x460d5,0x7878);
+        word(0x998,8); word(0x7a5,16); word(0x7a7,16);
+        word(0x18b0,fault==1?0:0x8000); word(0x18b4,8);
+        word(0x18f0,fault==2?0xe000:suit?0xe05c:0xe026);
+        word(0x18fc,fault==3?0x89:0x88); word(0xdec,2);
+        ppu.inidisp=15; ppu.bgmode=1; ppu.fixedColor=0x7fff;
+        ppu.cgadsub=32; ppu.cgwsel=0x10; ppu.windowsel=2u<<20;
+        ppu.window1left=shape==0?60:shape==1?0:255;
+        ppu.window1right=shape==0?180:shape==1?255:0;
+        for (unsigned y=0;y<224;++y) for (unsigned x=0;x<256;++x)
+          stock[y*256+x]=x>=ppu.window1left && x<=ppu.window1right?0xffffff:0;
+        BeginFixtureFrame(ram,1);
+        for (unsigned y=1;y<=224;++y) SmRendererCaptureLine(&ppu,y);
+        assert(SmRendererEndFrame(stock));
+        for (unsigned v=0;v<sizeof(views)/sizeof(*views);++v) {
+          SmViewport view=views[v]; assert(SmRendererDraw(output,view,false,1));
+          const uint32_t *row=output+64*view.width;
+          assert(row[view.extra+120]==(shape==2?0u:0xffffffu));
+          if (shape==0) {
+            /* Widening the actual beam also changes original-screen pixels,
+             * while inactive callbacks and native aspect keep their colors. */
+            assert(row[view.extra+50]==(!fault && v?0xffffffu:0u));
+            assert(row[view.extra+200]==(!fault && v?0xffffffu:0u));
+            assert(row[0]==0 && row[view.width-1]==0);
+          } else {
+            for (int x=0;x<view.width;++x) {
+              bool lit=shape==1 && (!fault || (x>=view.extra && x<view.extra+256));
+              assert(row[x]==(lit?0xffffffu:0u));
+            }
+          }
+          if (!v) assert(!memcmp(output,stock,sizeof(stock)));
+        }
+      }
+    }
+  }
+  ResetFixtureRenderer(); SmRendererSetRom(NULL,0);
+}
+
 static void sight_mask_pixels(void) {
   ResetFixtureRenderer();SmRendererSetRom(NULL,0);
   memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(stock,0,sizeof(stock));
@@ -1544,6 +1590,7 @@ int main(int argc, char **argv) {
   native_transition_canvas(argv[1]);
   native_center_provider();
   sight_mask_pixels();
+  suit_acquisition_window();
   hud_bottom_anchor();
   pause_menu_fade();
   hud_colour_math_margins();
