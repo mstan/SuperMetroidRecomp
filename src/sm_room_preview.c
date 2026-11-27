@@ -36,6 +36,13 @@ static void clear(void) {
 void SmRoomPreviewSetRom(const uint8_t *rom, size_t size) {
   clear(); image = rom; image_size = size; attempted = ready = false;
 }
+static bool ensure_world(void) {
+  if (!attempted) {
+    attempted = true;
+    ready = image && image_size == 0x300000 && SmWorldLoad(&world,read_byte,NULL);
+  }
+  return ready;
+}
 static bool background(Preview *p, uint16_t state, uint16_t incoming) {
   uint8_t scratch[65536] = {0};
   for (unsigned i=0x9000; i<0xa000; i+=2) { p->tiles[i]=0x38; p->tiles[i+1]=3; }
@@ -112,11 +119,7 @@ static void preview_arrival(const SmWorldDoor *door,int *x,int *y) {
 }
 void SmRoomPreviewPrepare(const uint8_t ram[0x20000], int left, int top, int right, int bottom) {
   camera_x=(int16_t)word(ram+0x911); camera_y=(int16_t)word(ram+0x915);
-  if (!attempted) {
-    attempted = true;
-    ready = image && image_size == 0x300000 && SmWorldLoad(&world,read_byte,NULL);
-  }
-  if (!ready) return;
+  if (!ensure_world()) return;
   const SmWorldRoom *active = SmWorldFindRoom(&world,word(ram+0x79b));
   if (!active) { clear(); return; }
   if ((unsigned)active->width*active->height>0x3200/256) { clear(); return; }
@@ -207,7 +210,7 @@ bool SmRoomPreviewPlacement(unsigned index, SmRoomPlacement *out) {
       .left=p->left,.top=p->top,.right=p->right,.bottom=p->bottom};
   return true;
 }
-const SmWorldRoom *SmRoomPreviewRoom(uint16_t header) { return ready ? SmWorldFindRoom(&world,header) : NULL; }
+const SmWorldRoom *SmRoomPreviewRoom(uint16_t header) { return ensure_world() ? SmWorldFindRoom(&world,header) : NULL; }
 const SmWorldDoor *SmRoomPreviewDoors(uint16_t header,unsigned *n) {
   const SmWorldRoom *room=SmRoomPreviewRoom(header);
   if (n) *n=room ? room->door_count : 0;

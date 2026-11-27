@@ -634,6 +634,13 @@ static void upward_arrival(const uint8_t *rom,const char *path) {
     put(0xaf6,source_x);put(0xafa,18);put(0xb36,1);put(0x911,spore ? 768 : 0);put(0x915,0);
     for (unsigned i=0;i<60;++i) assert(SmRoomsFrame(active,true,43,logic!=0,true));
     assert(SmRoomsUpwardDoorCarry(active));
+    /* A captured departure must restore before any preview has rendered.
+     * Its outgoing door is verified against authored ROM metadata. */
+    size_t cold_bound=SmRoomsStateBound();void *cold=malloc(cold_bound);assert(cold);
+    size_t cold_bytes=SmRoomsSave(cold,cold_bound);assert(cold_bytes);
+    SmRoomsSetRom(rom,0x300000);
+    assert(SmRoomsValidate(cold,cold_bytes) && SmRoomsLoad(cold,cold_bytes));
+    assert(SmRoomsUpwardDoorCarry(active));free(cold);
     SmRoomPlacement destination;assert(SmRoomsDoor((uint16_t)door,&destination));
     put(0xafa,-4);memcpy(previous,active,sizeof(active));
     memcpy(active,arrival,sizeof(active));put(0xaf6,arrival_x);put(0xafa,arrival_y);put(0xb36,1);
