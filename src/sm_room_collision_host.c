@@ -4,6 +4,7 @@
 #include "sm_shot_view.h"
 #include "sm_activity.h"
 #include "mod_hook.h"
+#include "mods/sm_spin_hazards.h"
 #include <stdio.h>
 #include <stdlib.h>
 /* The body dispatch PCs are shared with the elective screw-attack block
@@ -31,7 +32,9 @@ bool SmRoomCollisionFrameBegin(void) {
   for (unsigned i=0; i<sizeof(actors)/sizeof(*actors); ++i)
     if (!snes_mod_hook_arm(actors[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   for (unsigned i=0; i<sizeof(contacts)/sizeof(*contacts); ++i)
-    if (!snes_mod_hook_arm(contacts[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
+    if (!snes_mod_hook_arm(contacts[i],SmConnectedRoomsEnabled() ||
+        (contacts[i]==0xa0a07a && SmCombatSpinHazardsActive())) &&
+        (SmConnectedRoomsEnabled() || (contacts[i]==0xa0a07a && SmCombatSpinHazardsActive()))) return false;
   for (unsigned i=0; i<sizeof(shots)/sizeof(*shots); ++i)
     if (!snes_mod_hook_arm(shots[i],SmConnectedRoomsEnabled()) && SmConnectedRoomsEnabled()) return false;
   for (unsigned i=0; i<2; ++i)
@@ -74,6 +77,8 @@ uint32 SmRoomEntityHook(CpuState *cpu,uint32 pc24) {
   return 0;
 }
 uint32 SmRoomInteractionHook(CpuState *cpu,uint32 pc24) {
+  if ((pc24&0x7fffff)==0x20a07a && SmCombatSpinHazardsActive() &&
+      SmSpinProtectsFireGeyser(cpu->ram)) return (pc24&0xff0000u)|0xa0b7;
   if (!SmConnectedRoomsEnabled()) return 0;
   unsigned pc=pc24&0xffff,index,slot,target;
   if (pc==0xa326) entity_phase=1; /* native PB death/drop children inherit their actor's spatial room */

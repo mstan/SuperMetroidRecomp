@@ -88,7 +88,7 @@ uint32 SmProjectileSpeedHook(CpuState *cpu,uint32 pc) {
   SetA(cpu,(uint16_t)(speed<0 ? -(int)scaled : (int)scaled));
   return 0;
 }
-static void ResidentInstruction(Interp816 *c,uint8_t ram[0x20000]) {
+void SmDifficultyResidentInstruction(Interp816 *c,uint8_t ram[0x20000]) {
   uint32 pc=((uint32)(c->k&127)<<16)|c->pc;
   SnesModHookFn hook;
   switch (pc) {
@@ -111,13 +111,11 @@ static void DamageActivate(void) {
   incoming=Factor("damage-multipliers","incoming",8);outgoing=Factor("damage-multipliers","outgoing",8);
   static const uint32_t pcs[]={0x91df6b,0x90ea1a,0x93803f,0x938086,0x9380b5,0x938148,0x938185,0x9381b9,0xa0a54c,0xa0a62b};
   SmModArmHooks("damage-multipliers",pcs,sizeof(pcs)/sizeof(*pcs));
-  SmRoomRuntimeSetInstructionHook(ResidentInstruction);
 }
 static void HealthActivate(void) {
   enemy_health=Factor("health-multipliers","enemies",8);boss_health=Factor("health-multipliers","bosses",8);
   static const uint32_t pcs[]={0xa08b93,0xa093d1,0xa98d6d,0xa9bfb6};
   SmModArmHooks("health-multipliers",pcs,sizeof(pcs)/sizeof(*pcs));
-  SmRoomRuntimeSetInstructionHook(ResidentInstruction);
 }
 static void SpeedActivate(void) {
   beam_speed=Factor("projectile-speed","beams",8);missile_speed=Factor("projectile-speed","missiles",8);
@@ -126,7 +124,6 @@ static void SpeedActivate(void) {
 }
 static void Reset(void) {
   incoming=outgoing=enemy_health=boss_health=beam_speed=missile_speed=8;
-  SmRoomRuntimeSetInstructionHook(NULL);
 }
 SNES_MOD_CONSTRUCTOR(sm_register_difficulty) {
   snes_mod_register_reset_callback(Reset);

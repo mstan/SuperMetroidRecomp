@@ -253,3 +253,14 @@ default_enabled = false
 [[plugin]]
 feature = "spin-jump-animation"
 id = "super-metroid.movement.spin-jump-animation"
+
+[[feature]]
+id = "motion-ball-animation"
+name = "Morph Ball rolls with movement"
+description = "Stop the rolling animation while the Morph Ball is stationary. Movement, jumps, transitions and environmental effects keep their normal behavior."
+group = "Movement"
+default_enabled = false
+
+[[plugin]]
+feature = "motion-ball-animation"
+id = "super-metroid.movement.motion-ball-animation"

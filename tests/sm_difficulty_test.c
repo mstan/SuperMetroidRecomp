@@ -5,8 +5,6 @@
 #include "mod_runtime.h"
 #include "sm_mod_support.h"
 #include "../src/sm_room_runtime.h"
-static SmRoomInstructionHook resident_hook;
-void SmRoomRuntimeSetInstructionHook(SmRoomInstructionHook hook) { resident_hook=hook; }
 static SNESModActivationCallback callbacks[3],reset;
 static unsigned count,armed;
 static const char *incoming_option="2",*outgoing_option="1.5",*enemy_option="1.5",*boss_option="2",*beam_option="1.125",*missile_option="1.25";
@@ -50,12 +48,13 @@ int main(void) {
  SetW(&cpu,0xc18,0x500);cpu.A=0x400;SmProjectileSpeedHook(&cpu,0x94a483);assert(cpu.A==0x400);
  cpu.m_flag=1;cpu.A=100;SmOutgoingDamageHook(&cpu,0x93803f);assert(cpu.A==100);cpu.m_flag=0;
  Interp816 resident={0};resident.k=0xa0;resident.pc=0x8b93;resident.y=0x80;
- SetW(&cpu,0xff8,0xd93f);SetW(&cpu,0x100c,60);assert(resident_hook);
- resident_hook(&resident,ram);assert(W(&cpu,0x100c)==90);
+ SetW(&cpu,0xff8,0xd93f);SetW(&cpu,0x100c,60);
+ SmDifficultyResidentInstruction(&resident,ram);assert(W(&cpu,0x100c)==90);
  resident.k=0x91;resident.pc=0xdf6b;resident.dp=0x100;SetW(&cpu,0x112,150);
- resident_hook(&resident,ram);assert(W(&cpu,0x112)==300);
- resident.pc=0xdf6a;SetW(&cpu,0x112,150);resident_hook(&resident,ram);assert(W(&cpu,0x112)==150);
- reset();assert(!resident_hook);cpu.A=100;SmOutgoingDamageHook(&cpu,0x93803f);assert(cpu.A==100);
+ SmDifficultyResidentInstruction(&resident,ram);assert(W(&cpu,0x112)==300);
+ resident.pc=0xdf6a;SetW(&cpu,0x112,150);SmDifficultyResidentInstruction(&resident,ram);assert(W(&cpu,0x112)==150);
+ reset();cpu.A=100;SmOutgoingDamageHook(&cpu,0x93803f);assert(cpu.A==100);
+ resident.pc=0xdf6b;SmDifficultyResidentInstruction(&resident,ram);assert(W(&cpu,0x112)==150);
  incoming_option="invalid";callbacks[0]();SetW(&cpu,0x112,100);SmIncomingDamageHook(&cpu,0x91df6b);assert(W(&cpu,0x112)==100);
  puts("Native damage, health, projectile speed and reset cases passed.");return 0;
 }

@@ -291,3 +291,14 @@ default = false
 [[plugin]]
 feature = "reserve-tanks"
 id = "super-metroid.balance-fixes.reserve-tanks"
+
+[[feature]]
+id = "swap-spring-xray"
+name = "Swap Spring Ball and X-ray"
+description = "Exchange the two original item locations on the next room load. Existing partial saves retain the missing ability; a started swap remains completable when this switch is turned off."
+group = "Item layout"
+default_enabled = false
+
+[[plugin]]
+feature = "swap-spring-xray"
+id = "super-metroid.balance-fixes.swap-spring-xray"

@@ -97,7 +97,8 @@ void SmDisplay_SyncCaptureGeneration(void) {
 }
 
 static bool SmCustomRendererEnabled(void) {
-  return g_sm_video.enhanced || g_sm_video.fps_enabled || SmConnectedRoomsEnabled() || SmActivityNetworkWide();
+  return g_sm_video.enhanced || g_sm_video.fps_enabled || SmConnectedRoomsEnabled() ||
+      SmActivityNetworkWide() || SmRendererNeedsSightMask();
 }
 
 bool SmDisplay_IsWidescreenActive(void) { return g_sm_viewport.enhanced; }

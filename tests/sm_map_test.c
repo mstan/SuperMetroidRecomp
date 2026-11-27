@@ -11,6 +11,9 @@ static SNESModInputTransform transform;
 static SmModOverlayDraw draw_map;
 static SmModOverlayDraw draw_ammo;
 static SNESModActivationCallback activate_ammo;
+static SNESModActivationCallback activate_stats;
+static SmModOverlayDraw draw_stats;
+static bool registering_stats;
 static bool online,pause_option=true,reveal_option;
 static unsigned transform_registrations,draw_registrations,hook_arms;
 static uint64_t test_timeline;
@@ -27,11 +30,12 @@ int snes_mod_register_reset_callback(SNESModActivationCallback fn) { reset_map=f
 int snes_mod_register_input_transform(SNESModInputTransform fn) { transform=fn; ++transform_registrations; return 1; }
 bool SmModOverlayRegister(SmModOverlayDraw fn) { draw_map=fn; ++draw_registrations; return true; }
 bool SmModOverlayRegisterPriority(SmModOverlayDraw fn,int priority) {
-  if (priority==20) { draw_ammo=fn; return true; }
+  if (priority==20) { if(registering_stats)draw_stats=fn;else draw_ammo=fn; return true; }
   assert(priority==10); return SmModOverlayRegister(fn);
 }
 int snes_mod_register_presentation_plugin(const char *id,SNESModActivationCallback fn) {
   if (strstr(id,".ammo-totals")) activate_ammo=fn;
+  if (strstr(id,".pause-stats")) activate_stats=fn;
   return 1;
 }
 int snes_netplay_active(void) { return online; }
@@ -221,5 +225,17 @@ int main(int argc,char **argv) {
   Put(0x51,7);
   Fill(0xff102030); draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
   for (unsigned i=0; i<sizeof(frame)/sizeof(*frame); ++i) assert(frame[i]==0xff102030);
-  puts("map input/render/freeze boundaries passed"); return 0;
+  /* Both readouts remain in distinct bottom corners on the world map.
+   * Native maxima and a long play clock fit without covering the hints. */
+  assert(activate_stats);registering_stats=true;activate_stats();registering_stats=false;
+  Put(0x51,15);Put(0x9c8,230);Put(0x9cc,50);Put(0x9d0,50);Put(0x9e0,99);Put(0x9de,59);Put(0x9dc,59);
+  world_open=true;world_closing=false;assert(SmMapFullScreen(test_ram));
+  Fill(0xff102030);draw_stats(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  draw_ammo(frame+GUARD,TEST_STRIDE,TEST_WIDTH,TEST_HEIGHT,0,test_ram);
+  assert(frame[GUARD+212*TEST_STRIDE+8]==0xff3060a0);
+  assert(frame[GUARD+212*TEST_STRIDE+247]==0xff3060a0);
+  assert(frame[GUARD+212*TEST_STRIDE+128]==0xff102030); /* readable gap */
+  assert(frame[GUARD+200*TEST_STRIDE+8]==0xff102030); /* world-map hints */
+  Guards(0xff102030);
+  puts("map input/render/freeze and compact statistics boundaries passed"); return 0;
 }

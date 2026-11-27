@@ -24,6 +24,7 @@ unsigned SmRoomsDoorPhase(uint16_t definition);
 /* Native collision keeps its own slope/solid responses. These queries only
  * replace samples belonging to an adjoining room at a planar doorway. */
 int SmRoomsCollisionBlock(const uint8_t active[0x20000], int block_x, int block_y);
+void SmRoomsSetInstantDoorCollision(bool enabled);
 bool SmRoomsEntryFrameAir(const uint8_t active[0x20000], unsigned slot);
 bool SmRoomsShotsActive(const uint8_t active[0x20000]);
 bool SmRoomsShotDoorAir(const uint8_t ram[0x20000],int origin_x,int origin_y,unsigned block);

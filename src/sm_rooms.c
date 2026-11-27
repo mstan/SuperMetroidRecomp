@@ -19,6 +19,8 @@ static size_t rom_bytes;
 static Resident residents[SM_ROOM_RESIDENTS];
 static unsigned count, root;
 static bool logic, seamless, pending_entry;
+static bool instant_door_collision;
+void SmRoomsSetInstantDoorCollision(bool enabled) { instant_door_collision=enabled; }
 static unsigned upward_door;
 static int camera_dx,camera_dy;
 static bool rebased;
@@ -660,6 +662,7 @@ static unsigned world_shots(const uint8_t *active,unsigned target,const bool *re
   return mask;
 }
 static int tile_collision(const uint8_t *ram,int x,int y) {
+  if (instant_door_collision && SmDoorOpeningBodyClear(read_rom,NULL,ram,x,y)) return 0;
   int w=(int)word(ram+0x7a5),h=(int)word(ram+0x7a7);
   for (unsigned i=0; i<16; ++i) {
     if (x<0 || y<0 || x>=w || y>=h) return 16;
@@ -767,7 +770,8 @@ bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]) {
     if (word(active+0x78d)==upward_door && x-rx>=(int)cx*16 && x+rx<((int)cx+4)*16 &&
         cy && y+ry>=((int)cy-1)*16 && y<((int)cy+3)*16 &&
         (phase==SM_DOOR_OPEN || phase==SM_DOOR_OPENING)) return true;
-    upward_door=0;
+    /* Frame owns the deferred native closure and clears this phase after
+     * the full body is inside. A query must not discard that work. */
     return false;
   }
   unsigned n=0; const SmWorldDoor *doors=SmRoomPreviewDoors((uint16_t)root,&n);
@@ -792,6 +796,22 @@ bool SmRoomsUpwardDoorCarry(const uint8_t active[0x20000]) {
   }
   upward_door=0;
   return false;
+}
+static bool finish_upward_arrival(uint8_t active[0x20000]) {
+  if (!upward_door || (read_rom(NULL,0x830000u+upward_door) |
+      read_rom(NULL,0x830001u+upward_door)<<8)!=root) return true;
+  unsigned direction=read_rom(NULL,0x830003u+upward_door);
+  unsigned cx=read_rom(NULL,0x830004u+upward_door),cy=read_rom(NULL,0x830005u+upward_door);
+  int x=(int16_t)word(active+0xaf6),y=(int16_t)word(active+0xafa);
+  int rx=(int)word(active+0xafe),ry=(int)word(active+0xb00);
+  if (word(active+0x78d)==upward_door && x-rx>=(int)cx*16 && x+rx<((int)cx+4)*16 &&
+      cy && y+ry>=((int)cy-1)*16 && y<((int)cy+3)*16) return true;
+  if (SmDoorHasArrivalCap(direction)) {
+    DoorContext c={active,NULL,root,word(active+0x7bb),0,0};
+    if (!door_change(&c,cx,cy,(direction&3)^1,true)) return false;
+  }
+  upward_door=0;
+  return true;
 }
 static void follow_doorway(const uint8_t *active,unsigned extra) {
   if (!seamless) return;
@@ -1049,6 +1069,7 @@ bool SmRoomsFrame(uint8_t active[0x20000], bool enabled, unsigned extra,
     }
     SmRoomRuntimeDoorBits(runtime,active);
   }
+  if (!finish_upward_arrival(active)) return false;
   update_connections(active);return ok && publish();
 }
 

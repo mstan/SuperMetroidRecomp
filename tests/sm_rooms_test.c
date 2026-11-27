@@ -10,6 +10,7 @@
 #include <string.h>
 static uint8_t active[0x20000], original[0x20000];
 static uint8_t *cartridge;
+static unsigned root_door_closures;
 static uint8_t Read(void *unused,uint32_t address) {
   (void)unused;unsigned offset=((address>>16)&127)*32768u+(address&32767);
   return (address&0x8000) && offset<0x300000 ? cartridge[offset] : 255;
@@ -17,13 +18,27 @@ static uint8_t Read(void *unused,uint32_t address) {
 /* Owned-ROM provider for the active endpoint. The live game uses its actual
  * active bus; this probe runs that endpoint's native PLMs in a private VM. */
 static bool root_door(unsigned x,unsigned y,unsigned direction,bool closing) {
+  if (closing) ++root_door_closures;
   static uint16_t vram[0x8000];
   const SmWorldRoom *room=SmRoomPreviewRoom((uint16_t)SmShotWord(active,0x79b));
   SmRoomRuntime *r=SmRoomRuntimeCreateConfigured(Read,NULL,room,(uint16_t)SmShotWord(active,0x7bb),0,active,false);
-  assert(r && SmRoomRuntimeCapture(r,active,vram));
+  assert(r && SmRoomRuntimeCaptureActive(r,active,vram));
   bool ok=closing ? SmRoomRuntimeDoorClose(r,x,y,direction) : SmRoomRuntimeDoorOpen(r,x,y,direction);
   for (unsigned i=0; ok && i<64; ++i) ok=SmRoomRuntimeStepDoors(r);
-  ok=ok && SmRoomRuntimePromoteDoors(r,active,NULL);SmRoomRuntimeDestroy(r);return ok;
+  if (ok && SmRoomRuntimeEntryOnly(r,active)) {
+    /* This callback represents the actual active bus. The resident
+     * publication API intentionally declines boss-door promotion; copy
+     * this endpoint's executed native PLM result without that filter. */
+    const uint8_t *ram=SmRoomRuntimeRam(r);
+    const unsigned arrays[]={0x1c37,0x1c87,0x1cd7,0x1d27,0x1d77,0x1dc7,0x1e17,0xde1c,0xde6c,0xdebc,0xdf0c};
+    for (unsigned i=0;i<sizeof(arrays)/sizeof(*arrays);++i) memcpy(active+arrays[i],ram+arrays[i],80);
+    unsigned width=SmShotWord(active,0x7a5),block=y*width+x,step=direction<2 ? width : 1;
+    for (unsigned i=0;i<4;++i) {
+      unsigned at=block+i*step;
+      memcpy(active+0x10002+2*at,ram+0x10002+2*at,2);active[0x16402+at]=ram[0x16402+at];
+    }
+  } else ok=ok && SmRoomRuntimePromoteDoors(r,active,NULL);
+  SmRoomRuntimeDestroy(r);return ok;
 }
 static int root_enemy(uint8_t source[0x20000],int dx,int dy,int x,int y,bool horizontal) {
   static uint16_t vram[0x8000];
@@ -608,17 +623,37 @@ static void upward_arrival(const uint8_t *rom,const char *path) {
   static uint8_t arrival[0x20000],previous[0x20000],after[0x20000];
   static uint16_t vram[0x8000];
   FILE *f=fopen(path,"rb");assert(f && fread(arrival,1,sizeof(arrival),f)==sizeof(arrival));fclose(f);
-  assert(SmShotWord(original,0x79b)==0xcefb && SmShotWord(arrival,0x79b)==0xcfc9);
+  bool spore=SmShotWord(original,0x79b)==0x9d9c;
+  assert(spore ? SmShotWord(arrival,0x79b)==0x9dc7 :
+      SmShotWord(original,0x79b)==0xcefb && SmShotWord(arrival,0x79b)==0xcfc9);
+  unsigned door=spore ? 0x8e3e : 0xa330;
+  int source_x=spore ? 896 : 128,arrival_x=spore ? 128 : 384;
+  int arrival_y=spore ? 764 : 2044,inner_frame=spore ? 720 : 1984;
   for (unsigned logic=0;logic<2;++logic) {
     memcpy(active,original,sizeof(active));SmRoomsSetRom(rom,0x300000);SmRoomsSetDoorEvent(root_door);
-    put(0xaf6,128);put(0xafa,18);put(0xb36,1);put(0x911,0);put(0x915,0);
+    put(0xaf6,source_x);put(0xafa,18);put(0xb36,1);put(0x911,spore ? 768 : 0);put(0x915,0);
     for (unsigned i=0;i<60;++i) assert(SmRoomsFrame(active,true,43,logic!=0,true));
     assert(SmRoomsUpwardDoorCarry(active));
-    SmRoomPlacement destination;assert(SmRoomsDoor(0xa330,&destination));
+    /* A captured departure must restore before any preview has rendered.
+     * Its outgoing door is verified against authored ROM metadata. */
+    size_t cold_bound=SmRoomsStateBound();void *cold=malloc(cold_bound);assert(cold);
+    size_t cold_bytes=SmRoomsSave(cold,cold_bound);assert(cold_bytes);
+    SmRoomsSetRom(rom,0x300000);
+    assert(SmRoomsValidate(cold,cold_bytes) && SmRoomsLoad(cold,cold_bytes));
+    assert(SmRoomsUpwardDoorCarry(active));free(cold);
+    SmRoomPlacement destination;assert(SmRoomsDoor((uint16_t)door,&destination));
     put(0xafa,-4);memcpy(previous,active,sizeof(active));
-    memcpy(active,arrival,sizeof(active));put(0xaf6,384);put(0xafa,2044);put(0xb36,1);
+    memcpy(active,arrival,sizeof(active));put(0xaf6,arrival_x);put(0xafa,arrival_y);put(0xb36,1);
+    /* The seamless loader now leaves a real upward arrival open while the
+     * feet cross; reproduce that native PLM operation in this owned ROM VM. */
     assert(SmRoomsHandoff(previous,vram,active,vram,&destination,3,NULL));
+    if (spore) assert(root_door(6,46,2,false));
     assert(SmRoomsFrame(active,true,43,logic!=0,true));
+    if (spore && !SmRoomsUpwardDoorCarry(active)) {
+      size_t n=SmRoomsStateBound();uint32_t *h=malloc(n);assert(h);assert(SmRoomsSave(h,n));
+      fprintf(stderr,"Spore arrival root=%04x door=%04x carry=%04x phase=%u sourceY=%d bottom=%d incoming=%04x x=%u y=%u ry=%u\n",
+          h[3],SmShotWord(active,0x78d),h[11],SmDoorPhase(Read,NULL,active,6,46),(int16_t)SmShotWord(previous,0xafa),destination.bottom,destination.incoming,SmShotWord(active,0xaf6),SmShotWord(active,0xafa),SmShotWord(active,0xb00));free(h);
+    }
     assert(SmRoomsUpwardDoorCarry(active)); /* regression: carry survives center handoff */
     size_t bound=SmRoomsStateBound();void *saved=malloc(bound),*again=malloc(bound);assert(saved && again);
     size_t bytes=SmRoomsSave(saved,bound);assert(bytes && SmRoomsValidate(saved,bytes));
@@ -628,17 +663,21 @@ static void upward_arrival(const uint8_t *rom,const char *path) {
     assert(SmRoomsSave(again,bound)==bytes && !memcmp(saved,again,bytes));
     put(0xb36,2);assert(SmRoomsUpwardDoorCarry(active)); /* released jump is automatic transit */
     put(0x998,15);assert(!SmRoomsUpwardDoorCarry(active));put(0x998,8);assert(SmRoomsUpwardDoorCarry(active));
-    put(0xafa,1984-(int)SmShotWord(active,0xb00)-1);assert(!SmRoomsUpwardDoorCarry(active));
-    put(0xafa,2044);put(0xb36,1);assert(!SmRoomsUpwardDoorCarry(active)); /* one transit, no auto-bounce */
+    unsigned closures=root_door_closures;
+    put(0xafa,inner_frame-(int)SmShotWord(active,0xb00)-1);assert(!SmRoomsUpwardDoorCarry(active));
+    assert(root_door_closures==closures); /* queries do not run native PLMs */
+    assert(SmRoomsFrame(active,true,43,logic!=0,true));
+    assert(root_door_closures==closures+1); /* close after the feet clear */
+    put(0xafa,arrival_y);put(0xb36,1);assert(!SmRoomsUpwardDoorCarry(active)); /* one transit, no auto-bounce */
     assert(SmRoomsLoad(saved,bytes));memcpy(active,after,sizeof(active));assert(SmRoomsUpwardDoorCarry(active));
     assert(SmRoomsSave(again,bound)==bytes && !memcmp(saved,again,bytes));
-    put(0xaf6,340);assert(!SmRoomsUpwardDoorCarry(active));
+    put(0xaf6,arrival_x-44);assert(!SmRoomsUpwardDoorCarry(active));
     assert(SmRoomsLoad(saved,bytes));memcpy(active,after,sizeof(active));
     assert(SmRoomsFrame(active,false,43,logic!=0,true) && !SmRoomsUpwardDoorCarry(active));
     free(saved);free(again);
   }
   SmRoomsSetDoorEvent(NULL);
-  puts("Native Maridia cap: capture, full-body arrival, released jump, pause, exact phase restore and one-shot cancellation pass On/Off");
+  puts("Native upward cap: capture, full-body arrival, deferred closure, released jump, pause, exact phase restore and one-shot cancellation pass On/Off");
 }
 int main(int argc,char **argv) {
   if (argc!=3 && argc!=4 && argc!=5) return 2;

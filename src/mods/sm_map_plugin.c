@@ -180,7 +180,7 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
   }
   if (world_open || world_closing) {
     snes_ovl_fill_rect(pixels,stride,height,0,0,width,height,0xff080f1e);
-    SmMapView v={4,40,width-8,height-68,scales[zoom],center_x16,center_y16,-1,reveal,secrets,false,&map_art};
+    SmMapView v={4,40,width-8,height-80,scales[zoom],center_x16,center_y16,-1,reveal,secrets,false,&map_art};
     SmMapViewDraw(pixels,stride,height,&world,layout,Read,NULL,ram,v);
     Text(pixels,stride,height,8,4,"ZEBES",0xfff0e2b2);
     const char *area=SmMapAreaName(W(ram,0x79f));
@@ -189,8 +189,8 @@ static void Draw(uint32_t *pixels,int stride,int width,int height,int stage_x,co
     const int columns[]={8,88,192};
     for (unsigned i=0; i<6; ++i)
       Text(pixels,stride,height,columns[i%3],16+(int)(i/3)*10,SmMapAreaName(legend[i]),SmMapAreaColor(legend[i]));
-    Text(pixels,stride,height,8,height-22,"L/R ZOOM  D-PAD PAN",0xffcbd5e1);
-    Text(pixels,stride,height,8,height-12,"X/B BACK  Y SAMUS",0xffcbd5e1);
+    Text(pixels,stride,height,8,height-34,"L/R ZOOM  D-PAD PAN",0xffcbd5e1);
+    Text(pixels,stride,height,8,height-24,"X/B BACK  Y SAMUS",0xffcbd5e1);
     FadeMap(pixels,stride,width,height,0,0,width,height,ram);
   } else if (area_enabled) {
     int sx=(int16_t)W(ram,0xb1),sy=(int16_t)W(ram,0xb3);
