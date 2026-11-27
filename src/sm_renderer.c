@@ -19,6 +19,18 @@
 #include <math.h>
 #include <stddef.h>
 static bool hd_enabled;
+static bool sight_mask_enabled;
+static int sight_mask_width;
+static uint8_t sight_mask[SM_MAX_WIDTH * SM_HEIGHT];
+void SmRendererRequireSightMask(bool enabled) {
+  sight_mask_enabled = enabled;
+  sight_mask_width = 0;
+}
+bool SmRendererNeedsSightMask(void) { return sight_mask_enabled; }
+bool SmRendererSightOccluded(int x, int y) {
+  return x >= 0 && x < sight_mask_width && y >= 0 && y < SM_HEIGHT &&
+      sight_mask[y * SM_MAX_WIDTH + x] != 0;
+}
 static SnesHdFrame *hd_frame;
 void SmRendererSetHdEnabled(bool enabled) {
   hd_enabled = enabled;
@@ -478,6 +490,7 @@ static bool bg2_owner_motion(const SmSourceFrame *f, const SmSourceFrame *old,
 #include "sm_door_visual.inc"
 
 void SmRendererReset(void) {
+  sight_mask_width = 0;
   door_visual.active = false;
   foreground_key=NULL;
   free(pending_rooms); pending_rooms=NULL;
@@ -2644,6 +2657,10 @@ static bool native_world(uint32_t *out,SmViewport view,bool hud_anchored,const S
       }
       uint16_t object=objects[sx];unsigned palette=owners[sx];
       if (player[sx] && player[sx]>=object) { object=player[sx];palette=SM_ROOM_RESIDENTS; }
+      if (sight_mask_enabled) {
+        sight_mask_width = view.width;
+        sight_mask[y * SM_MAX_WIDTH + sx] = object != 0;
+      }
       if ((tm&16) && object>screens[0]) screens[0]=object;
       if ((ts&16) && object>screens[1]) screens[1]=object;
       row[sx]=object_colour(&p,private_palettes[owner],private_palettes[SM_ROOM_RESIDENTS],brightness,
@@ -2657,6 +2674,8 @@ static bool native_world(uint32_t *out,SmViewport view,bool hud_anchored,const S
 }
 
 bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, double alpha) {
+  sight_mask_width = 0;
+  if (sight_mask_enabled) memset(sight_mask, 0, sizeof(sight_mask));
   SnesHdFrameDestroy(hd_frame); hd_frame = NULL;
   memset(grapple_motion, 0, sizeof(grapple_motion));
   memset(&render_stats, 0, sizeof(render_stats));
@@ -2985,7 +3004,10 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
     SmViewport object_view=viewport;
     int object_y=y;
     if ((mode==1 || mode==7) && y>=32 && !hud_tail) { object_view.extra-=camera_dx; object_y+=camera_dy; }
-    sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha, reuse_center);
+    /* Native-center reuse still owns the final colors. Decode its OBJ only
+     * when a sight needs the transparent-pixel mask; no extra composition. */
+    sprites(&scanout, l, object_y, object_view, objects, f, previous, alpha,
+            reuse_center && !sight_mask_enabled);
     if (gameplay_actor_state(state) && (viewport.extra || (rooms && rooms->ownership)) && renderer_rom) {
       /* Reverse $A0:884D's emission order because pixel writes overwrite.
        * The native center continues to use captured OAM exclusively. */
@@ -3007,6 +3029,11 @@ bool SmRendererDraw(uint32_t *out, SmViewport viewport, bool hud_anchored, doubl
       if (owner<row_rooms->count && object_wins(foreign_objects[sx],row_rooms->rooms[owner].placement.room,objects[sx],row_rooms->root)) {
         objects[sx]=foreign_objects[sx];object_owners[sx]=(uint8_t)owner;
       }
+    }
+    if (sight_mask_enabled) {
+      sight_mask_width = viewport.width;
+      for (int sx = 0; sx < viewport.width; ++sx)
+        sight_mask[y * SM_MAX_WIDTH + sx] = objects[sx] != 0;
     }
     if (mode == 7)
       for (int sx = 0; sx < viewport.width; ++sx)

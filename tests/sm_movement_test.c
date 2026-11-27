@@ -7,8 +7,11 @@
 #include "sm_mod_overlay.h"
 #include "snes_overlay_draw.h"
 
+void SmDreadAimConfigure(bool active,unsigned shoulder) { (void)active;(void)shoulder; }
+uint32 SmDreadAimTransition(CpuState *cpu,uint32 pc) { (void)cpu;(void)pc;return 0; }
 uint32 SmMoveTransitionHook(CpuState *,uint32);
 uint32 SmMoveSparkCancelHook(CpuState *,uint32);
+uint32 SmMoveBallAnimationHook(CpuState *,uint32);
 static struct { const char *id; SNESModActivationCallback fn; } plugins[16];
 static size_t count;
 static SNESModActivationCallback reset_move;
@@ -82,5 +85,27 @@ int main(void) {
   Put(0xa1c,0x19); Put(0x8f,0x80); assert(!SmMoveSparkCancelHook(&cpu,0x90d106));
   reset_move(); Put(0xa1c,0xc9); assert(!SmMoveSparkCancelHook(&cpu,0x90d106));
   assert(cpu.S==0x1ff9 && cpu.DB==0x91 && !cpu.m_flag && !cpu.x_flag);
-  puts("air gesture/remap and spark cancellation boundaries passed"); return 0;
+  reset_move();Activate("super-metroid.movement.motion-ball-animation");
+  memset(ram,0,sizeof(ram));ram[0xa1f]=4;
+  Put(0xa94,1);Put(0xa96,7);memcpy(copy,ram,sizeof(ram));
+  assert(SmMoveBallAnimationHook(&cpu,0x908011)==0x908065);
+  assert(!memcmp(copy,ram,sizeof(ram)) && cpu.S==0x1ff9);
+  Put(0xaf8,1);assert(!SmMoveBallAnimationHook(&cpu,0x908011)); /* subpixel motion */
+  Put(0xaf8,0);Put(0xafa,1);assert(!SmMoveBallAnimationHook(&cpu,0x908011)); /* falling */
+  Put(0xafa,0);ram[0xa1f]=15;assert(!SmMoveBallAnimationHook(&cpu,0x908011)); /* morph transition */
+  reset_move();ram[0xa1f]=4;assert(!SmMoveBallAnimationHook(&cpu,0x908011));
+  reset_move();Activate("super-metroid.controls.falling-aim");
+  memset(ram,0,sizeof(ram));Put(0x9ac,0x400);Put(0x9ae,0x200);Put(0x9b0,0x100);Put(0x9b2,0x40);
+  for(unsigned left=0;left<2;++left) {
+    Put(0xa1c,left?0x2e:0x2d);ram[0xa1f]=6;ram[0xa1e]=left?4:8;
+    Put(0x8b,(uint16_t)(0x440|(left?0x100:0x200)));
+    Put(0xb2c,0x1234);Put(0xb2e,4);Put(0xb46,2);Put(0xb48,0x5678);
+    assert(SmMoveTransitionHook(&cpu,0x9181a9)==0x9181e2 && Get(0xa28)==(left?0x2d:0x2e));
+    assert(Get(0xb2c)==0x1234 && Get(0xb2e)==4 && Get(0xb46)==2 && Get(0xb48)==0x5678);
+    Put(0x8b,0x740);assert(!SmMoveTransitionHook(&cpu,0x9181a9)); /* opposing inputs */
+    Put(0x8b,0x640);ram[0xa1f]=0;assert(!SmMoveTransitionHook(&cpu,0x9181a9));
+  }
+  reset_move();ram[0xa1f]=6;Put(0xa1c,0x2d);ram[0xa1e]=8;Put(0x8b,0x640);
+  assert(!SmMoveTransitionHook(&cpu,0x9181a9));
+  puts("air gesture/remap, spark cancellation and down-aim turning boundaries passed"); return 0;
 }

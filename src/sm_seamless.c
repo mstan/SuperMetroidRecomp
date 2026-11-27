@@ -193,6 +193,7 @@ bool SmSeamlessDoor(uint32_t *inputs) {
   const uint8_t *definition=RomPtr(0x830000u+door);
   if ((definition[2]&0x80) || word(definition)!=p.room) return true;
   unsigned arrival_phase=SmRoomsDoorPhase((uint16_t)door);
+  bool upward_arrival=crossing && (definition[3]&3)==3 && SmDoorHasArrivalCap(definition[3]);
   EntryBus b={0}; b.bus=g_cpu;
   b.cpu=interp816_init(&b,read_entry,write_entry); if (!b.cpu) return false;
   uint8_t *previous=malloc(0x20000); uint16_t *previous_vram=malloc(0x10000);
@@ -250,8 +251,13 @@ bool SmSeamlessDoor(uint32_t *inputs) {
       unsigned id=word(g_ram+0xf78+64*i);
       if (id && word(RomPtr(0xa00010u+id))) boss=true;
     }
-    ok=ok && enemy_tiles(&b) && ((arrival_phase==SM_DOOR_OPEN || arrival_phase==SM_DOOR_OPENING) && !boss ? true :
-       entry_call(&b,0x82e8eb,2) && (boss || open_entrance(&b,definition))) && entry_call(&b,0x82e97c,3) &&
+    /* An upward center crossing still leaves the feet below the arriving
+     * hatch. Native entry closes that hatch only after carrying the whole
+     * body inside. Keep it open for our real-frame carry, including boss
+     * rooms; SmRoomsFrame restores the authored closure after clearance. */
+    ok=ok && enemy_tiles(&b) && (upward_arrival ? true :
+       ((arrival_phase==SM_DOOR_OPEN || arrival_phase==SM_DOOR_OPENING) && !boss ? true :
+       entry_call(&b,0x82e8eb,2) && (boss || open_entrance(&b,definition)))) && entry_call(&b,0x82e97c,3) &&
        entry_call(&b,0x80a2f9,2) && entry_call(&b,0x80a33a,2) &&
        entry_call(&b,0x80a37b,2) && entry_call(&b,0x80a176,3) &&
        entry_call(&b,0x88d865,3) && entry_call(&b,0x82e071,3) && entry_call(&b,0x82e0d5,3);
@@ -259,6 +265,9 @@ bool SmSeamlessDoor(uint32_t *inputs) {
   if (ok) {
     bool redraw=false;
     ok=SmRoomsHandoff(previous,previous_vram,g_ram,g_ppu->vram,&p,definition[3]&3,&redraw);
+    /* Promotion can restore a resident hatch, so defer its closure only
+     * after that state becomes active. */
+    if (ok && upward_arrival) { ok=open_entrance(&b,definition);redraw=true; }
     /* Completed hatch openings and permanent grapple breaks may have no
      * PLM left to repaint them. Refresh the loader's native column upload. */
     if (ok && redraw) ok=entry_call(&b,0x80a176,3);

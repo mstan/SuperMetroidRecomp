@@ -240,3 +240,14 @@ label = "Muted"
 [[plugin]]
 feature = "low-health-alarm"
 id = "super-metroid.pacing.low-health-alarm"
+
+[[feature]]
+id = "instant-door-collision"
+name = "Immediate door passage"
+description = "A door cap stops blocking Samus as soon as the native opening animation begins. Its weapon, ammunition and enemy-clear requirements still apply, and the original opening animation remains visible."
+group = "Pacing"
+default_enabled = false
+
+[[plugin]]
+feature = "instant-door-collision"
+id = "super-metroid.pacing.instant-door-collision"

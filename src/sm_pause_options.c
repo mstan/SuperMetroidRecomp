@@ -161,6 +161,9 @@ static bool GuestWillUnpauseThisFrame(void) {
 
 static const char kSection[] = "Options";
 static const char *g_aspect_choices[SM_ASPECT_COUNT];
+/* Short labels keep the native 256px panel's value column clear. The
+ * launcher's longer descriptions refer to these same enum values. */
+static const char *g_door_fade_choices[SM_DOOR_PRESENT_COUNT] = { "Off", "Shadow", "Lighting" };
 /* The framework's choices are fixed vocabulary; the SM aspect names come from
  * sm_video at panel creation. */
 static const char *g_fullscreen_choices[2] = { "Windowed", "Borderless" };
@@ -179,6 +182,13 @@ static const RecompRuntimeUiItem kItems[] = {
     g_aspect_choices, SM_ASPECT_COUNT, NULL },
   { "connected_rooms", kSection, "Rooms (experimental)", NULL,
     RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
+  { "neighboring_logic", kSection, "Neighbor room gameplay", "Applies when a room loads.",
+    RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
+  { "seamless", kSection, "Continuous transitions", NULL,
+    RECOMP_RUNTIME_UI_BOOL, 0, 1, 1, NULL, 0, NULL },
+  { "door_fade", kSection, "Doorway fade", NULL,
+    RECOMP_RUNTIME_UI_CHOICE, 0, SM_DOOR_PRESENT_COUNT - 1, 1,
+    g_door_fade_choices, SM_DOOR_PRESENT_COUNT, NULL },
   /* The framework's own display settings (host_api.h, snesrecomp PR #186).
    * Each change applies live to the running window; the host marks its
    * config dirty and writes config.ini at shutdown, so it survives the
@@ -220,6 +230,8 @@ static bool *BoolField(const RecompRuntimeUiItem *item) {
   if (!strcmp(item->key, "hud")) return &g_sm_video.hud_anchored;
   if (!strcmp(item->key, "fps")) return &g_sm_video.fps_enabled;
   if (!strcmp(item->key, "connected_rooms")) return &g_sm_video.connected_rooms;
+  if (!strcmp(item->key, "neighboring_logic")) return &g_sm_video.neighboring_logic;
+  if (!strcmp(item->key, "seamless")) return &g_sm_video.seamless;
   return NULL;
 }
 
@@ -228,6 +240,7 @@ static int GetValue(void *ctx, const RecompRuntimeUiItem *item, int *out) {
   bool *b = BoolField(item);
   if (b) { *out = *b; return 1; }
   if (!strcmp(item->key, "aspect")) { *out = (int)g_sm_video.aspect; return 1; }
+  if (!strcmp(item->key, "door_fade")) { *out = (int)g_sm_video.door_presentation; return 1; }
   if (!strcmp(item->key, "fullscreen")) { *out = snesrecomp_get_fullscreen(); return 1; }
   if (!strcmp(item->key, "vsync")) { *out = snesrecomp_get_vsync(); return 1; }
   if (!strcmp(item->key, "frame_blend")) { *out = snesrecomp_get_frame_blend(); return 1; }
@@ -250,6 +263,10 @@ static int SetValue(void *ctx, const RecompRuntimeUiItem *item, int value) {
   }
   if (!strcmp(item->key, "aspect") && value >= 0 && value < SM_ASPECT_COUNT) {
     g_sm_video.aspect = (SmAspect)value;
+    return 1;
+  }
+  if (!strcmp(item->key, "door_fade") && value >= 0 && value < SM_DOOR_PRESENT_COUNT) {
+    g_sm_video.door_presentation = (SmDoorPresentation)value;
     return 1;
   }
   /* The host's setters clamp, apply the change to the running window, and
@@ -287,6 +304,10 @@ static int IsEnabled(void *ctx, const RecompRuntimeUiItem *item) {
   if (!strcmp(item->key, "hud")) return g_sm_video.enhanced;
   if (!strcmp(item->key, "connected_rooms"))
     return SmActivityGeometryMutable();
+  if (!strcmp(item->key, "neighboring_logic") || !strcmp(item->key, "seamless"))
+    return g_sm_video.connected_rooms && SmActivityGeometryMutable();
+  if (!strcmp(item->key, "door_fade"))
+    return g_sm_video.connected_rooms && g_sm_video.seamless;
   /* The host ignores a scale change while fullscreen, so the row is too. */
   if (!strcmp(item->key, "window_scale")) return !snesrecomp_get_fullscreen();
   return 1;

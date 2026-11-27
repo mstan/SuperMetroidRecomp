@@ -312,6 +312,10 @@ if(BUILD_TESTING AND NOT ANDROID)
         src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
     target_include_directories(sm_room_runtime_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_executable(sm_resident_mods_test tests/sm_resident_mods_test.c
+        src/mods/sm_difficulty_plugins.c src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
+        ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
+    target_include_directories(sm_resident_mods_test PRIVATE src src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_executable(sm_room_doors_test tests/sm_room_doors_test.c
         src/sm_room_runtime.c src/sm_activity.c src/mods/sm_world.c
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
@@ -320,7 +324,7 @@ if(BUILD_TESTING AND NOT ANDROID)
         src/sm_room_runtime.c src/sm_room_collision.c src/sm_activity.c src/mods/sm_world.c
         ${SNESRECOMP_ROOT}/runner/src/snes/interp816.c)
     target_include_directories(sm_rooms_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
-    foreach(target sm_room_preview_test sm_room_runtime_test sm_room_doors_test sm_rooms_test)
+    foreach(target sm_room_preview_test sm_room_runtime_test sm_room_doors_test sm_rooms_test sm_resident_mods_test)
         if(MSVC)
             target_compile_options(${target} PRIVATE /UNDEBUG)
         else()
@@ -341,6 +345,15 @@ if(BUILD_TESTING AND NOT ANDROID)
         src/mods/sm_controls_plugin.c ${SNESRECOMP_ROOT}/runner/src/snes_overlay_draw.c)
     target_include_directories(sm_movement_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     add_test(NAME sm_movement_extras COMMAND sm_movement_test)
+    add_executable(sm_item_layout_test tests/sm_item_layout_test.c)
+    target_include_directories(sm_item_layout_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_item_layout COMMAND sm_item_layout_test)
+    add_executable(sm_dread_aim_test tests/sm_dread_aim_test.c)
+    target_include_directories(sm_dread_aim_test PRIVATE src/mods ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_dread_aim COMMAND sm_dread_aim_test)
+    add_executable(sm_door_passage_test tests/sm_door_passage_test.c)
+    target_include_directories(sm_door_passage_test PRIVATE src ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    add_test(NAME sm_door_passage COMMAND sm_door_passage_test)
     add_executable(sm_render_capture tools/sm_render_capture.c src/sm_renderer.c src/sm_video.c src/sm_mode7.c
         ${SNESRECOMP_ROOT}/runner/src/desktop/host_clock.c)
     target_include_directories(sm_render_capture PRIVATE src
@@ -350,7 +363,7 @@ if(BUILD_TESTING AND NOT ANDROID)
     foreach(sm_test sm_display_test sm_overlay_blit_test
             sm_savestate_gesture_test ppu_window_test sm_video_test
             sm_pause_options_test sm_renderer_test sm_renderer_native_test sm_mode7_test
-              sm_controls_test sm_global_controls_test sm_spin_animation_test sm_difficulty_test sm_low_health_alarm_test sm_single_missile_doors_test sm_laser_test sm_balance_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test sm_movement_test)
+              sm_controls_test sm_global_controls_test sm_spin_animation_test sm_difficulty_test sm_low_health_alarm_test sm_single_missile_doors_test sm_laser_test sm_balance_test sm_qol_data_test sm_bugfix_test sm_world_test sm_map_test sm_quit_test sm_movement_test sm_item_layout_test sm_dread_aim_test sm_door_passage_test)
         if(MSVC)
             target_compile_options(${sm_test} PRIVATE /UNDEBUG)
         else()
@@ -428,6 +441,9 @@ set(SM_HOST_SOURCES
     src/mods/sm_xray_plugin.c
     src/mods/sm_station_plugins.c
     src/mods/sm_controls_plugin.c
+    src/mods/sm_dread_aim.c
+    src/mods/sm_item_layout_plugin.c
+    src/mods/sm_resident_mods.c
     src/mods/sm_global_controls_plugin.c
     src/mods/sm_spin_animation_plugin.c
     src/mods/sm_difficulty_plugins.c

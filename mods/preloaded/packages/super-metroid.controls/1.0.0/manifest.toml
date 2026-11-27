@@ -293,3 +293,251 @@ id = "auto-cancel"
 label = "Auto Cancel"
 type = "boolean"
 default = false
+
+[[feature]]
+id = "radial-layout"
+name = "Custom right-stick positions"
+description = "Choose a different stick direction for each weapon node. Turn this feature off to restore the standard layout without forgetting your custom choices."
+group = "Controls"
+default_enabled = false
+requires = "super-metroid.controls/radial-menu"
+distinct_options = "beam-position,missile-position,super-position,power-bomb-position,grapple-position,xray-position"
+
+[[option]]
+feature = "radial-layout"
+id = "beam-position"
+label = "Beam position"
+type = "choice"
+default = "up-right"
+[[option.choice]]
+value = "up"
+label = "Up"
+[[option.choice]]
+value = "up-right"
+label = "Up-right"
+[[option.choice]]
+value = "right"
+label = "Right"
+[[option.choice]]
+value = "down-right"
+label = "Down-right"
+[[option.choice]]
+value = "down"
+label = "Down"
+[[option.choice]]
+value = "down-left"
+label = "Down-left"
+[[option.choice]]
+value = "left"
+label = "Left"
+[[option.choice]]
+value = "up-left"
+label = "Up-left"
+
+[[option]]
+feature = "radial-layout"
+id = "missile-position"
+label = "Missile position"
+type = "choice"
+default = "up"
+[[option.choice]]
+value = "up"
+label = "Up"
+[[option.choice]]
+value = "up-right"
+label = "Up-right"
+[[option.choice]]
+value = "right"
+label = "Right"
+[[option.choice]]
+value = "down-right"
+label = "Down-right"
+[[option.choice]]
+value = "down"
+label = "Down"
+[[option.choice]]
+value = "down-left"
+label = "Down-left"
+[[option.choice]]
+value = "left"
+label = "Left"
+[[option.choice]]
+value = "up-left"
+label = "Up-left"
+
+[[option]]
+feature = "radial-layout"
+id = "super-position"
+label = "Super Missile position"
+type = "choice"
+default = "right"
+[[option.choice]]
+value = "up"
+label = "Up"
+[[option.choice]]
+value = "up-right"
+label = "Up-right"
+[[option.choice]]
+value = "right"
+label = "Right"
+[[option.choice]]
+value = "down-right"
+label = "Down-right"
+[[option.choice]]
+value = "down"
+label = "Down"
+[[option.choice]]
+value = "down-left"
+label = "Down-left"
+[[option.choice]]
+value = "left"
+label = "Left"
+[[option.choice]]
+value = "up-left"
+label = "Up-left"
+
+[[option]]
+feature = "radial-layout"
+id = "power-bomb-position"
+label = "Power Bomb position"
+type = "choice"
+default = "down"
+[[option.choice]]
+value = "up"
+label = "Up"
+[[option.choice]]
+value = "up-right"
+label = "Up-right"
+[[option.choice]]
+value = "right"
+label = "Right"
+[[option.choice]]
+value = "down-right"
+label = "Down-right"
+[[option.choice]]
+value = "down"
+label = "Down"
+[[option.choice]]
+value = "down-left"
+label = "Down-left"
+[[option.choice]]
+value = "left"
+label = "Left"
+[[option.choice]]
+value = "up-left"
+label = "Up-left"
+
+[[option]]
+feature = "radial-layout"
+id = "grapple-position"
+label = "Grapple Beam position"
+type = "choice"
+default = "left"
+[[option.choice]]
+value = "up"
+label = "Up"
+[[option.choice]]
+value = "up-right"
+label = "Up-right"
+[[option.choice]]
+value = "right"
+label = "Right"
+[[option.choice]]
+value = "down-right"
+label = "Down-right"
+[[option.choice]]
+value = "down"
+label = "Down"
+[[option.choice]]
+value = "down-left"
+label = "Down-left"
+[[option.choice]]
+value = "left"
+label = "Left"
+[[option.choice]]
+value = "up-left"
+label = "Up-left"
+
+[[option]]
+feature = "radial-layout"
+id = "xray-position"
+label = "X-ray Scope position"
+type = "choice"
+default = "up-left"
+[[option.choice]]
+value = "up"
+label = "Up"
+[[option.choice]]
+value = "up-right"
+label = "Up-right"
+[[option.choice]]
+value = "right"
+label = "Right"
+[[option.choice]]
+value = "down-right"
+label = "Down-right"
+[[option.choice]]
+value = "down"
+label = "Down"
+[[option.choice]]
+value = "down-left"
+label = "Down-left"
+[[option.choice]]
+value = "left"
+label = "Left"
+[[option.choice]]
+value = "up-left"
+label = "Up-left"
+
+
+
+[[feature]]
+id = "falling-aim"
+name = "Turn while firing downward"
+description = "Left and Right can change Samus's facing while falling and firing straight down, retaining downward aim and native air physics."
+group = "Controls"
+default_enabled = false
+
+[[plugin]]
+feature = "falling-aim"
+id = "super-metroid.controls.falling-aim"
+
+[[feature]]
+id = "dread-shoulders"
+name = "Dread shoulders"
+description = "Hold the aim shoulder to plant your feet and swivel through the original cannon directions. Ground Down aims diagonally down; airborne aim also supports straight down. One jump is allowed while locked. In the air, the lock keeps horizontal momentum until released; release restores steering and jumping. Replaces Zero Mission shoulders while selected."
+group = "Controls"
+default_enabled = false
+
+[[plugin]]
+feature = "dread-shoulders"
+id = "super-metroid.controls.zero-mission"
+
+[[option]]
+feature = "dread-shoulders"
+id = "aim-shoulder"
+label = "Aim shoulder"
+type = "choice"
+default = "R"
+[[option.choice]]
+value = "R"
+label = "R"
+[[option.choice]]
+value = "L"
+label = "L"
+
+[[option]]
+feature = "dread-shoulders"
+id = "missile"
+label = "Missile button"
+type = "choice"
+default = "hold"
+[[option.choice]]
+value = "hold"
+label = "Hold"
+[[option.choice]]
+value = "toggle"
+label = "Toggle"
+[[option.choice]]
+value = "off"
+label = "Off"

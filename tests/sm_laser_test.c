@@ -12,6 +12,11 @@ const uint8_t *g_rom = image;
 static uint32_t pixels[342 * 224];
 static bool use_shown = true;
 static SmPlayerView player;
+static bool needs_mask;
+static int occupied_x = -1, occupied_y = -1;
+void SmRendererRequireSightMask(bool enabled) { needs_mask = enabled; }
+bool SmRendererSightOccluded(int x, int y) { return x == occupied_x && y == occupied_y; }
+int snes_mod_register_reset_callback(SNESModActivationCallback cb) { (void)cb; return 1; }
 bool SmDisplay_GetPlayer(SmPlayerView *out) { *out = player; return use_shown; }
 bool SmModOverlayRegister(SmModOverlayDraw draw) { (void)draw; return true; }
 int snes_mod_register_presentation_plugin(const char *id, SNESModActivationCallback cb) {
@@ -40,6 +45,27 @@ int main(void) {
   assert(pixels[y*342+x]==0xffff3030u);
   assert(pixels[y*342+x-1]==0xffff3030u && pixels[y*342+x+1]==0xffff3030u);
   assert(pixels[(y-1)*342+x]==0xffff3030u && pixels[(y+1)*342+x]==0xffff3030u);
+  assert(needs_mask);
+  /* A visible projectile/cannon pixel keeps its exact existing color; the
+   * adjacent transparent sprite pixel still admits the sight. */
+  occupied_x=x; occupied_y=y; draw(43);
+  assert(!pixels[y*342+x] && pixels[y*342+x+1]==0xffff3030u);
+  occupied_x=occupied_y=-1;
+  /* Per-frame native cannon offsets move the sight with the run cycle. */
+  image[0x847df]=0x00;image[0x847e0]=0xd0;
+  image[0x85000]=1; image[0x85002]=10;image[0x85003]=20;
+  image[0x85004]=11;image[0x85005]=22;
+  put(shown,0xa96,1); draw(43);
+  assert(pixels[(y+2)*342+x+1]==0xffff3030u);
+  put(shown,0xa96,0); image[0x847df]=image[0x847e0]=0;
+  /* Native plain-run entries are empty sentinels, rather than an array
+   * extending into the following pose. Gun-running supplies the same bob. */
+  image[0x847df+9*2]=0xd9;image[0x847e0+9*2]=0xc9;
+  image[0x847df+11*2]=0x00;image[0x847e0+11*2]=0xd0;
+  int dx,dy;CannonMotion(9,1,&dx,&dy);assert(dx==1 && dy==2);
+  /* A valid custom plain-run table takes precedence over that fallback. */
+  image[0x847df+9*2]=0x00;image[0x847e0+9*2]=0xd0;
+  CannonMotion(9,1,&dx,&dy);assert(dx==1 && dy==2);
   assert(!pixels[150*342+59+43]);
   /* Thickness cannot paint into the first solid wall or over the HUD. */
   for (unsigned by=0;by<32;++by) put(shown,0x10002+2*(by*32+6),0x8000);
@@ -55,6 +81,7 @@ int main(void) {
   use_shown=false; draw(0);
   assert(pixels[150*342+59]==0xffff3030u); /* native renderer keeps the live path */
   assert(!memcmp(shown,live,0x10002));
+  SmLaserSightReset();assert(!needs_mask);
   puts("sm_laser_test: displayed pose/origin, centered width, wall/HUD clipping and stock fallback PASS");
   return 0;
 }

@@ -78,6 +78,33 @@ static void standalone_widescreen_foreground(void) {
   assert(!memcmp(center,output+64*256,sizeof(center)));
 }
 
+static void sight_mask_pixels(void) {
+  ResetFixtureRenderer();SmRendererSetRom(NULL,0);
+  memset(ram,0,sizeof(ram));memset(&ppu,0,sizeof(ppu));memset(stock,0,sizeof(stock));
+  word(0x998,8);word(0x7a5,16);word(0x7a7,16);
+  ppu.inidisp=15;ppu.bgmode=1;ppu.screenEnabled[0]=16;
+  ppu.renderFlags=kPpuRenderFlags_NewRenderer|kPpuRenderFlags_NoSpriteLimits;
+  ppu.oam[0]=(100u<<8)|120u;ppu.oam[1]=0x2000;ppu.cgram[129]=31;
+  /* One opaque column in an otherwise transparent 8x8 OBJ. The independent
+   * native-center image has the same single red column. */
+  for(unsigned y=0;y<8;++y){ppu.vram[y]=0x80;stock[(100+y)*256+120]=0xff0000;}
+  BeginFixtureFrame(ram,123);SmRendererBeginHardwareRaster(&ppu);
+  for(unsigned y=1;y<=224;++y)SmRendererCaptureLine(&ppu,y);
+  SmRendererEndHardwareRaster();assert(SmRendererEndFrame(stock));
+  const SmViewport view={342,43,16.0/9,true};
+  SmRendererRequireSightMask(false);assert(SmRendererDraw(output,view,false,1));
+  size_t bytes=(size_t)view.width*224*sizeof(*output);
+  uint32_t *before=malloc(bytes);assert(before);memcpy(before,output,bytes);
+  SmRendererRequireSightMask(true);assert(SmRendererDraw(output,view,false,1));
+  assert(!memcmp(before,output,bytes));free(before);
+  assert(output[100*view.width+163]==0xff0000);
+  assert(SmRendererSightOccluded(163,100) && SmRendererSightOccluded(163,107));
+  assert(!SmRendererSightOccluded(164,100) && !SmRendererSightOccluded(162,100));
+  assert(!SmRendererSightOccluded(163,99) && !SmRendererSightOccluded(-1,100));
+  SmRendererRequireSightMask(false);assert(!SmRendererSightOccluded(163,100));
+  ResetFixtureRenderer();
+}
+
 static void ceres_backdrop(void) {
   ResetFixtureRenderer();
   SmRendererSetRom(NULL,0);
@@ -1516,6 +1543,7 @@ int main(int argc, char **argv) {
   continued_solid_foreground();
   native_transition_canvas(argv[1]);
   native_center_provider();
+  sight_mask_pixels();
   hud_bottom_anchor();
   pause_menu_fade();
   hud_colour_math_margins();

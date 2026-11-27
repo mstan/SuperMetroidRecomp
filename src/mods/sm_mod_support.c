@@ -9,6 +9,7 @@
 #include "host_report.h"
 #include "mod_hook.h"
 #include "sm_direct_missile.h"
+#include "sm_item_layout_plugin.h"
 #include "mod_runtime.h"
 #include "snes/snes.h"
 
@@ -53,6 +54,7 @@ static void SmModSupportReset(void) {
   snes_mod_hook_disarm_all();
   snes_mod_operand_clear_all();
   SmDirectMissileReset();
+  SmItemLayoutReset();
 }
 
 SNES_MOD_CONSTRUCTOR(sm_register_mod_support) {

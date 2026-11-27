@@ -67,6 +67,7 @@
 #include "mod_runtime.h"
 #include "sm_mod_support.h"
 #include "sm_movement_plugins.h"
+#include "sm_dread_aim.h"
 #include "snes_overlay_draw.h"
 
 #define PACKAGE "super-metroid.movement"
@@ -122,7 +123,23 @@ static struct {
   bool space_jump, space_jump_anytime;
   bool bomb_control, bomb_instant;
   bool store_spark;
+  bool motion_ball_animation;
+  bool falling_aim_turn;
 } g;
+
+/* Samus_Animate has already run the environment FX handler. Skip only the
+ * rolling frame clock when the ball has not moved, including subpixels.
+ * Morph/unmorph poses and every movement/physics handler remain native. */
+uint32 SmMoveBallAnimationHook(CpuState *cpu, uint32 pc24) {
+  unsigned movement = cpu->ram[kMoveType];
+  bool ball = movement == 4 || movement == 8 || movement == 0x11 ||
+      movement == 0x12 || movement == 0x13;
+  if (g.motion_ball_animation && ball &&
+      W(cpu, 0xAF6) == W(cpu, 0xB10) && W(cpu, 0xAF8) == W(cpu, 0xB12) &&
+      W(cpu, 0xAFA) == W(cpu, 0xB14) && W(cpu, 0xAFC) == W(cpu, 0xB16))
+    return At(pc24, 0x8065); /* PLP; RTS, matching the animation entry's PHP */
+  return 0;
+}
 
 static bool AirMovement(uint8_t type) {
   return type==2 || type==3 || type==6 || type==0x14 || type==0x17 || type==0x18;
@@ -161,9 +178,19 @@ static bool RespinNow(const CpuState *cpu) {
 }
 
 uint32 SmMoveTransitionHook(CpuState *cpu, uint32 pc24) {
+  uint32 dread=SmDreadAimTransition(cpu,pc24);
+  if (dread) return dread;
   uint16_t pose = W(cpu, kPose);
   uint8_t type = cpu->ram[kMoveType];
   uint16_t new_pose = 0;
+  /* Native straight-down falling poses retain their original facing even
+   * when horizontal input changes. Select the matching native down pose so
+   * facing and horizontal control agree without reversing any input bits. */
+  if (g.falling_aim_turn && type==6 && (pose==0x2d || pose==0x2e) &&
+      Held(cpu,kCfgDown) && (W(cpu,kHeld)&W(cpu,0x9b2))) {
+    bool left=Held(cpu,kCfgLeft),right=Held(cpu,kCfgRight);
+    if (left!=right && left!=FacingLeft(cpu)) new_pose=left ? 0x2e : 0x2d;
+  }
   if (g.quick_morph) {
     bool crouched = type == 0x05;
     unsigned hold = crouched && Held(cpu, kCfgDown) ? cpu->ram[kMorphHold] + 1u : 0u;
@@ -417,6 +444,10 @@ static void SmRespinActivate(void) {
   g.respin = true;
   ARM("respin", 0x9181A9, 0x91FC99);
 }
+static void SmFallingAimActivate(void) {
+  g.falling_aim_turn=true;
+  ARM("falling down-aim turning",0x9181a9);
+}
 
 /* Select the diagonal dispatcher when the stock handler pointer is stored.
  * The existing movers below preserve straight sparks without a nudge. */
@@ -460,7 +491,8 @@ static void SmQuickMorphActivate(void) {
   g.air_morph=SmModOptionBool(PACKAGE,"quick-morph","air-morph",false);
   /* The shoulder plugin consumes the raw chord itself when enabled, so the
    * physical L gesture also works if item cancel was rebound to a shoulder. */
-  if (g.air_morph && !snes_mod_runtime_feature_enabled_c("super-metroid.controls","zero-mission"))
+  if (g.air_morph && !snes_mod_runtime_feature_enabled_c("super-metroid.controls","zero-mission") &&
+      !snes_mod_runtime_feature_enabled_c("super-metroid.controls","dread-shoulders"))
     snes_mod_register_input_transform(QuickMorphInput);
   fprintf(stderr, "[mods] quick morph: hold %u frames, item cancel %s\n",
           g.hold_frames, g.cancel_morph ? "on" : "off");
@@ -490,9 +522,15 @@ static void SmStoreShinesparkActivate(void) {
   ARM("store-shinespark", 0x91F7B0, 0x91DB08, 0x90D036);
 }
 
+static void SmMotionBallAnimationActivate(void) {
+  g.motion_ball_animation = true;
+  ARM("motion-ball-animation", 0x908011);
+}
+
 static void SmMovementReset(void) { memset(&g, 0, sizeof(g)); }
 
 SNES_MOD_CONSTRUCTOR(sm_register_movement_plugins) {
+  snes_mod_register_activation_plugin("super-metroid.controls.falling-aim",SmFallingAimActivate);
   snes_mod_register_reset_callback(SmMovementReset);
   static const struct { const char *id; void (*activate)(void); } kPlugins[] = {
     {"super-metroid.movement.respin", SmRespinActivate},
@@ -503,6 +541,7 @@ SNES_MOD_CONSTRUCTOR(sm_register_movement_plugins) {
     {"super-metroid.movement.space-jump", SmSpaceJumpActivate},
     {"super-metroid.movement.bomb-control", SmBombControlActivate},
     {"super-metroid.movement.store-shinespark", SmStoreShinesparkActivate},
+    {"super-metroid.movement.motion-ball-animation", SmMotionBallAnimationActivate},
   };
   for (size_t i = 0; i < sizeof(kPlugins) / sizeof(kPlugins[0]); ++i)
     snes_mod_register_activation_plugin(kPlugins[i].id, kPlugins[i].activate);

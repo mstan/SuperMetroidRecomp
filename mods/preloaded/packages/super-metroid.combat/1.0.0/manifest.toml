@@ -335,3 +335,14 @@ label = "1.25x"
 [[plugin]]
 feature = "projectile-speed"
 id = "super-metroid.combat.projectile-speed"
+
+[[feature]]
+id = "spin-hazards"
+name = "Spin through fire geysers"
+description = "Active Screw Attack and fully charged spin attacks pass through fire geysers without losing the spin or charge. Ordinary enemy projectiles retain their native active-spin protection. Lava, acid and terrain hazards remain dangerous."
+group = "Combat"
+default_enabled = false
+
+[[plugin]]
+feature = "spin-hazards"
+id = "super-metroid.combat.spin-hazards"

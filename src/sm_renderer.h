@@ -37,6 +37,11 @@ typedef struct SmPlayerView {
 } SmPlayerView;
 bool SmRendererGetPlayer(double alpha, SmPlayerView *player);
 bool SmRendererGetNativePlayer(const Ppu *ppu, SmPlayerView *player);
+/* Optional screen-space sight occlusion from the same decoded, interpolated
+ * OBJ pixels as the displayed frame, including the native center. */
+void SmRendererRequireSightMask(bool enabled);
+bool SmRendererNeedsSightMask(void);
+bool SmRendererSightOccluded(int x, int y);
 bool SmRendererRoomTile(const uint8_t ram[0x20000], int x, int y, uint16_t *entry);
 bool SmRendererRoomLayerTile(const uint8_t ram[0x20000], unsigned layer,
                             int x, int y, uint16_t *entry);

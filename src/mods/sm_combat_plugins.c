@@ -56,6 +56,9 @@
 
 #include "mod_hook.h"
 #include "sm_room_collision.h"
+#include "sm_door.h"
+#include "sm_rooms.h"
+#include "sm_spin_hazards.h"
 #include "sm_video.h"
 #include "mod_runtime.h"
 #include "sm_mod_support.h"
@@ -96,6 +99,8 @@ static struct {
   bool bomb_limit; uint16_t bombs, bomb_interval;
   bool combo_select;
   bool auto_charge;
+  bool instant_doors;
+  bool spin_hazards;
 } g;
 
 /* ── screw-attack ─────────────────────────────────────────────────────── */
@@ -113,6 +118,9 @@ static bool BreakableShotBlock(const CpuState *cpu) {
 }
 
 /* BlockColl_{Horiz,Vert}_CheckColl: JSR (table,X), X = block type * 2. */
+static uint8_t DoorRead(void *context,uint32_t address) {
+  (void)context;return (uint8_t)SmModReadRom16(address);
+}
 uint32 SmCombatShotBlockDispatchHook(CpuState *cpu, uint32 pc24) {
   if (SmConnectedRoomsEnabled() && g_sm_video.seamless) {
     /* CheckColl's PHX preserves the original byte index even when a native
@@ -121,11 +129,14 @@ uint32 SmCombatShotBlockDispatchHook(CpuState *cpu, uint32 pc24) {
     int collision=SmRoomCollisionBody(cpu->ram,(pc24&65535)==0x9527,index>>1);
     if (collision>=0) { cpu->X=(uint16_t)collision; return 0; }
   }
+  unsigned width=W(cpu,0x7a5),index=W(cpu,kCurBlock);
+  if (g.instant_doors && width && SmDoorOpeningBodyClear(DoorRead,NULL,cpu->ram,
+      (int)(index%width),(int)(index/width))) { cpu->X=0;return 0; }
   if (g.shot_blocks && cpu->X == 0x18 && Breaking(cpu) && BreakableShotBlock(cpu))
     cpu->X = 0x1E;                                   /* bomb block handler */
   return 0;
 }
-bool SmCombatShotBlockDispatchActive(void) { return g.shot_blocks; }
+bool SmCombatShotBlockDispatchActive(void) { return g.shot_blocks || g.instant_doors; }
 
 /* BlockColl_{Horiz,Vert}_BombBlock: JSL SpawnPLM with A = the PLM. */
 uint32 SmCombatShotBlockPlmHook(CpuState *cpu, uint32 pc24) {
@@ -387,7 +398,16 @@ static void SmAutoChargeActivate(void) {
   ARM("auto-charge", 0x90B83C, 0x90B857, 0x90BBE1);
 }
 
-static void SmCombatReset(void) { memset(&g, 0, sizeof(g)); }
+static void SmInstantDoorsActivate(void) {
+  g.instant_doors=true;SmRoomsSetInstantDoorCollision(true);
+  ARM("instant physical door opening",0x949527,0x94953e);
+}
+bool SmCombatSpinHazardsActive(void) { return g.spin_hazards; }
+static void SmSpinHazardsActivate(void) {
+  g.spin_hazards=true;
+  ARM("spin through fire geysers",0xa0a07a);
+}
+static void SmCombatReset(void) { memset(&g, 0, sizeof(g));SmRoomsSetInstantDoorCollision(false); }
 
 SNES_MOD_CONSTRUCTOR(sm_register_combat_plugins) {
   snes_mod_register_reset_callback(SmCombatReset);
@@ -397,6 +417,8 @@ SNES_MOD_CONSTRUCTOR(sm_register_combat_plugins) {
     {"super-metroid.combat.bomb-limit", SmBombLimitActivate},
     {"super-metroid.combat.beam-combo-select", SmBeamComboSelectActivate},
     {"super-metroid.combat.auto-charge", SmAutoChargeActivate},
+    {"super-metroid.pacing.instant-door-collision", SmInstantDoorsActivate},
+    {"super-metroid.combat.spin-hazards", SmSpinHazardsActivate},
   };
   for (size_t i = 0; i < sizeof(kPlugins) / sizeof(kPlugins[0]); ++i)
     snes_mod_register_activation_plugin(kPlugins[i].id, kPlugins[i].activate);

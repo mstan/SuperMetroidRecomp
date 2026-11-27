@@ -55,6 +55,32 @@ static const uint8_t *PoseParams(uint16_t pose) {
   return g_rom + offset + (uint32_t)pose * 8;
 }
 
+/* The native arm-cannon table contains per-animation-frame offsets even
+ * when the missile cover is closed. Apply its movement relative to frame 0
+ * to the already-qualified shot axis, rather than replacing that axis. */
+static void CannonMotion(uint16_t pose, unsigned frame, int *dx, int *dy) {
+  *dx = *dy = 0;
+  if (frame >= 64) return;
+  const uint8_t *table = g_rom + 0x80000 + (0xC7DF & 0x7fff) + pose * 2;
+  unsigned address = table[0] | table[1] << 8;
+  /* Plain running omits the open-cannon overlay entirely. Its C9D9 empty
+   * table has no frame offsets; use the matching gun-running body's bob,
+   * instead of reading into the following pose's data. Custom tables stay
+   * authoritative when a loaded-image mod supplies one for the pose. */
+  if (address==0xc9d9 && pose>=9 && pose<=14) {
+    unsigned gun_pose=(pose&1) ? 11 : 12;
+    table=g_rom+0x80000+(0xc7df&0x7fff)+gun_pose*2;
+    address=table[0] | table[1]<<8;
+  }
+  if (address==0xc9d9 || address==0xc9db) return;
+  if (address < 0x8000) return;
+  const uint8_t *data = g_rom + 0x80000 + (address & 0x7fff);
+  unsigned first = data[0] & 128 ? 4 : 2;
+  if ((address & 0x7fff) + first + frame * 2 + 2 > 0x8000) return;
+  *dx = (int8_t)data[first + frame * 2] - (int8_t)data[first];
+  *dy = (int8_t)data[first + frame * 2 + 1] - (int8_t)data[first + 1];
+}
+
 /* Whether the block at room pixel (x, y) stops a shot line. */
 static bool Solid(const uint8_t *wram, int x, int y) {
   int width = Word(wram, kRoomWidth), height = Word(wram, kRoomHeight);
@@ -89,6 +115,9 @@ static void SmLaserSightDraw(uint32_t *pixels, int stride, int width, int height
           (alt ? kOrigin4X : kOrigin3X)[dir] + stage_x;
   int y = (presented ? player.y : (int16_t)(Word(wram, kSamusY) - Word(wram, kLayer1Y))) +
           (alt ? kOrigin4Y : kOrigin3Y)[dir] - params[4];
+  int dx, dy;
+  CannonMotion(pose, Word(wram, 0x0A96), &dx, &dy);
+  x += dx; y += dy;
   /* Room position of screen pixel (stage_x, 0). */
   int room_x = (presented ? player.camera_x : Word(wram, kLayer1X)) - stage_x;
   int room_y = presented ? player.camera_y : Word(wram, kLayer1Y);
@@ -101,7 +130,8 @@ static void SmLaserSightDraw(uint32_t *pixels, int stride, int width, int height
       if (ox * ox + oy * oy > 1) continue;
       int sx = px + ox, sy = py + oy;
       if (sx >= 0 && sx < width && sy >= 32 && sy < height &&
-          !Solid(wram, room_x + sx, room_y + sy)) pixels[sy * stride + sx] = 0xFFFF3030u;
+          !Solid(wram, room_x + sx, room_y + sy) &&
+          !SmRendererSightOccluded(sx, sy)) pixels[sy * stride + sx] = 0xFFFF3030u;
     }
   }
 }
@@ -109,11 +139,15 @@ static void SmLaserSightDraw(uint32_t *pixels, int stride, int width, int height
 static void SmLaserSightActivate(void) {
   SmModValue when;
   g_always = !strcmp(SmModOption(&when, PACKAGE, "laser-sight", "when", "diagonal"), "always");
+  SmRendererRequireSightMask(true);
   SmModOverlayRegister(SmLaserSightDraw);
   fprintf(stderr, "[mods] laser sight (%s)\n", g_always ? "always" : "diagonal aim");
 }
 
+static void SmLaserSightReset(void) { SmRendererRequireSightMask(false); }
+
 SNES_MOD_CONSTRUCTOR(sm_register_laser_sight_plugin) {
+  snes_mod_register_reset_callback(SmLaserSightReset);
   snes_mod_register_presentation_plugin("super-metroid.map-hud.laser-sight",
                                         SmLaserSightActivate);
 }
