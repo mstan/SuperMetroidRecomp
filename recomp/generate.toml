@@ -1,0 +1,6 @@
+schema = 1
+identity_file = "rom_identity.txt"
+cfg_roots = true
+historical_profiles = ["../profiles/attract_tier2.json", "../profiles/coverage-0.3.13-20261022.json"]
+bind_legacy_profiles = true
+source_roots = ["src"]

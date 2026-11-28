@@ -26,7 +26,7 @@ def inputs():
     for folder in ('src', 'recomp', 'profiles'):
         files += [p for p in (ROOT / folder).rglob('*') if p.is_file()
                   and 'gen' not in p.relative_to(ROOT).parts
-                  and p.name != 'funcs.h' and p.suffix in ('.c', '.h', '.inc', '.cfg', '.json')]
+                  and p.name != 'funcs.h' and p.suffix in ('.c', '.h', '.inc', '.cfg', '.json', '.toml')]
     # Git may check text out as CRLF on a Windows runner. This is the same
     # source input; generated payload files themselves remain byte-verified.
     return {p.relative_to(ROOT).as_posix(): hashlib.sha256(

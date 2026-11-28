@@ -20,6 +20,11 @@ import json
 import os
 from pathlib import Path
 import socket
+from pathlib import Path
+import os
+import sys
+sys.path.insert(0, str(Path(os.environ.get('SNESRECOMP_ROOT', Path(__file__).resolve().parents[1] / 'snesrecomp')) / 'tools'))
+from sneslib.client import DebugClient, GameplayClient
 import shutil
 import struct
 import subprocess
@@ -185,13 +190,14 @@ class Session:
                 self.close()
                 raise RuntimeError(f'Game exited {self.process.returncode}; see {self.output}')
             try:
-                self.sock = socket.create_connection(('127.0.0.1', port), timeout=1)
+                self.sock = DebugClient(port, timeout=1)
+                self.sock._ensure_connected()
                 break
             except OSError:
                 time.sleep(.1)
         # A slow response is not a guest fault or permission to terminate it.
-        self.sock.settimeout(None)
-        self.stream = self.sock.makefile('rb')
+        self.sock.timeout = None
+        self.sock._sock.settimeout(None)
         self.command('frame')
 
     def command(self, command):
@@ -199,10 +205,7 @@ class Session:
             self.allow_rebase = True
         self.journal.write(json.dumps(dict(command=command)) + '\n')
         self.journal.flush()
-        self.sock.sendall(command.encode('ascii') + b'\n')
-        response = json.loads(self.stream.readline())
-        if 'connected' in response:
-            response = json.loads(self.stream.readline())
+        response = self.sock.query(command, retry=False)
         if 'error' in response or response.get('ok') is False:
             raise RuntimeError(f'{command}: {response}')
         return response
@@ -679,11 +682,9 @@ class Session:
             process.wait()
         if self.sock is not None:
             try:
-                self.stream.close()
                 self.sock.close()
             except OSError:
                 pass
-            self.stream = None
             self.sock = None
         for name in ('journal', 'stdout', 'stderr'):
             stream = getattr(self, name, None)
