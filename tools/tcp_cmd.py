@@ -8,43 +8,18 @@ pipe it into jq/ConvertFrom-Json.
 from __future__ import annotations
 
 import argparse
-import socket
+from pathlib import Path
+import os
+import sys
+sys.path.insert(0, str(Path(os.environ.get('SNESRECOMP_ROOT', Path(__file__).resolve().parents[1] / 'snesrecomp')) / 'tools'))
+from sneslib.client import DebugClient, GameplayClient
 import sys
 import time
 
 
-def recv_lines(sock: socket.socket, timeout: float, stop_after: int = 2) -> list[str]:
-    deadline = time.monotonic() + timeout
-    data = bytearray()
-    lines: list[str] = []
-    sock.setblocking(False)
-    while time.monotonic() < deadline:
-        try:
-            chunk = sock.recv(65536)
-        except BlockingIOError:
-            time.sleep(0.01)
-            continue
-        if not chunk:
-            break
-        data.extend(chunk)
-        while b"\n" in data:
-            raw, _, rest = data.partition(b"\n")
-            data = bytearray(rest)
-            line = raw.decode("utf-8", errors="replace").strip()
-            if line:
-                lines.append(line)
-            if len(lines) >= stop_after:
-                return lines
-    tail = data.decode("utf-8", errors="replace").strip()
-    if tail:
-        lines.append(tail)
-    return lines
-
-
 def send_command(host: str, port: int, command: str, timeout: float) -> list[str]:
-    with socket.create_connection((host, port), timeout=timeout) as sock:
-        sock.sendall(command.encode("ascii") + b"\n")
-        return recv_lines(sock, timeout, stop_after=1)
+    with DebugClient(port, host=host, timeout=timeout) as client:
+        return [client.query_raw(command, retry=False)]
 
 
 def main(argv: list[str]) -> int:
