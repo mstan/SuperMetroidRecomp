@@ -671,14 +671,14 @@ class Session:
                 except (OSError, ValueError, RuntimeError) as error:
                     self.final_execution['tier2_dump_error'] = str(error)
         if process is not None and process.poll() is None:
-            # Release our paused Linux host after saving the final evidence,
-            # so SDL can handle the normal quit request before escalation.
-            if os.name != 'nt' and self.sock is not None:
+            # Use the runtime's normal exit so native saves and diagnostics
+            # finish flushing. A transport error must not terminate a healthy
+            # child (including indirectly when a managed job exits).
+            if self.sock is not None:
                 try:
-                    self.command('continue')
-                except (OSError, ValueError, RuntimeError):
-                    pass
-            process.terminate()
+                    self.command('runtime_quit')
+                except (OSError, ValueError, RuntimeError) as error:
+                    print(f'Normal quit request failed: {error}; preserving PID {process.pid} for inspection.', flush=True)
             process.wait()
         if self.sock is not None:
             try:
